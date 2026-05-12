@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Dark theme — Zain Butt Finance palette */
+  :root {
+    --background: 243 47% 9%;        /* #0F0E24 deep navy */
+    --foreground: 220 30% 93%;
+    --card: 241 38% 18%;             /* #1D1D41 card navy */
+    --card-foreground: 220 30% 93%;
+    --primary: 245 76% 63%;          /* #6359E9 vivid purple */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 241 32% 23%;        /* #27264E inner navy */
+    --secondary-foreground: 220 30% 93%;
+    --muted: 241 30% 20%;
+    --muted-foreground: 240 18% 60%;
+    --accent: 197 88% 68%;           /* #64CFF6 bright cyan */
+    --accent-foreground: 243 47% 9%;
+    --border: 241 28% 25%;
+    --input: 241 28% 25%;
+    --ring: 245 76% 63%;
+    --radius: 0.75rem;
+    /* Chart palette tokens */
+    --chart-purple: #6359E9;
+    --chart-cyan: #64CFF6;
+    --chart-green: #02B15A;
+    --chart-red: #EB001B;
+  }
+
+  .light {
+    --background: 220 20% 97%;
+    --foreground: 241 38% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 241 38% 15%;
+    --primary: 245 76% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 93%;
+    --secondary-foreground: 241 38% 15%;
+    --muted: 220 20% 93%;
+    --muted-foreground: 240 10% 46%;
+    --accent: 197 88% 55%;
+    --accent-foreground: 0 0% 100%;
+    --border: 220 20% 87%;
+    --input: 220 20% 87%;
+    --ring: 245 76% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Glass card effect */
+.glass-card {
+  @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-lg;
+}
+
+/* Dark mode Recharts/Tremor chart fixes (Zain Butt navy palette) */
+html:not(.light) .recharts-wrapper text,
+html:not(.light) .recharts-cartesian-axis-tick-value,
+html:not(.light) .recharts-legend-item-text {
+  fill: hsl(240 18% 65%) !important;
+  color: hsl(240 18% 65%) !important;
+}
+html:not(.light) .recharts-cartesian-grid line {
+  stroke: hsl(241 28% 28%) !important;
+  stroke-opacity: 0.7 !important;
+}
+html:not(.light) .recharts-cartesian-axis line,
+html:not(.light) .recharts-cartesian-axis-line {
+  stroke: hsl(241 28% 30%) !important;
+}
+/* Tooltip */
+html:not(.light) .recharts-tooltip-wrapper > div {
+  background-color: hsl(241 38% 14%) !important;
+  border: 1px solid hsl(241 28% 28%) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+}
+html:not(.light) .recharts-tooltip-item-name,
+html:not(.light) .recharts-tooltip-item-value,
+html:not(.light) .recharts-tooltip-label {
+  color: hsl(220 30% 93%) !important;
+}
+html:not(.light) .recharts-area {
+  opacity: 0.9;
+}
+
+/* ─── Custom chart color palette ─────────────────────────────────────────────
+   Series order: #64CFF6  →  #661EFF  →  #AEABD8  →  #1D1D41
+   Applied via CSS (Tremor's colors prop only accepts Tailwind names)          */
+
+/* Bar chart fills */
+g.recharts-layer.recharts-bar:nth-of-type(1) .recharts-rectangle { fill: #64CFF6 !important; }
+g.recharts-layer.recharts-bar:nth-of-type(2) .recharts-rectangle { fill: #661EFF !important; }
+g.recharts-layer.recharts-bar:nth-of-type(3) .recharts-rectangle { fill: #AEABD8 !important; }
+g.recharts-layer.recharts-bar:nth-of-type(4) .recharts-rectangle { fill: #1D1D41 !important; }
+
+/* Area chart fills + strokes */
+g.recharts-layer.recharts-area:nth-of-type(1) .recharts-area-area  { fill: #64CFF6 !important; fill-opacity: 0.2 !important; }
+g.recharts-layer.recharts-area:nth-of-type(1) .recharts-area-curve { stroke: #64CFF6 !important; stroke-width: 2px; }
+g.recharts-layer.recharts-area:nth-of-type(2) .recharts-area-area  { fill: #661EFF !important; fill-opacity: 0.2 !important; }
+g.recharts-layer.recharts-area:nth-of-type(2) .recharts-area-curve { stroke: #661EFF !important; stroke-width: 2px; }
+g.recharts-layer.recharts-area:nth-of-type(3) .recharts-area-area  { fill: #AEABD8 !important; fill-opacity: 0.2 !important; }
+g.recharts-layer.recharts-area:nth-of-type(3) .recharts-area-curve { stroke: #AEABD8 !important; stroke-width: 2px; }
+g.recharts-layer.recharts-area:nth-of-type(4) .recharts-area-area  { fill: #1D1D41 !important; fill-opacity: 0.4 !important; }
+g.recharts-layer.recharts-area:nth-of-type(4) .recharts-area-curve { stroke: #1D1D41 !important; stroke-width: 2px; }
+
+/* Line chart strokes */
+g.recharts-layer.recharts-line:nth-of-type(1) .recharts-line-curve { stroke: #64CFF6 !important; }
+g.recharts-layer.recharts-line:nth-of-type(2) .recharts-line-curve { stroke: #661EFF !important; }
+g.recharts-layer.recharts-line:nth-of-type(3) .recharts-line-curve { stroke: #AEABD8 !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-background;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+}

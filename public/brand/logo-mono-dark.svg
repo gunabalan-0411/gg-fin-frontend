@@ -1,0 +1,13 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <title>gg fin — Mark Monochrome (Dark)</title>
+  <g transform="translate(7, 5)" stroke-width="13.5" stroke-linecap="round" fill="none" stroke="#00796B">
+    <circle cx="60" cy="60" r="50"/>
+    <line x1="110" y1="60" x2="110" y2="135"/>
+    <circle cx="92" cy="146" r="36"/>
+    <line x1="128" y1="146" x2="128" y2="200"/>
+    <circle cx="79" cy="110" r="6.5" fill="#00796B" stroke="none"/>
+    <line x1="140" y1="232" x2="200" y2="18"/>
+    <line x1="200" y1="18" x2="232" y2="14"/>
+    <line x1="170" y1="125" x2="196" y2="121"/>
+  </g>
+</svg>

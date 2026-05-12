@@ -1,0 +1,25 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <title>gg fin — Favicon</title>
+  <!--
+    Mark scaled to 32×32. scale≈0.119, offset 2.5px
+    Descenders = 1.5× radius of each circle.
+    stroke-width unified at 1.8 (≈4 × 0.297 scale, boosted for legibility).
+  -->
+  <rect width="32" height="32" rx="6" fill="#0A1A15"/>
+  <g stroke-linecap="round" stroke-width="1.8">
+    <!-- Top g: cx=10, cy=10, r=6 → descender length=9, y2=19 -->
+    <circle cx="10" cy="10" r="6" fill="none" stroke="#00A896"/>
+    <line x1="16" y1="10" x2="16" y2="19" stroke="#00A896"/>
+    <!-- Bottom g: cx=13.5, cy=20, r=4.5 → descender length=6.75, y2=26.75 -->
+    <circle cx="13.5" cy="20" r="4.5" fill="none" stroke="#00796B"/>
+    <line x1="18" y1="20" x2="18" y2="26.8" stroke="#00796B"/>
+    <!-- Tangent dot -->
+    <circle cx="11.9" cy="15.6" r="1.4" fill="#00A896" stroke="none"/>
+    <!-- F diagonal -->
+    <line x1="19.2" y1="30" x2="26.3" y2="4.6" stroke="#4FC3F7"/>
+    <!-- F top bar -->
+    <line x1="26.3" y1="4.6" x2="30" y2="4.2" stroke="#1565C0"/>
+    <!-- F mid bar -->
+    <line x1="22.7" y1="17.4" x2="25.8" y2="17" stroke="#4FC3F7" opacity="0.8"/>
+  </g>
+</svg>

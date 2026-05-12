@@ -1,0 +1,20 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <title>gg fin — Logo (Dark)</title>
+  <defs>
+    <linearGradient id="fstem" x1="0.3" y1="1" x2="0.7" y2="0">
+      <stop offset="0%" stop-color="#4FC3F7"/>
+      <stop offset="100%" stop-color="#1565C0"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="#0A1A15"/>
+  <g transform="translate(7, 5)" stroke-width="13.5" stroke-linecap="round">
+    <circle cx="60" cy="60" r="50" fill="none" stroke="#00A896"/>
+    <line x1="110" y1="60" x2="110" y2="135" stroke="#00A896"/>
+    <circle cx="92" cy="146" r="36" fill="none" stroke="#00796B"/>
+    <line x1="128" y1="146" x2="128" y2="200" stroke="#00796B"/>
+    <circle cx="79" cy="110" r="6.5" fill="#00A896" stroke="none"/>
+    <line x1="140" y1="232" x2="200" y2="18" stroke="url(#fstem)"/>
+    <line x1="200" y1="18" x2="232" y2="14" stroke="#1565C0"/>
+    <line x1="170" y1="125" x2="196" y2="121" stroke="#4FC3F7"/>
+  </g>
+</svg>
