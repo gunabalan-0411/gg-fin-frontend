@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 import {
   Search, Plus, Pencil, Trash2, ChevronLeft, ChevronRight,
   ChevronUp, ChevronDown, Info, Filter, AlertTriangle, Share2, Copy,
@@ -63,6 +64,7 @@ export default function CustomersPage() {
   const customers = (data?.data ?? []) as (EdiCustomer | IopCustomer)[];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const isMobile = useIsMobile();
 
   const handleSort = (col: string) => {
     if (sortBy === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -149,23 +151,24 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Customers</h1>
-          <p className="text-sm text-muted-foreground">{total} total customers</p>
+          <h1 className="text-lg sm:text-xl font-bold text-foreground">Customers</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">{total} total</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          {/* Undo/Redo — icon-only on mobile */}
           <button
             onClick={handleUndo}
             disabled={undoStack.length === 0}
-            title="Undo last action"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Undo"
+            className="relative flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <Undo2 className="h-3.5 w-3.5" />
-            Undo
+            <Undo2 className="h-4 w-4" />
             {undoStack.length > 0 && (
-              <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[10px] flex items-center justify-center font-bold">
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary text-[9px] text-white flex items-center justify-center font-bold">
                 {undoStack.length}
               </span>
             )}
@@ -173,111 +176,151 @@ export default function CustomersPage() {
           <button
             onClick={handleRedo}
             disabled={redoStack.length === 0}
-            title="Redo last action"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Redo"
+            className="relative flex items-center justify-center h-9 w-9 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <Redo2 className="h-3.5 w-3.5" />
-            Redo
+            <Redo2 className="h-4 w-4" />
             {redoStack.length > 0 && (
-              <span className="w-4 h-4 rounded-full bg-primary/20 text-primary text-[10px] flex items-center justify-center font-bold">
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary text-[9px] text-white flex items-center justify-center font-bold">
                 {redoStack.length}
               </span>
             )}
           </button>
-          <Button onClick={() => { setEditing(null); setShowForm(true); }}>
-            <Plus className="h-4 w-4 mr-1.5" /> Add Customer
+          <Button onClick={() => { setEditing(null); setShowForm(true); }} size={isMobile ? "sm" : "default"}>
+            <Plus className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Add Customer</span>
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex rounded-lg border border-border overflow-hidden">
-          {(["edi", "iop"] as ProductType[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => { setProduct(p); setPage(0); setBalanceFilter(false); }}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                product === p ? "bg-primary text-white" : "bg-card text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {p.toUpperCase()}
-            </button>
-          ))}
+      {/* Filters */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            {(["edi", "iop"] as ProductType[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => { setProduct(p); setPage(0); setBalanceFilter(false); }}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  product === p ? "bg-primary text-white" : "bg-card text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => { setBalanceFilter((f) => !f); setPage(0); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+              balanceFilter
+                ? "bg-primary text-white border-primary"
+                : "bg-card text-muted-foreground border-border hover:text-foreground"
+            }`}
+          >
+            <Filter className="h-4 w-4" />
+            <span className="hidden sm:inline">Balance &gt; 0</span>
+          </button>
         </div>
-        <div className="relative flex-1 max-w-xs">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-9"
+            className="pl-9 w-full"
             placeholder="Search by name..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           />
         </div>
-        <button
-          onClick={() => { setBalanceFilter((f) => !f); setPage(0); }}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-            balanceFilter
-              ? "bg-primary text-white border-primary"
-              : "bg-card text-muted-foreground border-border hover:text-foreground"
-          }`}
-          title={product === "edi" ? "Outstanding balance > 0" : "Loan closure > 0"}
-        >
-          <Filter className="h-4 w-4" />
-          Balance &gt; 0
-        </button>
       </div>
 
+      {/* Content: cards on mobile, table on desktop */}
       <div className="glass-card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("customer_id")}>
-                  <span className="flex items-center gap-1">ID <SortIcon col="customer_id" /></span>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Tamil Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Contact</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Loan Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
-                  {product === "edi" ? "Outstanding" : "Loan Closure"}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("loan_start_date")}>
-                  <span className="flex items-center gap-1">Start Date <SortIcon col="loan_start_date" /></span>
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                [...Array(5)].map((_, i) => (
-                  <tr key={i} className="border-b border-border/50">
-                    {[...Array(8)].map((_, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>
-                    ))}
-                  </tr>
-                ))
-              ) : customers.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No customers found</td></tr>
-              ) : (
-                customers.map((c) => (
-                  <CustomerRow
-                    key={c.customer_id}
-                    customer={c}
-                    product={product}
-                    onNameClick={() => setDetailCustomer(c)}
-                    onEdit={() => handleEdit(c)}
-                    onDuplicate={() => handleDuplicate(c)}
-                    onDelete={() => handleDeleteClick(c.customer_id, c.customer_name ?? `#${c.customer_id}`)}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {isMobile ? (
+          /* ── Mobile card list ── */
+          <div>
+            {isLoading ? (
+              [...Array(5)].map((_, i) => (
+                <div key={i} className="px-4 py-3 border-b border-border/50">
+                  <div className="space-y-2">
+                    <div className="h-4 bg-secondary rounded animate-pulse w-2/3" />
+                    <div className="h-3 bg-secondary rounded animate-pulse w-1/2" />
+                    <div className="h-3 bg-secondary rounded animate-pulse w-3/4" />
+                  </div>
+                </div>
+              ))
+            ) : customers.length === 0 ? (
+              <div className="px-4 py-12 text-center text-muted-foreground text-sm">
+                No customers found
+              </div>
+            ) : (
+              customers.map((c) => (
+                <CustomerCardMobile
+                  key={c.customer_id}
+                  customer={c}
+                  product={product}
+                  onNameClick={() => setDetailCustomer(c)}
+                  onEdit={() => handleEdit(c)}
+                  onDuplicate={() => handleDuplicate(c)}
+                  onDelete={() => handleDeleteClick(c.customer_id, c.customer_name ?? `#${c.customer_id}`)}
+                />
+              ))
+            )}
+          </div>
+        ) : (
+          /* ── Desktop table ── */
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("customer_id")}>
+                    <span className="flex items-center gap-1">ID <SortIcon col="customer_id" /></span>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Tamil Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Contact</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Loan Amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
+                    {product === "edi" ? "Outstanding" : "Loan Closure"}
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("loan_start_date")}>
+                    <span className="flex items-center gap-1">Start Date <SortIcon col="loan_start_date" /></span>
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  [...Array(5)].map((_, i) => (
+                    <tr key={i} className="border-b border-border/50">
+                      {[...Array(8)].map((_, j) => (
+                        <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>
+                      ))}
+                    </tr>
+                  ))
+                ) : customers.length === 0 ? (
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No customers found</td></tr>
+                ) : (
+                  customers.map((c) => (
+                    <CustomerRow
+                      key={c.customer_id}
+                      customer={c}
+                      product={product}
+                      onNameClick={() => setDetailCustomer(c)}
+                      onEdit={() => handleEdit(c)}
+                      onDuplicate={() => handleDuplicate(c)}
+                      onDelete={() => handleDeleteClick(c.customer_id, c.customer_name ?? `#${c.customer_id}`)}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span className="text-xs text-muted-foreground">Page {page + 1} of {totalPages} ({total} records)</span>
+            <span className="text-xs text-muted-foreground">
+              Page {page + 1} of {totalPages} ({total} records)
+            </span>
             <div className="flex gap-1">
               <Button variant="ghost" size="icon" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
                 <ChevronLeft className="h-4 w-4" />
@@ -315,6 +358,65 @@ export default function CustomersPage() {
           onCancel={() => setConfirmDelete(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ── Mobile Card ───────────────────────────────────────────────────────────────
+function CustomerCardMobile({ customer: c, product, onNameClick, onEdit, onDuplicate, onDelete }: {
+  customer: EdiCustomer | IopCustomer;
+  product: ProductType;
+  onNameClick: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const ediC = c as EdiCustomer;
+  const iopC = c as IopCustomer;
+  const balanceValue = product === "edi"
+    ? (ediC.outstanding_balance ? formatCurrency(Number(ediC.outstanding_balance)) : "—")
+    : (iopC.loan_closure != null ? String(iopC.loan_closure) : "—");
+
+  return (
+    <div className="px-4 py-3 border-b border-border/50 active:bg-secondary/30 transition-colors">
+      {/* Name + ID row */}
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <div className="min-w-0">
+          <button
+            onClick={onNameClick}
+            className="font-semibold text-sm text-foreground hover:text-primary transition-colors text-left leading-tight"
+          >
+            {c.customer_name ?? "—"}
+          </button>
+          {c.tamil_name && (
+            <p className="text-xs text-muted-foreground leading-tight mt-0.5">{c.tamil_name}</p>
+          )}
+        </div>
+        <span className="text-[10px] font-medium text-muted-foreground bg-secondary px-2 py-0.5 rounded-full flex-shrink-0">
+          #{c.customer_id}
+        </span>
+      </div>
+
+      {/* Details grid */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-muted-foreground mb-2.5">
+        {c.contact_number && <span>📞 {c.contact_number}</span>}
+        <span>{c.loan_start_date ?? "—"}</span>
+        <span>Loan: {c.loan_amount ? formatCurrency(Number(c.loan_amount)) : "—"}</span>
+        <span>{product === "edi" ? "Bal" : "Closure"}: {balanceValue}</span>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex items-center justify-end gap-1.5">
+        <Button variant="ghost" size="sm" onClick={onDuplicate} className="h-8 px-2.5 text-xs">
+          <Copy className="h-3.5 w-3.5 mr-1" /> Copy
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onEdit} className="h-8 px-2.5 text-xs">
+          <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+        </Button>
+        <Button variant="destructive" size="icon" onClick={onDelete} className="h-8 w-8">
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }

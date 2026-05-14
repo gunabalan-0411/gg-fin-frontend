@@ -9,6 +9,7 @@ import {
   BookText,
   Wallet,
   Landmark,
+  X,
 } from "lucide-react";
 import { cn } from "@/utils";
 
@@ -30,17 +31,31 @@ const nav: NavItem[] = [
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
   return (
-    <aside className="w-60 flex-shrink-0 flex flex-col min-h-screen bg-card border-r border-border">
+    <aside className="w-60 flex-shrink-0 flex flex-col h-full bg-card border-r border-border">
       {/* Logo */}
-      <div className="px-5 py-4 border-b border-border">
-        <img src="/brand/logo-nav.svg" alt="gg fin" className="h-10 w-auto" />
-        <p className="text-xs text-muted-foreground mt-1 pl-0.5">Lending Dashboard</p>
+      <div
+        className="px-5 py-4 border-b border-border flex items-center justify-between"
+        style={{ paddingTop: "max(env(safe-area-inset-top), 16px)" }}
+      >
+        <div>
+          <img src="/brand/logo-nav.svg" alt="gg fin" className="h-10 w-auto" />
+          <p className="text-xs text-muted-foreground mt-1 pl-0.5">Lending Dashboard</p>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex-shrink-0"
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-5">
+      <nav className="flex-1 px-3 py-5 overflow-y-auto">
         {nav.map((item, i) =>
           item === null ? (
             <div key={`sep-${i}`} className="h-px bg-border/50 mx-1 my-2" />
@@ -48,6 +63,7 @@ export default function Sidebar() {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={onClose}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
@@ -64,7 +80,10 @@ export default function Sidebar() {
         )}
       </nav>
 
-      <div className="px-4 py-4 border-t border-border">
+      <div
+        className="px-4 py-4 border-t border-border"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 16px)" }}
+      >
         <p className="text-xs text-muted-foreground text-center">v1.0.0</p>
       </div>
     </aside>

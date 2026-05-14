@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useDashboardSummary, useDailyActivity } from "@/hooks/useDashboard";
 import { formatCurrency } from "@/utils";
 import { TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight } from "lucide-react";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 
 function KPICard({
   title,
@@ -26,15 +27,19 @@ function KPICard({
   const up = pct !== null && Number(pct) >= 0;
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 flex items-start gap-4">
-      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
-        <Icon className={`h-5 w-5 ${iconColor}`} />
+    <div className="rounded-2xl border border-border bg-card p-4 flex items-start gap-3">
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+        <Icon className={`h-4 w-4 ${iconColor}`} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">{title}</p>
-        <p className="mt-1 text-2xl font-bold text-foreground leading-tight">{formatCurrency(value)}</p>
+        <p className="text-[10px] sm:text-xs font-medium text-muted-foreground uppercase tracking-widest leading-tight">
+          {title}
+        </p>
+        <p className="mt-1 text-lg sm:text-2xl font-bold text-foreground leading-tight">
+          {formatCurrency(value)}
+        </p>
         {pct !== null && (
-          <p className={`text-xs mt-1 font-medium ${up ? "text-[#02B15A]" : "text-[#EB001B]"}`}>
+          <p className={`text-[10px] sm:text-xs mt-0.5 font-medium ${up ? "text-[#02B15A]" : "text-[#EB001B]"}`}>
             {up ? "▲" : "▼"} {Math.abs(Number(pct))}% vs prev
           </p>
         )}
@@ -44,7 +49,7 @@ function KPICard({
 }
 
 function SkeletonCard() {
-  return <div className="glass-card animate-pulse h-28" />;
+  return <div className="glass-card animate-pulse h-24 sm:h-28" />;
 }
 
 const CHART_VALUE_FORMATTER = (v: number) => formatCurrency(v);
@@ -53,12 +58,13 @@ export default function DashboardPage() {
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
   const { data: daily, isLoading: dailyLoading } = useDailyActivity(30);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const isMobile = useIsMobile();
 
   if (summaryLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[...Array(4)].map((_, i) => (
             <SkeletonCard key={i} />
           ))}
@@ -109,13 +115,15 @@ export default function DashboardPage() {
     "IOP": d.iop_amount,
   }));
 
+  const chartHeight = isMobile ? "h-44" : "h-56";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header with month navigator */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Financial overview</p>
+          <h1 className="text-lg sm:text-xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Financial overview</p>
         </div>
 
         {months.length > 0 && (
@@ -123,14 +131,15 @@ export default function DashboardPage() {
             <button
               onClick={goToPrev}
               disabled={!canPrev}
-              className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Previous month"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <select
               value={activeMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-sm font-medium text-foreground focus:outline-none px-1 cursor-pointer min-w-[100px] text-center"
+              className="bg-transparent text-sm font-medium text-foreground focus:outline-none px-1 cursor-pointer min-w-[90px] text-center"
             >
               {months.map((m) => (
                 <option key={m} value={m} className="bg-card">
@@ -141,7 +150,8 @@ export default function DashboardPage() {
             <button
               onClick={goToNext}
               disabled={!canNext}
-              className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              aria-label="Next month"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -149,8 +159,8 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* KPI Cards: 2-col on mobile, 4-col on desktop */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KPICard
           title="IOP Profit"
           value={kpiValues.iop_profit}
@@ -185,13 +195,12 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        {/* Monthly Profit Trend */}
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="text-sm font-semibold text-foreground mb-4">Monthly Profit Trend</p>
+      {/* Charts: single col on mobile, 2-col on desktop */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <p className="text-sm font-semibold text-foreground mb-3 sm:mb-4">Monthly Profit Trend</p>
           <AreaChart
-            className="h-56"
+            className={chartHeight}
             data={trends}
             index="month"
             categories={["IOP Profit", "EDI Profit", "Net Profit"]}
@@ -204,11 +213,10 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Monthly Expense Trend — BarChart so tiny values are always visible */}
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="text-sm font-semibold text-foreground mb-4">Monthly Expense Trend</p>
+        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <p className="text-sm font-semibold text-foreground mb-3 sm:mb-4">Monthly Expense Trend</p>
           <BarChart
-            className="h-56"
+            className={chartHeight}
             data={trends}
             index="month"
             categories={["Expense"]}
@@ -220,11 +228,10 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* IOP vs EDI Comparison */}
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="text-sm font-semibold text-foreground mb-4">IOP vs EDI Profit Comparison</p>
+        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <p className="text-sm font-semibold text-foreground mb-3 sm:mb-4">IOP vs EDI Comparison</p>
           <BarChart
-            className="h-56"
+            className={chartHeight}
             data={trends}
             index="month"
             categories={["IOP Profit", "EDI Profit"]}
@@ -236,11 +243,10 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Daily Activity */}
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="text-sm font-semibold text-foreground mb-4">Daily Transaction Activity (30d)</p>
+        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <p className="text-sm font-semibold text-foreground mb-3 sm:mb-4">Daily Activity (30d)</p>
           <BarChart
-            className="h-56"
+            className={chartHeight}
             data={dailyLoading ? [] : dailyData}
             index="date"
             categories={["EDI", "IOP"]}

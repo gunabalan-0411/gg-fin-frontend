@@ -129,3 +129,67 @@ g.recharts-layer.recharts-line:nth-of-type(3) .recharts-line-curve { stroke: #AE
 ::-webkit-scrollbar-thumb {
   @apply bg-border rounded-full;
 }
+
+/* ─── Mobile optimizations ───────────────────────────────────────────────── */
+
+/* Eliminate tap delay on touch devices */
+* {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth momentum scrolling on iOS */
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent font size inflation on orientation change (iOS Safari) */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Prevent inputs from zooming on iOS (must be >= 16px) */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Safe area insets (notch / home indicator) */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 8px); }
+.pl-safe { padding-left: env(safe-area-inset-left, 0px); }
+.pr-safe { padding-right: env(safe-area-inset-right, 0px); }
+
+/* Mobile card touch feedback */
+@media (max-width: 767px) {
+  .mobile-card-press {
+    transition: transform 0.1s ease, background-color 0.1s ease;
+  }
+  .mobile-card-press:active {
+    transform: scale(0.98);
+    @apply bg-secondary/50;
+  }
+}
+
+/* Minimum touch target (44×44px per WCAG) */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hide scrollbar on mobile nav elements */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
