@@ -9,7 +9,7 @@ COPY . .
 RUN npm run build
 
 FROM nginx:alpine
-RUN apk add --no-cache gettext
+RUN apk add --no-cache gettext && echo "bust-v2"
 COPY --from=builder /app/dist /usr/share/nginx/html
 ARG NGINX_CONF_VER=1
 COPY nginx.conf /etc/nginx/conf.d/default.conf.template
