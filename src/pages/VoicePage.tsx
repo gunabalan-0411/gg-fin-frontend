@@ -238,7 +238,7 @@ export default function VoicePage() {
   }, [queue.length]);
 
   useEffect(() => {
-    const handler = () => setShowGoTop(window.scrollY > 250);
+    const handler = () => setShowGoTop(window.scrollY > 80);
     window.addEventListener("scroll", handler, { passive: true });
     return () => window.removeEventListener("scroll", handler);
   }, []);
