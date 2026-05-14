@@ -925,6 +925,25 @@ export default function VoicePage() {
           <Send className="h-4 w-4 mr-2" />
           {submitting ? "Saving…" : `Submit All (${nonZeroCount} with amount)`}
         </Button>
+
+        {/* ── Floating pause / resume FAB ──────────────────────────────────── */}
+        {queue.length > 0 && queueIndex >= 0 && !queueDone && (
+          <button
+            onClick={queuePaused ? resumeQueue : pauseQueue}
+            className={`fixed right-4 bottom-[104px] z-50 flex items-center gap-2 h-12 pl-3.5 pr-4 rounded-full shadow-2xl border-2 transition-all active:scale-95 ${
+              queuePaused
+                ? "bg-background border-amber-500 text-amber-400 shadow-amber-500/25"
+                : queueDisplayMode === "online"
+                ? "bg-background border-blue-500 text-blue-400 shadow-blue-500/25"
+                : "bg-background border-primary text-primary shadow-primary/25"
+            }`}
+          >
+            {queuePaused
+              ? <Play className="h-4 w-4 fill-current" />
+              : <Pause className="h-4 w-4" />}
+            <span className="text-xs font-bold">{queuePaused ? "Resume" : "Pause"}</span>
+          </button>
+        )}
       </div>
     );
   }
@@ -1312,6 +1331,25 @@ export default function VoicePage() {
           </Button>
         </div>
       </div>
+
+      {/* ── Floating pause / resume FAB ────────────────────────────────────── */}
+      {queue.length > 0 && queueIndex >= 0 && !queueDone && (
+        <button
+          onClick={queuePaused ? resumeQueue : pauseQueue}
+          className={`fixed right-6 bottom-6 z-50 flex items-center gap-2 h-12 pl-3.5 pr-4 rounded-full shadow-2xl border-2 transition-all hover:scale-105 active:scale-95 ${
+            queuePaused
+              ? "bg-background border-amber-500 text-amber-400 shadow-amber-500/25"
+              : queueDisplayMode === "online"
+              ? "bg-background border-blue-500 text-blue-400 shadow-blue-500/25"
+              : "bg-background border-primary text-primary shadow-primary/25"
+          }`}
+        >
+          {queuePaused
+            ? <Play className="h-4 w-4 fill-current" />
+            : <Pause className="h-4 w-4" />}
+          <span className="text-sm font-bold">{queuePaused ? "Resume" : "Pause"}</span>
+        </button>
+      )}
     </div>
   );
 }
