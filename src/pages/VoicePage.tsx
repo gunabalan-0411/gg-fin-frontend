@@ -38,6 +38,7 @@ export default function VoicePage() {
   const [recording, setRecording] = useState(false);
   const isMobile = useIsMobile();
   const [upiExpanded, setUpiExpanded] = useState(false);
+  const [showGoTop, setShowGoTop] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [transcription, setTranscription] = useState("");
   const [queue, setQueue] = useState<VoiceEntry[]>([]);
@@ -235,6 +236,12 @@ export default function VoicePage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [queue.length]);
+
+  useEffect(() => {
+    const handler = () => setShowGoTop(window.scrollY > 250);
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
 
   const scrollToRow = (customerId: number) => {
     setTimeout(() => {
@@ -926,6 +933,17 @@ export default function VoicePage() {
           {submitting ? "Saving…" : `Submit All (${nonZeroCount} with amount)`}
         </Button>
 
+        {/* ── Floating go-to-top ───────────────────────────────────────────── */}
+        {showGoTop && (
+          <button
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="fixed left-4 bottom-[104px] z-50 flex h-11 w-11 items-center justify-center rounded-full shadow-xl border border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all active:scale-95"
+            title="Back to top"
+          >
+            <ArrowUpToLine className="h-4 w-4" />
+          </button>
+        )}
+
         {/* ── Floating pause / resume FAB ──────────────────────────────────── */}
         {queue.length > 0 && queueIndex >= 0 && !queueDone && (
           <button
@@ -1331,6 +1349,17 @@ export default function VoicePage() {
           </Button>
         </div>
       </div>
+
+      {/* ── Floating go-to-top ─────────────────────────────────────────────── */}
+      {showGoTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          className="fixed left-6 bottom-6 z-50 flex h-11 w-11 items-center justify-center rounded-full shadow-xl border border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 hover:scale-105 transition-all active:scale-95"
+          title="Back to top"
+        >
+          <ArrowUpToLine className="h-4 w-4" />
+        </button>
+      )}
 
       {/* ── Floating pause / resume FAB ────────────────────────────────────── */}
       {queue.length > 0 && queueIndex >= 0 && !queueDone && (
