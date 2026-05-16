@@ -225,6 +225,16 @@ export const upiApi = {
   fuzzySuggest: (query: string) => api.post<{ data: any[] }>("/upi/fuzzy-suggest", null, { params: { query } }),
 };
 
+// ── OCR ───────────────────────────────────────────────────────────────────
+export const ocrApi = {
+  upload: (form: FormData) =>
+    api.post<{ session_id: string; total_pages: number }>("/ocr/upload", form),
+  extract: (body: { session_id: string; page_index: number }) =>
+    api.post<{ page_image_b64: string; records: any[] }>("/ocr/extract", body),
+  submit: (body: { records: any[] }) =>
+    api.post<{ submitted: number }>("/ocr/submit", body),
+};
+
 // ── Setup (no auth required) ───────────────────────────────────────────────
 export const setupApi = {
   status: () => api.get<{ is_fresh: boolean }>("/setup/status"),

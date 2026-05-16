@@ -12,6 +12,7 @@ import VoicePage from "@/pages/VoicePage";
 import SettingsPage from "@/pages/SettingsPage";
 import NameMapPage from "@/pages/NameMapPage";
 import UpiPage from "@/pages/UpiPage";
+import OcrPage from "@/pages/OcrPage";
 import OAuthCallbackPage from "@/pages/OAuthCallbackPage";
 import { useAuthStore } from "@/hooks/useAuth";
 import { setupApi } from "@/services/api";
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="expenses" element={<ExpensesPage />} />
           <Route path="debts" element={<DebtsPage />} />
           <Route path="voice" element={<VoicePage />} />
+          <Route path="ocr" element={<OcrPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="namemap" element={<NameMapPage />} />
           <Route path="upi" element={<UpiPage />} />
