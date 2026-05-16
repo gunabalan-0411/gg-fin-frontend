@@ -7,10 +7,12 @@ import {
   Send,
   Trash2,
   AlertTriangle,
+  AlertCircle,
   Loader2,
   Image as ImageIcon,
   ClipboardList,
   RefreshCw,
+  RotateCcw,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import { ocrApi } from "@/services/api";
@@ -35,6 +37,29 @@ type Row = {
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function mkUid() {
   return Math.random().toString(36).slice(2, 9);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function httpError(err: any): string {
+  const status: number | undefined = err?.response?.status;
+  const detail: string | undefined = err?.response?.data?.detail;
+  if (err?.code === "ERR_NETWORK" || err?.code === "ECONNABORTED")
+    return "Cannot reach the server. The backend may be restarting — wait 30 seconds and try again.";
+  if (status === 413)
+    return "File too large (server limit: 50 MB). Try compressing the PDF first.";
+  if (status === 400) return detail || "Invalid file. Make sure you selected a PDF.";
+  if (status === 401) return "Session expired — please log in again.";
+  if (status === 503)
+    return detail || "Service unavailable. GEMINI_API_KEY may not be configured in Railway.";
+  if (status === 502 || status === 504)
+    return `Gateway error (${status}). The backend is not responding — it may still be starting up. Try again in 30 seconds.`;
+  if (status === 500) return detail || "Internal server error. Check the backend logs in Railway.";
+  if (detail) return detail;
+  return err?.message || "Something went wrong. Please try again.";
 }
 
 function confidenceDot(score: number) {
@@ -211,45 +236,54 @@ export default function OcrPage() {
   const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [uploading, setUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState<"uploading" | "processing" | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [fileSize, setFileSize] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageImageB64, setPageImageB64] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileTab, setMobileTab] = useState<"image" | "records">("image");
 
-  const hasSession = Boolean(sessionId);
+  const hasSession = Boolean(sessionId) && !uploadStage;
   const unassigned = rows.filter((r) => !r.customer_id).length;
   const assignedCount = rows.filter((r) => r.customer_id).length;
 
   // ── File processing ───────────────────────────────────────────────────────
   const processFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
-      toast.error("Please select a PDF file");
+      setUploadError("Only PDF files are accepted. Please select a .pdf file.");
       return;
     }
-    setUploading(true);
-    const tid = toast.loading("Uploading PDF…");
+    setFileName(file.name);
+    setFileSize(file.size);
+    setUploadError(null);
+    setUploadProgress(0);
+    setUploadStage("uploading");
     try {
       const form = new FormData();
       form.append("file", file);
-      const { data } = await ocrApi.upload(form);
+      const { data } = await ocrApi.upload(form, (pct) => setUploadProgress(pct));
+      setUploadStage("processing");
       setSessionId(data.session_id);
       setTotalPages(data.total_pages);
       setPageIndex(0);
       setPageImageB64(null);
       setRows([]);
-      toast.success(`${data.total_pages} page${data.total_pages !== 1 ? "s" : ""} ready`, {
-        id: tid,
-      });
-    } catch {
-      toast.error("Upload failed", { id: tid });
+      await new Promise((r) => setTimeout(r, 400));
+      toast.success(`${data.total_pages} page${data.total_pages !== 1 ? "s" : ""} ready`);
+    } catch (err) {
+      setUploadError(httpError(err));
     } finally {
-      setUploading(false);
+      setUploadStage(null);
+      setUploadProgress(0);
     }
   }, []);
 
@@ -270,7 +304,7 @@ export default function OcrPage() {
   const handleExtract = async () => {
     if (!sessionId) return;
     setExtracting(true);
-    const tid = toast.loading("Gemini is reading the page…");
+    setExtractError(null);
     try {
       const { data } = await ocrApi.extract({ session_id: sessionId, page_index: pageIndex });
       setPageImageB64(data.page_image_b64);
@@ -282,10 +316,10 @@ export default function OcrPage() {
           payment_mode: ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE",
         }))
       );
-      toast.success(`${data.records.length} records extracted`, { id: tid });
+      toast.success(`${data.records.length} records extracted`);
       if (isMobile) setMobileTab("records");
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || "Extraction failed", { id: tid });
+      setExtractError(httpError(err));
     } finally {
       setExtracting(false);
     }
@@ -298,6 +332,7 @@ export default function OcrPage() {
     setPageIndex(next);
     setPageImageB64(null);
     setRows([]);
+    setExtractError(null);
   };
 
   // ── Row mutations ─────────────────────────────────────────────────────────
@@ -342,38 +377,89 @@ export default function OcrPage() {
     setRows([]);
     setTotalPages(0);
     setPageIndex(0);
+    setUploadError(null);
+    setExtractError(null);
   };
 
   // ── Shared JSX ────────────────────────────────────────────────────────────
-  const uploadZone = (
-    <div
-      className={`w-full max-w-md mx-auto border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${
-        isDragging
-          ? "border-primary bg-primary/10"
-          : "border-border hover:border-primary/50 hover:bg-muted/30"
-      }`}
-      onClick={() => fileInputRef.current?.click()}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setIsDragging(true);
-      }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={onDrop}
-    >
-      {uploading ? (
-        <Loader2 className="h-12 w-12 mx-auto mb-4 text-primary animate-spin" />
-      ) : (
+  const uploadZone = (() => {
+    // Error state
+    if (uploadError) {
+      return (
+        <div className="w-full max-w-md mx-auto rounded-2xl border border-red-500/30 bg-red-500/5 p-8 text-center space-y-3">
+          <AlertCircle className="h-10 w-10 mx-auto text-red-400" />
+          <p className="text-sm font-semibold text-red-400">Upload failed</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">{uploadError}</p>
+          <button
+            onClick={() => { setUploadError(null); fileInputRef.current?.click(); }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Try again
+          </button>
+          <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={onInput} />
+        </div>
+      );
+    }
+
+    // Uploading — progress bar
+    if (uploadStage === "uploading") {
+      const uploaded = Math.round((uploadProgress / 100) * fileSize);
+      return (
+        <div className="w-full max-w-md mx-auto rounded-2xl border border-border bg-card p-8 space-y-4">
+          <div className="flex items-center gap-3">
+            <FileText className="h-8 w-8 text-primary flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{fileName}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatBytes(uploaded)} of {formatBytes(fileSize)}
+              </p>
+            </div>
+            <span className="ml-auto text-sm font-bold text-primary flex-shrink-0">
+              {uploadProgress}%
+            </span>
+          </div>
+          <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-primary h-2 rounded-full transition-all duration-150"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+          <p className="text-xs text-center text-muted-foreground">Uploading to server…</p>
+        </div>
+      );
+    }
+
+    // Processing — server converting pages
+    if (uploadStage === "processing") {
+      return (
+        <div className="w-full max-w-md mx-auto rounded-2xl border border-border bg-card p-10 text-center space-y-3">
+          <Loader2 className="h-10 w-10 mx-auto text-primary animate-spin" />
+          <p className="text-sm font-semibold">Processing pages…</p>
+          <p className="text-xs text-muted-foreground">Converting PDF to images on the server</p>
+        </div>
+      );
+    }
+
+    // Idle — default dropzone
+    return (
+      <div
+        className={`w-full max-w-md mx-auto border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${
+          isDragging
+            ? "border-primary bg-primary/10"
+            : "border-border hover:border-primary/50 hover:bg-muted/30"
+        }`}
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={onDrop}
+      >
         <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-      )}
-      <p className="text-base font-semibold mb-1">
-        {uploading ? "Uploading…" : "Upload handwritten PDF"}
-      </p>
-      {!uploading && (
+        <p className="text-base font-semibold mb-1">Upload handwritten PDF</p>
         <p className="text-sm text-muted-foreground">Drag & drop or click to browse</p>
-      )}
-      <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={onInput} />
-    </div>
-  );
+        <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={onInput} />
+      </div>
+    );
+  })();
 
   const pageControls = hasSession && (
     <div className="flex items-center gap-2 flex-wrap">
@@ -430,6 +516,21 @@ export default function OcrPage() {
         <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground gap-3">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="text-sm">Gemini is reading the page…</p>
+          <p className="text-xs opacity-60">This usually takes 10–20 seconds</p>
+        </div>
+      ) : extractError ? (
+        <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-4 p-6 text-center">
+          <AlertCircle className="h-10 w-10 text-red-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-red-400 mb-2">Extraction failed</p>
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">{extractError}</p>
+          </div>
+          <button
+            onClick={() => { setExtractError(null); handleExtract(); }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Try again
+          </button>
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground gap-3">

@@ -227,8 +227,14 @@ export const upiApi = {
 
 // ── OCR ───────────────────────────────────────────────────────────────────
 export const ocrApi = {
-  upload: (form: FormData) =>
-    api.post<{ session_id: string; total_pages: number }>("/ocr/upload", form),
+  upload: (form: FormData, onProgress?: (pct: number) => void) =>
+    api.post<{ session_id: string; total_pages: number }>("/ocr/upload", form, {
+      onUploadProgress: (event) => {
+        if (onProgress && event.total) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      },
+    }),
   extract: (body: { session_id: string; page_index: number }) =>
     api.post<{ page_image_b64: string; records: any[] }>("/ocr/extract", body),
   submit: (body: { records: any[] }) =>
