@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FileText,
   ChevronLeft,
@@ -57,6 +57,8 @@ function httpError(err: any): string {
     return detail || "Service unavailable. GEMINI_API_KEY may not be configured in Railway.";
   if (status === 502 || status === 504)
     return `Gateway error (${status}). The backend is not responding — it may still be starting up. Try again in 30 seconds.`;
+  if (detail?.includes("RESOURCE_EXHAUSTED") || detail?.includes("Quota exceeded"))
+    return "Gemini API quota exceeded (free tier limit reached). Enable billing on your Google Cloud project at console.cloud.google.com to continue.";
   if (status === 500) return detail || "Internal server error. Check the backend logs in Railway.";
   if (detail) return detail;
   return err?.message || "Something went wrong. Please try again.";
@@ -245,6 +247,7 @@ export default function OcrPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageImageB64, setPageImageB64] = useState<string | null>(null);
+  const [loadingImage, setLoadingImage] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -255,6 +258,19 @@ export default function OcrPage() {
   const hasSession = Boolean(sessionId) && !uploadStage;
   const unassigned = rows.filter((r) => !r.customer_id).length;
   const assignedCount = rows.filter((r) => r.customer_id).length;
+
+  // Auto-load the page image whenever session or page changes
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    setPageImageB64(null);
+    setLoadingImage(true);
+    ocrApi.getPage(sessionId, pageIndex)
+      .then(({ data }) => { if (!cancelled) setPageImageB64(data.page_image_b64); })
+      .catch(() => { /* image load failure is silent; extract will still work */ })
+      .finally(() => { if (!cancelled) setLoadingImage(false); });
+    return () => { cancelled = true; };
+  }, [sessionId, pageIndex]);
 
   // ── File processing ───────────────────────────────────────────────────────
   const processFile = useCallback(async (file: File) => {
@@ -330,7 +346,6 @@ export default function OcrPage() {
     const next = pageIndex + dir;
     if (next < 0 || next >= totalPages) return;
     setPageIndex(next);
-    setPageImageB64(null);
     setRows([]);
     setExtractError(null);
   };
@@ -506,36 +521,21 @@ export default function OcrPage() {
 
   const imageArea = (
     <div className="flex-1 overflow-auto rounded-xl border border-border bg-muted/20 min-h-0">
-      {pageImageB64 ? (
+      {loadingImage ? (
+        <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm">Loading page…</p>
+        </div>
+      ) : pageImageB64 ? (
         <img
           src={`data:image/png;base64,${pageImageB64}`}
           alt={`Page ${pageIndex + 1}`}
           className="w-full object-contain"
         />
-      ) : extracting ? (
-        <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground gap-3">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-sm">Gemini is reading the page…</p>
-          <p className="text-xs opacity-60">This usually takes 10–20 seconds</p>
-        </div>
-      ) : extractError ? (
-        <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-4 p-6 text-center">
-          <AlertCircle className="h-10 w-10 text-red-400 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-red-400 mb-2">Extraction failed</p>
-            <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">{extractError}</p>
-          </div>
-          <button
-            onClick={() => { setExtractError(null); handleExtract(); }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
-          >
-            <RotateCcw className="h-3.5 w-3.5" /> Try again
-          </button>
-        </div>
       ) : (
         <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground gap-3">
           <ImageIcon className="h-10 w-10 opacity-30" />
-          <p className="text-sm">Click "Extract This Page" to process</p>
+          <p className="text-sm">Page will appear here</p>
         </div>
       )}
     </div>
@@ -555,7 +555,7 @@ export default function OcrPage() {
             </p>
           )}
         </div>
-        {rows.length > 0 && (
+        {rows.length > 0 && !extracting && (
           <button
             onClick={handleSubmit}
             disabled={submitting || assignedCount === 0}
@@ -571,12 +571,34 @@ export default function OcrPage() {
         )}
       </div>
 
-      {rows.length === 0 ? (
+      {extracting ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 py-12 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div>
+            <p className="text-sm font-semibold">Gemini is reading the page…</p>
+            <p className="text-xs text-muted-foreground mt-1">Usually takes 10–20 seconds</p>
+          </div>
+        </div>
+      ) : extractError ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 py-8 px-2 text-center">
+          <AlertCircle className="h-8 w-8 text-red-400 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-red-400 mb-1">Extraction failed</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{extractError}</p>
+          </div>
+          <button
+            onClick={() => { setExtractError(null); handleExtract(); }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Try again
+          </button>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3 py-12">
           <ClipboardList className="h-10 w-10 opacity-30" />
           <div className="text-center">
             <p className="text-sm">No records extracted yet</p>
-            <p className="text-xs mt-1 opacity-70">Navigate to a page and click Extract</p>
+            <p className="text-xs mt-1 opacity-70">Click "Extract This Page" to run Gemini</p>
           </div>
         </div>
       ) : (
