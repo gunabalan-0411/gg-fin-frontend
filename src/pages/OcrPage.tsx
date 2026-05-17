@@ -238,6 +238,7 @@ export default function OcrPage() {
   const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
   const [uploadStage, setUploadStage] = useState<"uploading" | "processing" | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -322,7 +323,7 @@ export default function OcrPage() {
     setExtracting(true);
     setExtractError(null);
     try {
-      const { data } = await ocrApi.extract({ session_id: sessionId, page_index: pageIndex });
+      const { data } = await ocrApi.extract({ session_id: sessionId, page_index: pageIndex, model: selectedModel });
       setPageImageB64(data.page_image_b64);
       setRows(
         (data.records as any[]).map((r) => ({
@@ -497,6 +498,18 @@ export default function OcrPage() {
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
+      <select
+        value={selectedModel}
+        onChange={(e) => setSelectedModel(e.target.value)}
+        disabled={extracting}
+        className="text-xs rounded-lg border border-border px-2 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 cursor-pointer"
+      >
+        <option value="gemini-2.5-flash">2.5 Flash ⚡</option>
+        <option value="gemini-2.5-pro">2.5 Pro ★</option>
+        <option value="gemini-3-flash-preview">3 Flash (Preview)</option>
+        <option value="gemini-3-pro-preview">3 Pro (Preview)</option>
+        <option value="gemini-3.1-pro-preview">3.1 Pro (Preview)</option>
+      </select>
       <button
         onClick={handleExtract}
         disabled={extracting}

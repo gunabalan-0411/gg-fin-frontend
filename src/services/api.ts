@@ -237,7 +237,7 @@ export const ocrApi = {
     }),
   getPage: (sessionId: string, pageIndex: number) =>
     api.get<{ page_image_b64: string }>(`/ocr/page/${sessionId}/${pageIndex}`),
-  extract: (body: { session_id: string; page_index: number }) =>
+  extract: (body: { session_id: string; page_index: number; model?: string }) =>
     api.post<{ page_image_b64: string; records: any[] }>("/ocr/extract", body),
   submit: (body: { records: any[] }) =>
     api.post<{ submitted: number }>("/ocr/submit", body),
