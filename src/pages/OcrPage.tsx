@@ -3,6 +3,7 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Scan,
   Send,
   Trash2,
@@ -13,9 +14,10 @@ import {
   ClipboardList,
   RefreshCw,
   RotateCcw,
+  Smartphone,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { ocrApi } from "@/services/api";
+import { ocrApi, upiApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -32,6 +34,18 @@ type Row = {
   confidence_score: number;
   notes: string;
   customer_suggestions: Suggestion[];
+};
+
+type UpiTxn = {
+  id: number;
+  upi_ref_no: string;
+  amount: string;
+  transaction_type: "credit" | "debit";
+  sender_vpa: string | null;
+  sender_name: string | null;
+  notes: string | null;
+  transaction_date: string;
+  mapped_customer_name: string | null;
 };
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -82,6 +96,14 @@ function inputToDdmmyyyy(ymd: string) {
   if (parts.length !== 3) return "";
   const [y, m, d] = parts;
   return `${d}-${m}-${y}`;
+}
+
+// Convert DD-MM-YYYY to YYYY-MM-DD for API queries
+function ddmmToYyyyMmDd(dmy: string): string {
+  const parts = dmy.split("-");
+  if (parts.length !== 3) return "";
+  const [d, m, y] = parts;
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
 // ── CustomerCombobox ──────────────────────────────────────────────────────────
@@ -251,14 +273,36 @@ export default function OcrPage() {
   const [loadingImage, setLoadingImage] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [submitting, setSubmitting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileTab, setMobileTab] = useState<"image" | "records">("image");
+
+  // Per-page row storage: { [pageIndex]: Row[] }
+  const [pageRows, setPageRows] = useState<Record<number, Row[]>>({});
+  const rows = pageRows[pageIndex] ?? [];
+
+  // Per-page UPI transactions: { [pageIndex]: UpiTxn[] }
+  const [pageUpiTxns, setPageUpiTxns] = useState<Record<number, UpiTxn[]>>({});
+  const upiTxns = pageUpiTxns[pageIndex] ?? [];
+  const [loadingUpi, setLoadingUpi] = useState(false);
+  const [upiExpanded, setUpiExpanded] = useState(true);
+
+  const [submitting, setSubmitting] = useState(false);
 
   const hasSession = Boolean(sessionId) && !uploadStage;
   const unassigned = rows.filter((r) => !r.customer_id).length;
   const assignedCount = rows.filter((r) => r.customer_id).length;
+
+  // Helper to update rows for the current page
+  const setRows = useCallback(
+    (updater: Row[] | ((prev: Row[]) => Row[])) => {
+      setPageRows((prev) => ({
+        ...prev,
+        [pageIndex]:
+          typeof updater === "function" ? updater(prev[pageIndex] ?? []) : updater,
+      }));
+    },
+    [pageIndex]
+  );
 
   // Auto-load the page image whenever session or page changes
   useEffect(() => {
@@ -268,7 +312,7 @@ export default function OcrPage() {
     setLoadingImage(true);
     ocrApi.getPage(sessionId, pageIndex)
       .then(({ data }) => { if (!cancelled) setPageImageB64(data.page_image_b64); })
-      .catch(() => { /* image load failure is silent; extract will still work */ })
+      .catch(() => { /* silent */ })
       .finally(() => { if (!cancelled) setLoadingImage(false); });
     return () => { cancelled = true; };
   }, [sessionId, pageIndex]);
@@ -293,7 +337,8 @@ export default function OcrPage() {
       setTotalPages(data.total_pages);
       setPageIndex(0);
       setPageImageB64(null);
-      setRows([]);
+      setPageRows({});
+      setPageUpiTxns({});
       await new Promise((r) => setTimeout(r, 400));
       toast.success(`${data.total_pages} page${data.total_pages !== 1 ? "s" : ""} ready`);
     } catch (err) {
@@ -317,24 +362,60 @@ export default function OcrPage() {
     if (f) processFile(f);
   };
 
+  // ── Fetch UPI transactions for given dates ────────────────────────────────
+  const fetchUpiForDates = useCallback(
+    async (dates: string[], targetPage: number) => {
+      if (!dates.length) return;
+      // Convert DD-MM-YYYY → YYYY-MM-DD and find min/max
+      const isoDatesList = dates
+        .map(ddmmToYyyyMmDd)
+        .filter(Boolean)
+        .sort();
+      if (!isoDatesList.length) return;
+      setLoadingUpi(true);
+      try {
+        const { data } = await upiApi.list({
+          date_from: isoDatesList[0],
+          date_to: isoDatesList[isoDatesList.length - 1],
+          transaction_type: "credit",
+          limit: 200,
+        });
+        const txns: UpiTxn[] = (data.data ?? []);
+        setPageUpiTxns((prev) => ({ ...prev, [targetPage]: txns }));
+      } catch {
+        // Non-critical — don't show error for UPI fetch failure
+      } finally {
+        setLoadingUpi(false);
+      }
+    },
+    []
+  );
+
   // ── Extract ───────────────────────────────────────────────────────────────
   const handleExtract = async () => {
     if (!sessionId) return;
     setExtracting(true);
     setExtractError(null);
     try {
-      const { data } = await ocrApi.extract({ session_id: sessionId, page_index: pageIndex, model: selectedModel });
+      const { data } = await ocrApi.extract({
+        session_id: sessionId,
+        page_index: pageIndex,
+        model: selectedModel,
+      });
       setPageImageB64(data.page_image_b64);
-      setRows(
-        (data.records as any[]).map((r) => ({
-          ...r,
-          uid: mkUid(),
-          product_type: ((r.product_type as string) || "EDI").toUpperCase() as "EDI" | "IOP",
-          payment_mode: ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE",
-        }))
-      );
+      const extracted = (data.records as any[]).map((r) => ({
+        ...r,
+        uid: mkUid(),
+        product_type: ((r.product_type as string) || "EDI").toUpperCase() as "EDI" | "IOP",
+        payment_mode: ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE",
+      }));
+      setRows(extracted);
       toast.success(`${data.records.length} records extracted`);
       if (isMobile) setMobileTab("records");
+
+      // Auto-fetch UPI transactions for extracted dates
+      const uniqueDates = [...new Set(extracted.map((r) => r.collection_date as string))];
+      fetchUpiForDates(uniqueDates, pageIndex);
     } catch (err: any) {
       setExtractError(httpError(err));
     } finally {
@@ -342,12 +423,11 @@ export default function OcrPage() {
     }
   };
 
-  // ── Page navigation ───────────────────────────────────────────────────────
+  // ── Page navigation — rows are retained per page, not cleared ────────────
   const goPage = (dir: -1 | 1) => {
     const next = pageIndex + dir;
     if (next < 0 || next >= totalPages) return;
     setPageIndex(next);
-    setRows([]);
     setExtractError(null);
   };
 
@@ -379,6 +459,7 @@ export default function OcrPage() {
         })),
       });
       toast.success(`${data.submitted} records saved`, { id: tid });
+      // Clear submitted page rows
       setRows([]);
     } catch {
       toast.error("Submit failed", { id: tid });
@@ -390,7 +471,8 @@ export default function OcrPage() {
   const reset = () => {
     setSessionId(null);
     setPageImageB64(null);
-    setRows([]);
+    setPageRows({});
+    setPageUpiTxns({});
     setTotalPages(0);
     setPageIndex(0);
     setUploadError(null);
@@ -399,7 +481,6 @@ export default function OcrPage() {
 
   // ── Shared JSX ────────────────────────────────────────────────────────────
   const uploadZone = (() => {
-    // Error state
     if (uploadError) {
       return (
         <div className="w-full max-w-md mx-auto rounded-2xl border border-red-500/30 bg-red-500/5 p-8 text-center space-y-3">
@@ -417,7 +498,6 @@ export default function OcrPage() {
       );
     }
 
-    // Uploading — progress bar
     if (uploadStage === "uploading") {
       const uploaded = Math.round((uploadProgress / 100) * fileSize);
       return (
@@ -445,7 +525,6 @@ export default function OcrPage() {
       );
     }
 
-    // Processing — server converting pages
     if (uploadStage === "processing") {
       return (
         <div className="w-full max-w-md mx-auto rounded-2xl border border-border bg-card p-10 text-center space-y-3">
@@ -456,7 +535,6 @@ export default function OcrPage() {
       );
     }
 
-    // Idle — default dropzone
     return (
       <div
         className={`w-full max-w-md mx-auto border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${
@@ -502,7 +580,7 @@ export default function OcrPage() {
         value={selectedModel}
         onChange={(e) => setSelectedModel(e.target.value)}
         disabled={extracting}
-        className="text-xs rounded-lg border border-border px-2 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 cursor-pointer"
+        className="text-xs rounded-lg border border-border px-2 py-2 bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 cursor-pointer"
       >
         <option value="gemini-2.5-flash">2.5 Flash ⚡</option>
         <option value="gemini-2.5-pro">2.5 Pro ★</option>
@@ -553,6 +631,69 @@ export default function OcrPage() {
       )}
     </div>
   );
+
+  // ── UPI section ───────────────────────────────────────────────────────────
+  const hasUpiData = upiTxns.length > 0 || loadingUpi;
+  const upiSection = hasUpiData ? (
+    <div className="flex-shrink-0 border-t border-border pt-3 mt-1">
+      <button
+        onClick={() => setUpiExpanded((v) => !v)}
+        className="w-full flex items-center justify-between text-sm font-semibold py-1 hover:text-foreground text-muted-foreground transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <Smartphone className="h-4 w-4 text-emerald-400" />
+          <span className="text-foreground">
+            UPI Transactions
+            {upiTxns.length > 0 && (
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                ({upiTxns.length})
+              </span>
+            )}
+          </span>
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 transition-transform ${upiExpanded ? "rotate-180" : ""}`}
+        />
+      </button>
+      {upiExpanded && (
+        <div className="mt-2">
+          {loadingUpi ? (
+            <div className="flex items-center justify-center py-4 text-muted-foreground gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs">Loading UPI transactions…</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+              {upiTxns.map((txn) => (
+                <div
+                  key={txn.id}
+                  className="rounded-lg border border-border bg-card px-3 py-2 text-xs flex items-center gap-2"
+                >
+                  <span className="text-muted-foreground flex-shrink-0 tabular-nums">
+                    {txn.transaction_date}
+                  </span>
+                  <span className="truncate flex-1 font-medium">
+                    {txn.sender_name || txn.sender_vpa || "Unknown"}
+                  </span>
+                  <span className="font-bold text-emerald-400 flex-shrink-0">
+                    ₹{Number(txn.amount).toLocaleString("en-IN")}
+                  </span>
+                  <span
+                    className={`flex-shrink-0 text-[10px] max-w-[80px] truncate ${
+                      txn.mapped_customer_name ? "text-green-400" : "text-muted-foreground"
+                    }`}
+                    title={txn.mapped_customer_name ?? "Unmapped"}
+                  >
+                    {txn.mapped_customer_name ?? "—"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
 
   const recordsPanel = (
     <div className="flex flex-col h-full min-h-0">
@@ -621,6 +762,8 @@ export default function OcrPage() {
           ))}
         </div>
       )}
+
+      {upiSection}
     </div>
   );
 
