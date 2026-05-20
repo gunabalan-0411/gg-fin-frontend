@@ -331,15 +331,21 @@ export default function OcrPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const { data } = await ocrApi.upload(form, (pct) => setUploadProgress(pct));
-      setUploadStage("processing");
+      const { data } = await ocrApi.upload(form, (pct) => {
+        setUploadProgress(pct);
+        // Switch to "preparing" spinner the moment the file finishes transferring.
+        // The server is still preprocessing page 0 at this point — this gives
+        // accurate visual feedback instead of a frozen progress bar at 100%.
+        if (pct >= 100) setUploadStage("processing");
+      });
+      // Response arrives: page 0 is already preprocessed server-side.
+      // Set session state — the useEffect will call getPage and get a cache hit.
       setSessionId(data.session_id);
       setTotalPages(data.total_pages);
       setPageIndex(0);
       setPageImageB64(null);
       setPageRows({});
       setPageUpiTxns({});
-      await new Promise((r) => setTimeout(r, 400));
       toast.success(`${data.total_pages} page${data.total_pages !== 1 ? "s" : ""} ready`);
     } catch (err) {
       setUploadError(httpError(err));
@@ -529,8 +535,8 @@ export default function OcrPage() {
       return (
         <div className="w-full max-w-md mx-auto rounded-2xl border border-border bg-card p-10 text-center space-y-3">
           <Loader2 className="h-10 w-10 mx-auto text-primary animate-spin" />
-          <p className="text-sm font-semibold">Processing pages…</p>
-          <p className="text-xs text-muted-foreground">Converting PDF to images on the server</p>
+          <p className="text-sm font-semibold">Preparing first page…</p>
+          <p className="text-xs text-muted-foreground">Optimising image for best OCR accuracy</p>
         </div>
       );
     }
