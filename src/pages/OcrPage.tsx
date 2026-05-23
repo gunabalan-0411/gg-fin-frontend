@@ -17,6 +17,7 @@ import {
   Wifi,
   CheckCircle,
   Strikethrough,
+  Plus,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import { ocrApi, upiApi } from "@/services/api";
@@ -114,18 +115,38 @@ function ddmmToYyyyMmDd(dmy: string): string {
 function CustomerCombobox({
   row,
   onChange,
+  fetchSuggestions,
 }: {
   row: Row;
   onChange: (name: string, id: number | null) => void;
+  fetchSuggestions?: (query: string) => Promise<Suggestion[]>;
 }) {
   const [open, setOpen] = useState(false);
+  const [liveSuggestions, setLiveSuggestions] = useState<Suggestion[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleChange = (value: string) => {
+    onChange(value, null);
+    if (!fetchSuggestions) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      if (value.trim().length >= 2) {
+        const results = await fetchSuggestions(value.trim());
+        setLiveSuggestions(results);
+      } else {
+        setLiveSuggestions([]);
+      }
+    }, 200);
+  };
+
+  const suggestions = fetchSuggestions ? liveSuggestions : row.customer_suggestions;
 
   return (
     <div className="relative flex-1 min-w-0">
       <input
         type="text"
         value={row.customer_name}
-        onChange={(e) => onChange(e.target.value, null)}
+        onChange={(e) => handleChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 160)}
         className={`w-full text-sm rounded-lg border px-3 py-1.5 bg-background focus:outline-none focus:ring-2 pr-7 ${
@@ -138,13 +159,14 @@ function CustomerCombobox({
       {!row.customer_id && (
         <AlertTriangle className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-yellow-400 pointer-events-none" />
       )}
-      {open && row.customer_suggestions.length > 0 && (
+      {open && suggestions.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-          {row.customer_suggestions.map((s) => (
+          {suggestions.map((s) => (
             <button
               key={s.id}
               onMouseDown={() => {
                 onChange(s.name, s.id);
+                setLiveSuggestions([]);
                 setOpen(false);
               }}
               className="w-full flex items-center justify-between px-3 py-2 hover:bg-accent text-sm text-left gap-3"
@@ -174,10 +196,12 @@ function RecordCard({
   row,
   onUpdate,
   onDelete,
+  fetchSuggestions,
 }: {
   row: Row;
   onUpdate: (uid: string, patch: Partial<Row>) => void;
   onDelete: (uid: string) => void;
+  fetchSuggestions?: (query: string) => Promise<Suggestion[]>;
 }) {
   return (
     <div
@@ -196,6 +220,7 @@ function RecordCard({
         <CustomerCombobox
           row={row}
           onChange={(name, id) => onUpdate(row.uid, { customer_name: name, customer_id: id })}
+          fetchSuggestions={fetchSuggestions}
         />
         <button
           onClick={() => onDelete(row.uid)}
@@ -479,6 +504,8 @@ export default function OcrPage() {
     }
   };
 
+  const extractedDate = rows[0]?.collection_date ?? null;
+
   const reset = () => {
     setSessionId(null);
     setPageImageB64(null);
@@ -488,6 +515,42 @@ export default function OcrPage() {
     setPageIndex(0);
     setUploadError(null);
     setExtractError(null);
+  };
+
+  // ── Fuzzy customer search for manually added rows ─────────────────────────
+  const fetchCustomerSuggestions = async (query: string): Promise<Suggestion[]> => {
+    try {
+      const { data } = await upiApi.fuzzySuggest(query);
+      return (data.data ?? []).map((item: any) => ({
+        id: item.customer_id ?? item.id,
+        name: item.customer_name ?? item.name ?? "",
+        score: item.score ?? 0.8,
+      }));
+    } catch {
+      return [];
+    }
+  };
+
+  const addManualRow = () => {
+    const today = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const defaultDate = extractedDate ?? `${pad(today.getDate())}-${pad(today.getMonth() + 1)}-${today.getFullYear()}`;
+    setRows((prev) => [
+      ...prev,
+      {
+        uid: mkUid(),
+        collection_date: defaultDate,
+        customer_name: "",
+        customer_id: null,
+        product_type: "EDI",
+        payment_mode: "CASH",
+        amount: 0,
+        confidence_score: 1,
+        notes: "",
+        customer_suggestions: [],
+      },
+    ]);
+    if (isMobile) setMobileTab("records");
   };
 
   // ── Shared JSX ────────────────────────────────────────────────────────────
@@ -644,34 +707,38 @@ export default function OcrPage() {
   );
 
   // ── UPI section ───────────────────────────────────────────────────────────
-  const extractedDate = rows[0]?.collection_date ?? null;
   const hasUpiData = upiTxns.length > 0 || loadingUpi;
   const upiSection = hasUpiData ? (
-    <div className="flex-shrink-0 border-t border-border mt-1">
+    <div className="flex-shrink-0 mt-3">
+      {/* Header bar */}
       <button
         onClick={() => setUpiExpanded((v) => !v)}
-        className="w-full flex items-center justify-between px-0 py-2.5 hover:text-foreground transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Wifi className="h-3.5 w-3.5 text-primary" />
-          <span className="text-sm font-semibold text-foreground">
+          <Wifi className="h-3.5 w-3.5 text-foreground/60" />
+          <span className="text-xs font-semibold text-foreground">
             UPI — {extractedDate ?? "…"}
           </span>
-          <span className="text-xs text-muted-foreground">{upiTxns.length} txns</span>
+          <span className="text-[11px] text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
+            {upiTxns.length} txns
+          </span>
         </div>
         <ChevronDown
-          className={`h-4 w-4 transition-transform ${upiExpanded ? "rotate-180" : ""}`}
+          className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${upiExpanded ? "rotate-180" : ""}`}
         />
       </button>
+
+      {/* Expanded list — each txn is a distinct card */}
       {upiExpanded && (
-        <div className="border-t border-border/50 divide-y divide-border/40 max-h-56 overflow-y-auto">
+        <div className="mt-1.5 space-y-1 max-h-52 overflow-y-auto">
           {loadingUpi ? (
-            <div className="flex items-center justify-center py-4 text-muted-foreground gap-2">
+            <div className="flex items-center justify-center py-5 text-muted-foreground gap-2 bg-primary/5 rounded-xl border border-primary/15">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-xs">Loading UPI transactions…</span>
             </div>
           ) : upiTxns.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-muted-foreground/50">
+            <p className="py-5 text-center text-xs text-muted-foreground/50 bg-primary/5 rounded-xl border border-primary/15">
               No UPI transactions for {extractedDate ?? "this date"}
             </p>
           ) : (
@@ -679,13 +746,22 @@ export default function OcrPage() {
               const isMapped = txn.mapped_customer_id != null;
               const isStruck = struckUpiIds.has(txn.id);
               return (
-                <div key={txn.id} className={`flex items-center gap-3 px-4 py-2.5 ${isStruck ? "opacity-40" : ""}`}>
+                <div
+                  key={txn.id}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-xl border transition-all ${
+                    isStruck
+                      ? "opacity-40 bg-muted/40 border-border/40"
+                      : isMapped
+                      ? "bg-primary/8 border-primary/20"
+                      : "bg-card border-border/60"
+                  }`}
+                >
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${isStruck ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                    <p className={`text-sm font-medium truncate leading-tight ${isStruck ? "line-through text-muted-foreground" : "text-foreground"}`}>
                       {txn.sender_name || txn.sender_vpa || "—"}
                     </p>
                     {isMapped ? (
-                      <p className={`text-xs truncate flex items-center gap-0.5 ${isStruck ? "line-through text-muted-foreground/50" : "text-emerald-400"}`}>
+                      <p className={`text-xs truncate flex items-center gap-0.5 mt-0.5 ${isStruck ? "line-through text-muted-foreground/50" : "text-emerald-700 dark:text-emerald-400"}`}>
                         <CheckCircle className="h-3 w-3 flex-shrink-0" />
                         {txn.mapped_customer_name || `#${txn.mapped_customer_id}`}
                         {txn.mapped_customer_type && (
@@ -695,10 +771,10 @@ export default function OcrPage() {
                         )}
                       </p>
                     ) : (
-                      <p className="text-xs text-muted-foreground/50">Unmapped</p>
+                      <p className="text-xs text-muted-foreground/50 mt-0.5">Unmapped</p>
                     )}
                   </div>
-                  <span className={`text-sm font-bold flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-400"}`}>
+                  <span className={`text-sm font-bold flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>
                     ₹{Number(txn.amount).toLocaleString("en-IN")}
                   </span>
                   <button
@@ -734,20 +810,32 @@ export default function OcrPage() {
             </p>
           )}
         </div>
-        {rows.length > 0 && !extracting && (
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || assignedCount === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 disabled:opacity-60 transition-colors"
-          >
-            {submitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            Submit {assignedCount > 0 ? assignedCount : ""}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {hasSession && (
+            <button
+              onClick={addManualRow}
+              title="Add transaction manually"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add
+            </button>
+          )}
+          {rows.length > 0 && !extracting && (
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || assignedCount === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 disabled:opacity-60 transition-colors"
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Submit {assignedCount > 0 ? assignedCount : ""}
+            </button>
+          )}
+        </div>
       </div>
 
       {extracting ? (
@@ -783,7 +871,13 @@ export default function OcrPage() {
       ) : (
         <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-0.5">
           {rows.map((row) => (
-            <RecordCard key={row.uid} row={row} onUpdate={updateRow} onDelete={deleteRow} />
+            <RecordCard
+              key={row.uid}
+              row={row}
+              onUpdate={updateRow}
+              onDelete={deleteRow}
+              fetchSuggestions={row.customer_suggestions.length === 0 ? fetchCustomerSuggestions : undefined}
+            />
           ))}
         </div>
       )}
