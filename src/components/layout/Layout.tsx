@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import Header from "./Header";
 import MobileNav from "./MobileNav";
 import ErrorBoundary from "./ErrorBoundary";
+import OcrPage from "@/pages/OcrPage";
 import { useIsMobile, useIsTablet } from "@/hooks/useBreakpoint";
 import { cn } from "@/utils";
 
@@ -13,6 +14,7 @@ export default function Layout() {
   const isTablet = useIsTablet();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isCompact = isMobile || isTablet;
+  const isOcr = pathname === "/ocr";
 
   return (
     /* 100dvh accounts for mobile browser chrome (address bar) shrinking the viewport */
@@ -51,16 +53,24 @@ export default function Layout() {
           showMenuButton={isCompact}
           onMenuClick={() => setSidebarOpen((v) => !v)}
         />
-        <main
-          className={cn(
-            "flex-1 overflow-y-auto overscroll-contain",
-            isMobile ? "p-4 pb-[86px]" : isTablet ? "p-5 pb-[86px]" : "p-6"
-          )}
-        >
-          <ErrorBoundary key={pathname}>
-            <Outlet />
-          </ErrorBoundary>
-        </main>
+        {/* OCR: always mounted so PDF session, image, and records survive tab switches */}
+        <div className={cn("flex-1 overflow-hidden min-h-0", !isOcr && "hidden")}>
+          <OcrPage />
+        </div>
+
+        {/* All other routes — only rendered when not on /ocr */}
+        {!isOcr && (
+          <main
+            className={cn(
+              "flex-1 overflow-y-auto overscroll-contain",
+              isMobile ? "p-4 pb-[86px]" : isTablet ? "p-5 pb-[86px]" : "p-6"
+            )}
+          >
+            <ErrorBoundary key={pathname}>
+              <Outlet />
+            </ErrorBoundary>
+          </main>
+        )}
       </div>
 
       {/* Bottom navigation on mobile/tablet */}
