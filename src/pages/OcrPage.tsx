@@ -33,6 +33,7 @@ type Row = {
   customer_id: number | null;
   product_type: "EDI" | "IOP";
   payment_mode: "CASH" | "ONLINE";
+  is_paid: boolean;
   amount: number;
   confidence_score: number;
   notes: string;
@@ -253,19 +254,41 @@ function RecordCard({
           {row.product_type}
         </button>
         <button
-          onClick={() =>
-            onUpdate(row.uid, {
-              payment_mode: row.payment_mode === "CASH" ? "ONLINE" : "CASH",
-            })
-          }
+          onClick={() => {
+            const next = row.payment_mode === "CASH" ? "ONLINE" : "CASH";
+            onUpdate(row.uid, { payment_mode: next, is_paid: next === "CASH" });
+          }}
           className={`text-xs px-2 py-1 rounded-lg font-bold transition-colors ${
             row.payment_mode === "ONLINE"
-              ? "bg-emerald-500/20 text-emerald-400"
+              ? "bg-sky-500/15 text-sky-700 dark:text-sky-400"
               : "bg-muted text-muted-foreground"
           }`}
         >
           {row.payment_mode}
         </button>
+        {row.payment_mode === "ONLINE" && (
+          <button
+            onClick={() => onUpdate(row.uid, { is_paid: !row.is_paid })}
+            className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg font-medium transition-all ${
+              row.is_paid
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25"
+                : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+            }`}
+          >
+            <span className={`h-3.5 w-3.5 rounded-sm border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+              row.is_paid
+                ? "bg-emerald-500 border-emerald-500"
+                : "border-current bg-transparent"
+            }`}>
+              {row.is_paid && (
+                <svg viewBox="0 0 10 8" className="h-2 w-2 fill-white">
+                  <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </span>
+            {row.is_paid ? "Paid" : "Unpaid"}
+          </button>
+        )}
         <div className="flex items-center border border-border rounded-lg px-2 py-1 bg-background ml-auto">
           <span className="text-xs text-muted-foreground mr-1">₹</span>
           <input
@@ -280,6 +303,265 @@ function RecordCard({
       {row.notes && (
         <p className="text-xs text-muted-foreground italic pl-4">{row.notes}</p>
       )}
+    </div>
+  );
+}
+
+// ── AddRowModal ───────────────────────────────────────────────────────────────
+function AddRowModal({
+  open,
+  defaultDate,
+  onClose,
+  onAdd,
+  fetchSuggestions,
+}: {
+  open: boolean;
+  defaultDate: string;
+  onClose: () => void;
+  onAdd: (row: Omit<Row, "uid" | "confidence_score" | "notes" | "customer_suggestions">) => void;
+  fetchSuggestions: (query: string) => Promise<Suggestion[]>;
+}) {
+  const [customerName, setCustomerName] = useState("");
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [date, setDate] = useState(defaultDate);
+  const [productType, setProductType] = useState<"EDI" | "IOP">("EDI");
+  const [paymentMode, setPaymentMode] = useState<"CASH" | "ONLINE">("CASH");
+  const [isPaid, setIsPaid] = useState(true);
+  const [amount, setAmount] = useState("");
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [sugOpen, setSugOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  // Sync date when modal opens
+  useEffect(() => {
+    if (open) {
+      setDate(defaultDate);
+      setCustomerName("");
+      setCustomerId(null);
+      setProductType("EDI");
+      setPaymentMode("CASH");
+      setIsPaid(true);
+      setAmount("");
+      setSuggestions([]);
+    }
+  }, [open, defaultDate]);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    if (open) document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  const handleNameChange = (value: string) => {
+    setCustomerName(value);
+    setCustomerId(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      if (value.trim().length >= 2) {
+        const results = await fetchSuggestions(value.trim());
+        setSuggestions(results);
+      } else {
+        setSuggestions([]);
+      }
+    }, 200);
+  };
+
+  const handleModeToggle = () => {
+    const next = paymentMode === "CASH" ? "ONLINE" : "CASH";
+    setPaymentMode(next);
+    setIsPaid(next === "CASH");
+  };
+
+  const handleAdd = () => {
+    if (!customerId || !amount || Number(amount) <= 0) return;
+    onAdd({
+      collection_date: date,
+      customer_name: customerName,
+      customer_id: customerId,
+      product_type: productType,
+      payment_mode: paymentMode,
+      is_paid: isPaid,
+      amount: Number(amount),
+    });
+    onClose();
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" />
+
+      {/* Dialog */}
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">Add Transaction</h3>
+          <button
+            onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+          >
+            <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M1 1l12 12M13 1L1 13" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Customer search */}
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Customer</label>
+          <div className="relative">
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => handleNameChange(e.target.value)}
+              onFocus={() => setSugOpen(true)}
+              onBlur={() => setTimeout(() => setSugOpen(false), 160)}
+              placeholder="Type to search…"
+              className={`w-full text-sm rounded-lg border px-3 py-2 bg-background focus:outline-none focus:ring-2 ${
+                customerId
+                  ? "border-emerald-500/40 focus:ring-emerald-500/20"
+                  : "border-border focus:ring-foreground/10"
+              }`}
+            />
+            {customerId && (
+              <CheckCircle className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 pointer-events-none" />
+            )}
+            {sugOpen && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.id}
+                    onMouseDown={() => {
+                      setCustomerName(s.name);
+                      setCustomerId(s.id);
+                      setSuggestions([]);
+                      setSugOpen(false);
+                      setTimeout(() => amountRef.current?.focus(), 50);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/60 text-sm text-left gap-3"
+                  >
+                    <span className="font-medium truncate">{s.name}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-semibold ${
+                      s.score >= 0.9 ? "bg-green-500/20 text-green-600 dark:text-green-400"
+                      : s.score >= 0.75 ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
+                      : "bg-red-500/20 text-red-400"
+                    }`}>
+                      {Math.round(s.score * 100)}%
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Date + Product */}
+        <div className="flex gap-2">
+          <div className="flex-1 space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Date</label>
+            <input
+              type="date"
+              value={ddmmyyyyToInput(date)}
+              onChange={(e) => setDate(inputToDdmmyyyy(e.target.value))}
+              className="w-full text-sm rounded-lg border border-border px-2.5 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Product</label>
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {(["EDI", "IOP"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setProductType(p)}
+                  className={`px-3 py-2 text-xs font-bold transition-colors ${
+                    productType === p
+                      ? p === "IOP" ? "bg-accent/60 text-foreground/70" : "bg-primary/25 text-foreground/70"
+                      : "bg-transparent text-muted-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Amount + Mode */}
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Amount</label>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center border border-border rounded-lg px-3 py-2 bg-background focus-within:ring-1 focus-within:ring-foreground/20">
+              <span className="text-sm text-muted-foreground mr-1">₹</span>
+              <input
+                ref={amountRef}
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                placeholder="0"
+                className="flex-1 text-sm font-semibold bg-transparent focus:outline-none"
+              />
+            </div>
+            <button
+              onClick={handleModeToggle}
+              className={`text-xs px-3 py-2 rounded-lg font-bold transition-colors flex-shrink-0 ${
+                paymentMode === "ONLINE"
+                  ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-500/25"
+                  : "bg-muted text-muted-foreground border border-border"
+              }`}
+            >
+              {paymentMode}
+            </button>
+          </div>
+        </div>
+
+        {/* Paid/Unpaid (ONLINE only) */}
+        {paymentMode === "ONLINE" && (
+          <button
+            onClick={() => setIsPaid((v) => !v)}
+            className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-medium transition-all border ${
+              isPaid
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/25"
+                : "bg-amber-500/8 text-amber-600 dark:text-amber-400 border-amber-500/20"
+            }`}
+          >
+            <span className={`h-4 w-4 rounded-sm border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+              isPaid ? "bg-emerald-500 border-emerald-500" : "border-current bg-transparent"
+            }`}>
+              {isPaid && (
+                <svg viewBox="0 0 10 8" className="h-2.5 w-2.5 fill-white">
+                  <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </span>
+            {isPaid ? "Marked as Paid" : "Marked as Unpaid"}
+          </button>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleAdd}
+            disabled={!customerId || !amount || Number(amount) <= 0}
+            className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Add Transaction
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -315,6 +597,7 @@ export default function OcrPage() {
   const [loadingUpi, setLoadingUpi] = useState(false);
   const [upiExpanded, setUpiExpanded] = useState(true);
   const [struckUpiIds, setStruckUpiIds] = useState<Set<number>>(new Set());
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -439,12 +722,16 @@ export default function OcrPage() {
         model: selectedModel,
       });
       setPageImageB64(data.page_image_b64);
-      const extracted = (data.records as any[]).map((r) => ({
+      const extracted = (data.records as any[]).map((r) => {
+        const mode = ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE";
+        return {
         ...r,
         uid: mkUid(),
         product_type: ((r.product_type as string) || "EDI").toUpperCase() as "EDI" | "IOP",
-        payment_mode: ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE",
-      }));
+        payment_mode: mode,
+        is_paid: mode === "CASH",
+        };
+      });
       setRows(extracted);
       toast.success(`${data.records.length} records extracted`);
       if (isMobile) setMobileTab("records");
@@ -491,6 +778,7 @@ export default function OcrPage() {
           customer_id: r.customer_id,
           product_type: r.product_type,
           payment_mode: r.payment_mode,
+          is_paid: r.is_paid,
           amount: r.amount,
         })),
       });
@@ -505,6 +793,7 @@ export default function OcrPage() {
   };
 
   const extractedDate = rows[0]?.collection_date ?? null;
+  const allExtractedDates = [...new Set(rows.map((r) => r.collection_date).filter(Boolean))].sort();
 
   const reset = () => {
     setSessionId(null);
@@ -531,20 +820,12 @@ export default function OcrPage() {
     }
   };
 
-  const addManualRow = () => {
-    const today = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const defaultDate = extractedDate ?? `${pad(today.getDate())}-${pad(today.getMonth() + 1)}-${today.getFullYear()}`;
+  const addManualRow = (rowData: Omit<Row, "uid" | "confidence_score" | "notes" | "customer_suggestions">) => {
     setRows((prev) => [
       ...prev,
       {
+        ...rowData,
         uid: mkUid(),
-        collection_date: defaultDate,
-        customer_name: "",
-        customer_id: null,
-        product_type: "EDI",
-        payment_mode: "CASH",
-        amount: 0,
         confidence_score: 1,
         notes: "",
         customer_suggestions: [],
@@ -718,7 +999,9 @@ export default function OcrPage() {
         <div className="flex items-center gap-2">
           <Wifi className="h-3.5 w-3.5 text-foreground/60" />
           <span className="text-xs font-semibold text-foreground">
-            UPI — {extractedDate ?? "…"}
+            UPI{allExtractedDates.length > 0
+              ? ` — ${allExtractedDates.length === 1 ? allExtractedDates[0] : `${allExtractedDates[0]} · ${allExtractedDates.length} dates`}`
+              : ""}
           </span>
           <span className="text-[11px] text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">
             {upiTxns.length} txns
@@ -739,7 +1022,7 @@ export default function OcrPage() {
             </div>
           ) : upiTxns.length === 0 ? (
             <p className="py-5 text-center text-xs text-muted-foreground/50 bg-primary/5 rounded-xl border border-primary/15">
-              No UPI transactions for {extractedDate ?? "this date"}
+              No UPI transactions for {allExtractedDates.length > 1 ? "these dates" : (extractedDate ?? "this date")}
             </p>
           ) : (
             upiTxns.map((txn) => {
@@ -813,7 +1096,7 @@ export default function OcrPage() {
         <div className="flex items-center gap-2">
           {hasSession && (
             <button
-              onClick={addManualRow}
+              onClick={() => setShowAddModal(true)}
               title="Add transaction manually"
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
             >
@@ -889,6 +1172,7 @@ export default function OcrPage() {
   // ── Mobile layout ─────────────────────────────────────────────────────────
   if (isMobile) {
     return (
+      <>
       <div className="flex flex-col h-full pb-[84px]">
         {!hasSession ? (
           <div className="flex-1 flex items-center justify-center px-4">{uploadZone}</div>
@@ -930,32 +1214,50 @@ export default function OcrPage() {
           </>
         )}
       </div>
+      <AddRowModal
+        open={showAddModal}
+        defaultDate={extractedDate ?? (() => { const t = new Date(); const p = (n: number) => String(n).padStart(2,"0"); return `${p(t.getDate())}-${p(t.getMonth()+1)}-${t.getFullYear()}`; })()}
+        onClose={() => setShowAddModal(false)}
+        onAdd={addManualRow}
+        fetchSuggestions={fetchCustomerSuggestions}
+      />
+      </>
     );
   }
 
   // ── Desktop layout ────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left: Image viewer */}
-      <div className="flex-1 flex flex-col gap-4 p-6 border-r border-border overflow-hidden min-w-0">
-        <div className="flex items-center justify-between flex-shrink-0">
-          <h1 className="text-xl font-bold">OCR Entry</h1>
+    <>
+      <div className="flex h-full overflow-hidden">
+        {/* Left: Image viewer */}
+        <div className="flex-1 flex flex-col gap-4 p-6 border-r border-border overflow-hidden min-w-0">
+          <div className="flex items-center justify-between flex-shrink-0">
+            <h1 className="text-xl font-bold">OCR Entry</h1>
+          </div>
+          {!hasSession ? (
+            <div className="flex-1 flex items-center justify-center">{uploadZone}</div>
+          ) : (
+            <>
+              <div className="flex-shrink-0">{pageControls}</div>
+              {imageArea}
+            </>
+          )}
         </div>
-        {!hasSession ? (
-          <div className="flex-1 flex items-center justify-center">{uploadZone}</div>
-        ) : (
-          <>
-            <div className="flex-shrink-0">{pageControls}</div>
-            {imageArea}
-          </>
-        )}
+
+        {/* Right: Records */}
+        <div className="w-[460px] flex-shrink-0 flex flex-col gap-4 p-6 overflow-hidden">
+          <h1 className="text-xl font-bold flex-shrink-0">Records</h1>
+          <div className="flex-1 min-h-0">{recordsPanel}</div>
+        </div>
       </div>
 
-      {/* Right: Records */}
-      <div className="w-[460px] flex-shrink-0 flex flex-col gap-4 p-6 overflow-hidden">
-        <h1 className="text-xl font-bold flex-shrink-0">Records</h1>
-        <div className="flex-1 min-h-0">{recordsPanel}</div>
-      </div>
-    </div>
+      <AddRowModal
+        open={showAddModal}
+        defaultDate={extractedDate ?? (() => { const t = new Date(); const p = (n: number) => String(n).padStart(2,"0"); return `${p(t.getDate())}-${p(t.getMonth()+1)}-${t.getFullYear()}`; })()}
+        onClose={() => setShowAddModal(false)}
+        onAdd={addManualRow}
+        fetchSuggestions={fetchCustomerSuggestions}
+      />
+    </>
   );
 }
