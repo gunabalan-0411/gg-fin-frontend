@@ -14,7 +14,9 @@ import {
   ClipboardList,
   RefreshCw,
   RotateCcw,
-  Smartphone,
+  Wifi,
+  CheckCircle,
+  Strikethrough,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import { ocrApi, upiApi } from "@/services/api";
@@ -46,6 +48,8 @@ type UpiTxn = {
   notes: string | null;
   transaction_date: string;
   mapped_customer_name: string | null;
+  mapped_customer_id: number | null;
+  mapped_customer_type: string | null;
 };
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -285,6 +289,7 @@ export default function OcrPage() {
   const upiTxns = pageUpiTxns[pageIndex] ?? [];
   const [loadingUpi, setLoadingUpi] = useState(false);
   const [upiExpanded, setUpiExpanded] = useState(true);
+  const [struckUpiIds, setStruckUpiIds] = useState<Set<number>>(new Set());
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -639,62 +644,76 @@ export default function OcrPage() {
   );
 
   // ── UPI section ───────────────────────────────────────────────────────────
+  const extractedDate = rows[0]?.collection_date ?? null;
   const hasUpiData = upiTxns.length > 0 || loadingUpi;
   const upiSection = hasUpiData ? (
-    <div className="flex-shrink-0 border-t border-border pt-3 mt-1">
+    <div className="flex-shrink-0 border-t border-border mt-1">
       <button
         onClick={() => setUpiExpanded((v) => !v)}
-        className="w-full flex items-center justify-between text-sm font-semibold py-1 hover:text-foreground text-muted-foreground transition-colors"
+        className="w-full flex items-center justify-between px-0 py-2.5 hover:text-foreground transition-colors"
       >
-        <span className="flex items-center gap-2">
-          <Smartphone className="h-4 w-4 text-emerald-400" />
-          <span className="text-foreground">
-            UPI Transactions
-            {upiTxns.length > 0 && (
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                ({upiTxns.length})
-              </span>
-            )}
+        <div className="flex items-center gap-2">
+          <Wifi className="h-3.5 w-3.5 text-blue-400" />
+          <span className="text-sm font-semibold text-foreground">
+            UPI — {extractedDate ?? "…"}
           </span>
-        </span>
+          <span className="text-xs text-muted-foreground">{upiTxns.length} txns</span>
+        </div>
         <ChevronDown
           className={`h-4 w-4 transition-transform ${upiExpanded ? "rotate-180" : ""}`}
         />
       </button>
       {upiExpanded && (
-        <div className="mt-2">
+        <div className="border-t border-border/50 divide-y divide-border/40 max-h-56 overflow-y-auto">
           {loadingUpi ? (
             <div className="flex items-center justify-center py-4 text-muted-foreground gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-xs">Loading UPI transactions…</span>
             </div>
+          ) : upiTxns.length === 0 ? (
+            <p className="px-4 py-6 text-center text-xs text-muted-foreground/50">
+              No UPI transactions for {extractedDate ?? "this date"}
+            </p>
           ) : (
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-              {upiTxns.map((txn) => (
-                <div
-                  key={txn.id}
-                  className="rounded-lg border border-border bg-card px-3 py-2 text-xs flex items-center gap-2"
-                >
-                  <span className="text-muted-foreground flex-shrink-0 tabular-nums">
-                    {txn.transaction_date}
-                  </span>
-                  <span className="truncate flex-1 font-medium">
-                    {txn.sender_name || txn.sender_vpa || "Unknown"}
-                  </span>
-                  <span className="font-bold text-emerald-400 flex-shrink-0">
+            upiTxns.map((txn) => {
+              const isMapped = txn.mapped_customer_id != null;
+              const isStruck = struckUpiIds.has(txn.id);
+              return (
+                <div key={txn.id} className={`flex items-center gap-3 px-4 py-2.5 ${isStruck ? "opacity-40" : ""}`}>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${isStruck ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                      {txn.sender_name || txn.sender_vpa || "—"}
+                    </p>
+                    {isMapped ? (
+                      <p className={`text-xs truncate flex items-center gap-0.5 ${isStruck ? "line-through text-muted-foreground/50" : "text-emerald-400"}`}>
+                        <CheckCircle className="h-3 w-3 flex-shrink-0" />
+                        {txn.mapped_customer_name || `#${txn.mapped_customer_id}`}
+                        {txn.mapped_customer_type && (
+                          <span className={`ml-1 text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/15 text-primary" : "bg-blue-500/15 text-blue-400"}`}>
+                            {txn.mapped_customer_type}
+                          </span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/50">Unmapped</p>
+                    )}
+                  </div>
+                  <span className={`text-sm font-bold flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-400"}`}>
                     ₹{Number(txn.amount).toLocaleString("en-IN")}
                   </span>
-                  <span
-                    className={`flex-shrink-0 text-[10px] max-w-[80px] truncate ${
-                      txn.mapped_customer_name ? "text-green-400" : "text-muted-foreground"
-                    }`}
-                    title={txn.mapped_customer_name ?? "Unmapped"}
+                  <button
+                    onClick={() => setStruckUpiIds((prev) => {
+                      const next = new Set(prev);
+                      next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id);
+                      return next;
+                    })}
+                    className={`flex-shrink-0 p-1.5 rounded-lg transition-colors ${isStruck ? "bg-secondary text-muted-foreground" : "text-muted-foreground/40 hover:text-muted-foreground hover:bg-secondary"}`}
                   >
-                    {txn.mapped_customer_name ?? "—"}
-                  </span>
+                    <Strikethrough className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              ))}
-            </div>
+              );
+            })
           )}
         </div>
       )}
