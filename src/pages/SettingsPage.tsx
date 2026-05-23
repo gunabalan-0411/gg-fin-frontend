@@ -61,7 +61,7 @@ function RestoreModal({
         {restore.phase === "restoring" && (
           <>
             <div className="flex items-center gap-3">
-              <RefreshCw className="h-5 w-5 text-primary animate-spin shrink-0" />
+              <RefreshCw className="h-5 w-5 text-muted-foreground animate-spin shrink-0" />
               <h2 className="text-base font-semibold text-foreground">Restoring…</h2>
             </div>
             <p className="text-sm text-muted-foreground">{restore.message}</p>
@@ -70,7 +70,7 @@ function RestoreModal({
                 <span>Progress</span><span>{restore.progress}%</span>
               </div>
               <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
-                <div className="h-full rounded-full bg-primary transition-all duration-500"
+                <div className="h-full rounded-full bg-foreground/60 transition-all duration-500"
                   style={{ width: `${restore.progress}%` }} />
               </div>
             </div>
@@ -86,7 +86,7 @@ function RestoreModal({
             <p className="text-sm text-muted-foreground">{restore.message}</p>
             <div className="flex justify-end">
               <button onClick={onClose}
-                className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                className="px-4 py-2 text-sm rounded-lg bg-foreground text-background hover:bg-foreground/85 transition-colors">
                 Done
               </button>
             </div>
@@ -195,14 +195,14 @@ function LocalBackupSection({ showToast }: { showToast: (m: string, t?: "success
           {/* Export */}
           <div className="rounded-xl border border-border bg-secondary/40 p-5 flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <CloudDownload className="h-5 w-5 text-primary" />
+              <CloudDownload className="h-5 w-5 text-muted-foreground" />
               <span className="font-medium text-foreground text-sm">Export Backup</span>
             </div>
             <p className="text-xs text-muted-foreground flex-1">
               Download a full SQL dump of the database. Save this file somewhere safe.
             </p>
             <button onClick={handleExport} disabled={exporting}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-foreground text-background text-sm font-medium hover:bg-foreground/85 disabled:opacity-50 transition-colors">
               {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
               {exporting ? "Exporting…" : "Download"}
             </button>
@@ -309,7 +309,7 @@ function UpiImportSection({ showToast }: { showToast: (m: string, t?: "success" 
                 <button
                   onClick={handleSync}
                   disabled={syncing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-medium hover:bg-primary/25 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-foreground text-xs font-medium border border-border hover:bg-muted/80 disabled:opacity-50 transition-colors"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
                   {syncing ? "Syncing…" : "Sync Now"}
@@ -373,7 +373,7 @@ function UpiImportSection({ showToast }: { showToast: (m: string, t?: "success" 
                   setTimeout(() => clearInterval(poll), 60000);
                 } catch (e: any) { showToast(e?.response?.data?.detail || "Failed to get auth URL", "error"); }
               }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/15 text-blue-400 text-sm font-medium hover:bg-blue-500/25 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-foreground text-sm font-medium border border-border hover:bg-muted/80 transition-colors"
             >
               <GoogleIcon /> Connect Gmail
             </button>
@@ -542,7 +542,7 @@ function GoogleDriveSection({ showToast }: { showToast: (m: string, t?: "success
                     setTimeout(() => clearInterval(poll), 60000);
                   } catch (e: any) { showToast(e?.response?.data?.detail || "Failed to get auth URL", "error"); }
                 }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/15 text-blue-400 text-sm font-medium hover:bg-blue-500/25 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-foreground text-sm font-medium border border-border hover:bg-muted/80 transition-colors"
               >
                 <GoogleIcon /> Connect Drive
               </button>
@@ -559,7 +559,7 @@ function GoogleDriveSection({ showToast }: { showToast: (m: string, t?: "success
               <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <HardDriveUpload className="h-4 w-4 text-primary" /> Export to Drive
+                    <HardDriveUpload className="h-4 w-4" /> Export to Drive
                   </p>
                   <p className="text-xs text-muted-foreground">Full pg_dump → uploaded to gg_fin/db_bck_up, old backups pruned</p>
                 </div>
@@ -574,7 +574,7 @@ function GoogleDriveSection({ showToast }: { showToast: (m: string, t?: "success
                     finally { setDriveExporting(false); }
                   }}
                   disabled={driveExporting}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex-shrink-0"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-foreground text-background text-sm font-medium hover:bg-foreground/85 disabled:opacity-50 transition-colors flex-shrink-0"
                 >
                   {driveExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <HardDriveUpload className="h-4 w-4" />}
                   {driveExporting ? "Exporting…" : "Export Now"}
@@ -848,8 +848,8 @@ export default function SettingsPage() {
               onClick={() => setActiveSection(id)}
               className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                 activeSection === id
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
               <Icon className="h-4 w-4 mt-0.5 shrink-0" />

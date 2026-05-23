@@ -75,7 +75,7 @@ export default function NameMapPage() {
                 key={p}
                 onClick={() => switchProduct(p)}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  product === p ? "bg-primary text-white" : "bg-card text-muted-foreground hover:text-foreground"
+                  product === p ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {p.toUpperCase()}
@@ -89,7 +89,7 @@ export default function NameMapPage() {
               key={v}
               onClick={() => switchView(v)}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
-                view === v ? "bg-primary/15 text-primary" : "bg-card text-muted-foreground hover:text-foreground"
+                view === v ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
               }`}
             >
               {label}
@@ -400,7 +400,7 @@ function NameEditModal({ initial, onSave, onClose, saving }: {
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Tamil Name {tamilLoading && <span className="text-primary animate-pulse ml-1">transliterating…</span>}
+            Tamil Name {tamilLoading && <span className="text-muted-foreground animate-pulse ml-1">transliterating…</span>}
           </label>
           <Input value={nameTa} onChange={(e) => setNameTa(e.target.value)} placeholder="Auto-filled or type manually" />
         </div>
@@ -441,7 +441,7 @@ function SegmentEditModal({ initial, onSave, onClose, saving }: {
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Tamil Name {tamilLoading && <span className="text-primary animate-pulse ml-1">transliterating…</span>}
+            Tamil Name {tamilLoading && <span className="text-muted-foreground animate-pulse ml-1">transliterating…</span>}
           </label>
           <Input value={nameTa} onChange={(e) => setNameTa(e.target.value)} placeholder="Auto-filled or type manually" />
         </div>
@@ -521,7 +521,7 @@ function UpiMappingsTable({ search }: { search: string }) {
                     <td className="px-4 py-3 font-mono text-xs text-foreground">{row.upi_vpa}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        row.customer_type === "edi" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"
+                        row.customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
                       }`}>
                         {row.customer_type.toUpperCase()}
                       </span>

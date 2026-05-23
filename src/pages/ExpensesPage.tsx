@@ -39,10 +39,10 @@ export default function AccountAdjustmentsPage() {
                 "flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold transition-colors",
                 section === key
                   ? key === "expenses"
-                    ? "bg-primary/15 text-primary"
+                    ? "bg-foreground/10 text-foreground"
                     : key === "unclaimed"
-                    ? "bg-amber-500/15 text-amber-400"
-                    : "bg-red-500/15 text-red-400"
+                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    : "bg-red-500/15 text-red-600 dark:text-red-400"
                   : "text-muted-foreground"
               )}
             >
@@ -91,7 +91,7 @@ function NavItem({ active, onClick, children }: { active: boolean; onClick: () =
       onClick={onClick}
       className={cn(
         "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium w-full text-left transition-all",
-        active ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+        active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
       )}
     >
       {children}
@@ -258,7 +258,7 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
       {isMobile && (
         <button
           onClick={() => { setEditing(null); setShowForm(true); }}
-          className="fixed right-4 bottom-[104px] z-50 h-14 w-14 flex items-center justify-center rounded-full bg-primary text-white shadow-2xl shadow-primary/30 transition-all active:scale-95"
+          className="fixed right-4 bottom-[104px] z-50 h-14 w-14 flex items-center justify-center rounded-full bg-foreground text-background shadow-2xl shadow-foreground/20 transition-all active:scale-95"
         >
           <Plus className="h-6 w-6" />
         </button>
@@ -537,7 +537,7 @@ function ProductBadge({ product }: { product: string }) {
   return (
     <span className={cn(
       "text-xs font-semibold px-2 py-0.5 rounded-full",
-      product === "edi" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"
+      product === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
     )}>
       {product.toUpperCase()}
     </span>
@@ -712,7 +712,7 @@ function UnclaimedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
             {(["edi", "iop"] as const).map((p) => (
               <button key={p} type="button" onClick={() => { setProduct(p); setCustomerName(""); setLookupError(""); }}
                 className={cn("flex-1 py-2 rounded-lg text-sm font-medium border transition-colors",
-                  product === p ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-secondary")}>
+                  product === p ? "border-foreground/20 bg-foreground/10 text-foreground font-semibold" : "border-border text-muted-foreground hover:bg-muted")}>
                 {p.toUpperCase()}
               </button>
             ))}
@@ -784,7 +784,7 @@ function DefaultedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
             {(["edi", "iop"] as const).map((p) => (
               <button key={p} type="button" onClick={() => { setProduct(p); setCustomerName(""); setLookupError(""); }}
                 className={cn("flex-1 py-2 rounded-lg text-sm font-medium border transition-colors",
-                  product === p ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-secondary")}>
+                  product === p ? "border-foreground/20 bg-foreground/10 text-foreground font-semibold" : "border-border text-muted-foreground hover:bg-muted")}>
                 {p.toUpperCase()}
               </button>
             ))}

@@ -11,7 +11,7 @@ export function Badge({ className, variant = "default", ...props }: BadgeProps) 
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
         {
-          "bg-primary/20 text-primary": variant === "default",
+          "bg-primary/25 text-foreground/70": variant === "default",
           "bg-green-500/20 text-green-400": variant === "success",
           "bg-yellow-500/20 text-yellow-400": variant === "warning",
           "bg-red-500/20 text-red-400": variant === "destructive",

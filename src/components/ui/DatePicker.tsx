@@ -62,7 +62,7 @@ export function DatePicker({ value, onChange, className }: DatePickerProps) {
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-border bg-secondary",
-          "text-sm text-left transition-colors hover:border-primary/50 focus:outline-none focus:border-primary",
+          "text-sm text-left transition-colors hover:border-muted-foreground/40 focus:outline-none focus:border-muted-foreground/40",
           !parsed && "text-muted-foreground"
         )}
       >
@@ -129,9 +129,9 @@ export function DatePicker({ value, onChange, className }: DatePickerProps) {
                   className={cn(
                     "aspect-square flex items-center justify-center text-xs rounded-lg transition-colors",
                     isSelected
-                      ? "bg-primary text-white font-semibold"
+                      ? "bg-foreground text-background font-semibold"
                       : isToday
-                        ? "border border-primary text-primary font-medium hover:bg-primary/10"
+                        ? "border border-foreground/30 text-foreground font-medium hover:bg-secondary"
                         : "text-foreground hover:bg-secondary"
                   )}
                 >
@@ -151,7 +151,7 @@ export function DatePicker({ value, onChange, className }: DatePickerProps) {
                 setViewMonth(now.getMonth());
                 selectDay(now.getDate());
               }}
-              className="w-full text-xs text-primary hover:text-primary/80 font-medium py-1 transition-colors"
+              className="w-full text-xs text-foreground hover:text-foreground/70 font-medium py-1 transition-colors"
             >
               Today
             </button>

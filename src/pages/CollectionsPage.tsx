@@ -81,7 +81,7 @@ export default function CollectionsPage() {
               key={p}
               onClick={() => setProduct(p)}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
-                product === p ? "bg-primary text-white" : "bg-card text-muted-foreground hover:text-foreground"
+                product === p ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
               }`}
             >
               {p.toUpperCase()}

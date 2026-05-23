@@ -290,14 +290,14 @@ export default function UpiPage() {
       {/* Summary pills */}
       <div className="flex flex-wrap gap-3">
         {[
-          { label: "Total", value: total, color: "bg-primary/10 text-primary" },
-          { label: "Gmail", value: gmailCount, color: "bg-blue-500/10 text-blue-400" },
-          { label: "XLS", value: csvCount, color: "bg-amber-500/10 text-amber-400" },
-          { label: "Mapped", value: mapped, color: "bg-emerald-500/10 text-emerald-400" },
+          { label: "Total",       value: total,     color: "bg-muted text-foreground border border-border" },
+          { label: "Gmail",       value: gmailCount, color: "bg-primary/20 text-foreground" },
+          { label: "XLS",         value: csvCount,   color: "bg-amber-500/12 text-amber-700 dark:text-amber-400" },
+          { label: "Mapped",      value: mapped,     color: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400" },
           {
             label: "Total Credit",
             value: `₹${totalAmt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-            color: "bg-purple-500/10 text-purple-400",
+            color: "bg-accent/50 text-foreground",
           },
         ].map(({ label, value, color }) => (
           <div key={label} className={`px-4 py-2 rounded-xl text-sm font-semibold ${color}`}>
@@ -394,7 +394,7 @@ export default function UpiPage() {
                             <Eye className="h-3.5 w-3.5" />
                           </button>
                           <button onClick={() => openMapModal(t)}
-                            className="p-1.5 rounded-lg hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                             title="Map to customer">
                             <Link2 className="h-3.5 w-3.5" />
                           </button>
@@ -439,8 +439,8 @@ export default function UpiPage() {
                 onClick={() => setShowUnmappedOnly((v) => !v)}
                 className={`text-xs px-2.5 py-1 rounded-lg border transition-colors flex-shrink-0 ${
                   showUnmappedOnly
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border text-muted-foreground hover:bg-secondary"
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted"
                 }`}
               >
                 Unmapped only
@@ -462,7 +462,7 @@ export default function UpiPage() {
                       key={v.vpa}
                       onClick={() => handleSelectVpa(v)}
                       className={`w-full text-left px-3 py-2.5 border-b border-border/50 transition-colors ${
-                        isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/30"
+                        isSelected ? "bg-primary/20 border-l-2 border-l-foreground/30" : "hover:bg-muted/50"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-1 mb-0.5">
@@ -483,7 +483,7 @@ export default function UpiPage() {
                 <div className="overflow-y-auto p-3 space-y-3" style={{ maxHeight: 380 }}>
                   {/* Selected VPA label */}
                   <div className="flex items-center justify-between gap-1">
-                    <p className="text-xs font-mono text-primary truncate">{selectedVpa.vpa}</p>
+                    <p className="text-xs font-mono text-foreground/70 truncate">{selectedVpa.vpa}</p>
                     <button
                       onClick={() => { setSelectedVpa(null); setFuzzySuggestions([]); setCustomerSearch(""); }}
                       className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground flex-shrink-0"
@@ -501,12 +501,12 @@ export default function UpiPage() {
                           <button
                             key={`${s.type}_${s.customer_id}`}
                             onClick={() => handleMapFromSuggestion(s)}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-colors text-left group"
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border hover:border-border hover:bg-muted/50 transition-colors text-left group"
                           >
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1 mb-1">
                                 <span className={`text-xs px-1 py-0.5 rounded font-medium flex-shrink-0 ${
-                                  s.type === "edi" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"
+                                  s.type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
                                 }`}>{s.type.toUpperCase()}</span>
                                 <span className="text-xs text-foreground truncate">#{s.customer_id}</span>
                               </div>
@@ -519,7 +519,7 @@ export default function UpiPage() {
                               </div>
                               <p className="text-xs text-muted-foreground/60 mt-0.5">{s.score.toFixed(0)}%</p>
                             </div>
-                            <Link2 className="h-3 w-3 text-muted-foreground group-hover:text-primary flex-shrink-0" />
+                            <Link2 className="h-3 w-3 text-muted-foreground group-hover:text-foreground flex-shrink-0" />
                           </button>
                         ))}
                       </div>
@@ -549,7 +549,7 @@ export default function UpiPage() {
                           className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-secondary/60 transition-colors text-left"
                         >
                           <span className={`text-xs px-1 py-0.5 rounded font-medium flex-shrink-0 ${
-                            c.type === "edi" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"
+                            c.type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
                           }`}>{c.type.toUpperCase()}</span>
                           <span className="text-xs text-foreground truncate">#{c.customer_id} {c.customer_name}</span>
                         </button>
@@ -587,7 +587,7 @@ export default function UpiPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className={`text-xs px-1 py-0.5 rounded font-medium flex-shrink-0 ${
-                          m.customer_type === "edi" ? "bg-blue-500/15 text-blue-400" : "bg-purple-500/15 text-purple-400"
+                          m.customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
                         }`}>{m.customer_type.toUpperCase()}</span>
                         <span className="text-xs text-foreground font-medium truncate">
                           #{m.customer_id}{m.customer_name ? ` — ${m.customer_name}` : ""}

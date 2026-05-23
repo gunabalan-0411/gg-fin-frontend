@@ -536,10 +536,10 @@ export default function VoicePage() {
   };
 
   const statChips = [
-    { label: "EDI", value: ediTotal, color: "text-primary", bg: "bg-primary/10 border-primary/25" },
-    { label: "IOP", value: iopTotal, color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/25" },
+    { label: "EDI", value: ediTotal, color: "text-foreground/70", bg: "bg-primary/20 border-primary/30" },
+    { label: "IOP", value: iopTotal, color: "text-foreground/60", bg: "bg-accent/50 border-accent/70" },
     { label: "Total", value: combinedTotal, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/25" },
-    { label: "GPay", value: gpayTotal, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/25" },
+    { label: "GPay", value: gpayTotal, color: "text-sky-700 dark:text-sky-400", bg: "bg-sky-500/10 border-sky-500/25" },
     { label: "Cash", value: cashTotal, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/25" },
   ];
 
@@ -567,7 +567,7 @@ export default function VoicePage() {
           <div className="flex rounded-lg border border-border overflow-hidden flex-shrink-0">
             {(["edi", "iop"] as ProductType[]).map((p) => (
               <button key={p} onClick={() => setProduct(p)}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${product === p ? "bg-primary text-white" : "bg-card text-muted-foreground"}`}>
+                className={`px-4 py-2 text-sm font-medium transition-colors ${product === p ? "bg-foreground text-background" : "bg-card text-muted-foreground"}`}>
                 {p.toUpperCase()}
               </button>
             ))}
@@ -604,7 +604,7 @@ export default function VoicePage() {
                       onKeyDown={(e) => e.key === "Enter" && applySearchAmount(r.customer_id)}
                       className="w-20 h-8 rounded border border-border bg-secondary px-2 text-sm text-right text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
                     <button onClick={() => applySearchAmount(r.customer_id)} disabled={!searchAmounts[r.customer_id]}
-                      className="h-8 w-8 flex items-center justify-center rounded bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 disabled:opacity-30">
+                      className="h-8 w-8 flex items-center justify-center rounded bg-muted text-foreground border border-border hover:bg-muted/80 disabled:opacity-30">
                       <CheckCircle className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -625,7 +625,7 @@ export default function VoicePage() {
               <button key={m} onClick={() => setMicMode(m)} disabled={recording || loading}
                 className={`flex-1 py-2 text-xs font-semibold transition-colors ${
                   micMode === m
-                    ? m === "online" ? "bg-blue-500/20 text-blue-400" : "bg-primary/20 text-primary"
+                    ? m === "online" ? "bg-sky-500/15 text-sky-700 dark:text-sky-400" : "bg-foreground/10 text-foreground"
                     : "text-muted-foreground bg-card"
                 }`}>
                 {m === "transaction" ? "Transaction" : "Online Payers"}
@@ -646,12 +646,12 @@ export default function VoicePage() {
             <button onClick={recording ? stopRecording : startRecording} disabled={loading}
               className={`relative flex h-20 w-20 items-center justify-center rounded-full transition-all shadow-lg ${
                 recording ? "bg-red-500/20 border-2 border-red-500 animate-pulse"
-                : micMode === "online" ? "bg-blue-500/20 border-2 border-blue-500"
-                : "bg-primary/20 border-2 border-primary"
+                : micMode === "online" ? "bg-sky-500/15 border-2 border-sky-500/60"
+                : "bg-primary/15 border-2 border-primary/60"
               }`}>
               {recording ? <MicOff className="h-8 w-8 text-red-400" />
-                : micMode === "online" ? <Wifi className="h-8 w-8 text-blue-400" />
-                : <Mic className="h-8 w-8 text-primary" />}
+                : micMode === "online" ? <Wifi className="h-8 w-8 text-sky-600 dark:text-sky-400" />
+                : <Mic className="h-8 w-8 text-foreground/70" />}
               {recording && (
                 <span className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-card border border-red-500 flex items-center justify-center text-xs font-bold text-red-400">
                   {countdown}
@@ -669,12 +669,12 @@ export default function VoicePage() {
           ) : recording ? (
             <div className="w-full">
               <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
-                <div className={`h-full rounded-full animate-pulse ${micMode === "online" ? "bg-blue-500" : "bg-red-500"}`} style={{ width: "100%" }} />
+                <div className={`h-full rounded-full animate-pulse ${micMode === "online" ? "bg-sky-500" : "bg-red-500"}`} style={{ width: "100%" }} />
               </div>
-              <p className={`text-xs text-center mt-1.5 ${micMode === "online" ? "text-blue-400/70" : "text-muted-foreground"}`}>{countdown}s — tap to stop</p>
+              <p className={`text-xs text-center mt-1.5 ${micMode === "online" ? "text-sky-600/70 dark:text-sky-400/70" : "text-muted-foreground"}`}>{countdown}s — tap to stop</p>
             </div>
           ) : (
-            <p className={`text-xs text-center ${micMode === "online" ? "text-blue-400/60" : "text-muted-foreground/60"}`}>
+            <p className={`text-xs text-center ${micMode === "online" ? "text-sky-600/60 dark:text-sky-400/60" : "text-muted-foreground/60"}`}>
               {micMode === "transaction" ? "Say name + amount → entry" : "Say name + amount → marks online"}
             </p>
           )}
@@ -694,14 +694,14 @@ export default function VoicePage() {
               <div className="flex gap-1">
                 {queue.map((_, i) => (
                   <div key={i} className={`h-1.5 rounded-full transition-all ${
-                    i < queueIndex ? "w-3 bg-emerald-500" : i === queueIndex ? "w-4 bg-primary" : "w-1.5 bg-border"
+                    i < queueIndex ? "w-3 bg-emerald-500" : i === queueIndex ? "w-4 bg-foreground/70" : "w-1.5 bg-border"
                   }`} />
                 ))}
               </div>
             </div>
 
             {queueDone ? (
-              <div className={`flex items-center justify-center gap-2 py-4 ${queueDisplayMode === "online" ? "text-blue-400" : "text-emerald-400"}`}>
+              <div className={`flex items-center justify-center gap-2 py-4 ${queueDisplayMode === "online" ? "text-sky-600 dark:text-sky-400" : "text-emerald-700 dark:text-emerald-400"}`}>
                 <CheckCircle className="h-4 w-4" />
                 <span className="text-sm font-semibold">{queueDisplayMode === "online" ? "Online payers marked" : "All entries processed"}</span>
               </div>
@@ -710,11 +710,11 @@ export default function VoicePage() {
                 {/* Name + amount */}
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0">
-                    <span className="text-[10px] font-bold bg-primary/20 text-primary px-2 py-0.5 rounded-full uppercase tracking-wide">Now</span>
+                    <span className="text-[10px] font-bold bg-foreground/10 text-foreground px-2 py-0.5 rounded-full uppercase tracking-wide">Now</span>
                     <p className="text-base font-bold text-foreground mt-1 truncate">{activeEntry.spoken_name}</p>
                     {activeEntry.customer_name && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        → <span className={queueDisplayMode === "online" ? "text-blue-400" : "text-emerald-400"}>{activeEntry.customer_name}</span>
+                        → <span className={queueDisplayMode === "online" ? "text-sky-600 dark:text-sky-400" : "text-emerald-700 dark:text-emerald-400"}>{activeEntry.customer_name}</span>
                         <span className="text-muted-foreground/60"> #{activeEntry.customer_id}</span>
                       </p>
                     )}
@@ -731,9 +731,9 @@ export default function VoicePage() {
 
                 {/* Matched: progress */}
                 {activeEntry.matched ? (
-                  <div className={`flex items-center gap-2 py-2 px-3 rounded-xl ${queueDisplayMode === "online" ? "bg-blue-500/10 border border-blue-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
+                  <div className={`flex items-center gap-2 py-2 px-3 rounded-xl ${queueDisplayMode === "online" ? "bg-sky-500/10 border border-sky-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}>
                     <CircularProgress value={progressValue} size={20} color={queueDisplayMode === "online" ? "blue" : "emerald"} />
-                    <span className={`text-xs font-medium ${queueDisplayMode === "online" ? "text-blue-400" : "text-emerald-400"}`}>
+                    <span className={`text-xs font-medium ${queueDisplayMode === "online" ? "text-sky-600 dark:text-sky-400" : "text-emerald-700 dark:text-emerald-400"}`}>
                       {queueDisplayMode === "online" ? "Marking ONLINE in 3s…" : "Applying in 2s…"}
                     </span>
                   </div>
@@ -744,9 +744,9 @@ export default function VoicePage() {
                     {activeEntry.alternatives && activeEntry.alternatives.length > 0 ? (
                       activeEntry.alternatives.map((alt) => (
                         <button key={alt.customer_id} onClick={() => pickAltForCurrent(alt)}
-                          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border border-border hover:border-primary/50 hover:bg-primary/5 transition-colors text-left active:scale-[0.98]">
+                          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl border border-border hover:border-border hover:bg-muted/50 transition-colors text-left active:scale-[0.98]">
                           <div className="flex items-center gap-2">
-                            <ChevronRight className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                             <div>
                               <p className="text-sm font-medium text-foreground">{alt.name}</p>
                               <p className="text-[10px] text-muted-foreground">#{alt.customer_id}</p>
@@ -776,13 +776,13 @@ export default function VoicePage() {
           <button onClick={() => setUpiExpanded((v) => !v)}
             className="w-full flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2">
-              <Wifi className="h-3.5 w-3.5 text-blue-400" />
+              <Wifi className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
               <span className="text-sm font-semibold text-foreground">UPI — {date}</span>
               <span className="text-xs text-muted-foreground">{upiTxnsForDate.length} txns</span>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={(e) => { e.stopPropagation(); applyMappedUpiTransactions(); }}
-                className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-colors">
+                className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-muted text-foreground border border-border hover:bg-muted/80 transition-colors">
                 <Zap className="h-3 w-3" /> Apply
               </button>
               <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${upiExpanded ? "rotate-180" : ""}`} />
@@ -803,7 +803,7 @@ export default function VoicePage() {
                       {isMapped ? (
                         <p className={`text-xs truncate flex items-center gap-0.5 ${isStruck ? "line-through text-muted-foreground/50" : "text-emerald-400"}`}>
                           <CheckCircle className="h-3 w-3 flex-shrink-0" />{txn.mapped_customer_name || `#${txn.mapped_customer_id}`}
-                          {txn.mapped_customer_type && <span className={`ml-1 text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/15 text-primary" : "bg-blue-500/15 text-blue-400"}`}>{txn.mapped_customer_type}</span>}
+                          {txn.mapped_customer_type && <span className={`ml-1 text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"}`}>{txn.mapped_customer_type}</span>}
                         </p>
                       ) : (
                         <p className="text-xs text-muted-foreground/50">Unmapped</p>
@@ -851,7 +851,7 @@ export default function VoicePage() {
             <div className="space-y-4">
               {groupedRows.map((group) => (
                 <div key={group.segment_id ?? "unknown"}>
-                  <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5 px-0.5">{group.segment_name}</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 px-0.5">{group.segment_name}</p>
                   <div className="space-y-2">
                     {group.rows.map((r) => {
                       const isHighlighted = r.customer_id === highlightedCustomerId;
@@ -863,15 +863,15 @@ export default function VoicePage() {
                           className={`rounded-xl border p-3 transition-all duration-200 ${
                             isHighlighted
                               ? isOnlineHighlight
-                                ? "border-blue-500/60 bg-blue-500/8 shadow-sm shadow-blue-500/20"
-                                : "border-primary/60 bg-primary/8 shadow-sm shadow-primary/20"
+                                ? "border-sky-500/50 bg-sky-500/8 shadow-sm shadow-sky-500/15"
+                                : "border-foreground/25 bg-foreground/5 shadow-sm shadow-foreground/10"
                               : "border-border bg-card"
                           }`}
                         >
                           {/* Row 1: Name + Amount input */}
                           <div className="flex items-center gap-3 mb-2">
                             <div className="flex-1 min-w-0">
-                              <p className={`text-sm font-semibold truncate ${isHighlighted ? (isOnlineHighlight ? "text-blue-400" : "text-primary") : "text-foreground"}`}>
+                              <p className={`text-sm font-semibold truncate ${isHighlighted ? (isOnlineHighlight ? "text-sky-600 dark:text-sky-400" : "text-foreground") : "text-foreground"}`}>
                                 {r.customer_name}
                               </p>
                               <p className="text-[10px] text-muted-foreground">#{r.customer_id}</p>
@@ -885,8 +885,8 @@ export default function VoicePage() {
                                 className={`w-24 h-10 rounded-lg border text-right px-3 text-base font-bold focus:outline-none focus:ring-2 transition-colors ${
                                   isHighlighted
                                     ? isOnlineHighlight
-                                      ? "border-blue-500/60 bg-blue-500/5 text-blue-400 focus:ring-blue-500/20"
-                                      : "border-primary/60 bg-primary/5 text-primary focus:ring-primary/20"
+                                      ? "border-sky-500/50 bg-sky-500/5 text-sky-700 dark:text-sky-400 focus:ring-sky-500/20"
+                                      : "border-foreground/25 bg-foreground/5 text-foreground focus:ring-foreground/10"
                                     : "border-border bg-secondary text-foreground focus:ring-ring"
                                 }`}
                               />
@@ -902,7 +902,7 @@ export default function VoicePage() {
                               onClick={() => setRows((prev) => { const next = [...prev]; const newMode = next[r.rowIdx].payment_mode === "CASH" ? "ONLINE" : "CASH"; next[r.rowIdx] = { ...next[r.rowIdx], payment_mode: newMode, is_paid: newMode === "CASH" }; return next; })}
                               className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                                 r.payment_mode === "ONLINE"
-                                  ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                                  ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30"
                                   : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                               }`}>
                               {r.payment_mode}
@@ -937,7 +937,7 @@ export default function VoicePage() {
         {showGoTop && (
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="fixed left-4 bottom-[104px] z-50 flex h-11 w-11 items-center justify-center rounded-full shadow-xl border border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all active:scale-95"
+            className="fixed left-4 bottom-[104px] z-50 flex h-11 w-11 items-center justify-center rounded-full shadow-xl border border-border bg-background text-muted-foreground hover:text-foreground hover:border-border transition-all active:scale-95"
             title="Back to top"
           >
             <ArrowUpToLine className="h-4 w-4" />
@@ -952,8 +952,8 @@ export default function VoicePage() {
               queuePaused
                 ? "bg-background border-amber-500 text-amber-400 shadow-amber-500/25"
                 : queueDisplayMode === "online"
-                ? "bg-background border-blue-500 text-blue-400 shadow-blue-500/25"
-                : "bg-background border-primary text-primary shadow-primary/25"
+                ? "bg-background border-sky-500/60 text-sky-700 dark:text-sky-400 shadow-sky-500/15"
+                : "bg-background border-foreground/30 text-foreground shadow-foreground/10"
             }`}
           >
             {queuePaused
@@ -991,7 +991,7 @@ export default function VoicePage() {
         <div className="flex rounded-lg border border-border overflow-hidden">
           {(["edi", "iop"] as ProductType[]).map((p) => (
             <button key={p} onClick={() => setProduct(p)}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${product === p ? "bg-primary text-white" : "bg-card text-muted-foreground hover:text-foreground"}`}>
+              className={`px-4 py-2 text-sm font-medium transition-colors ${product === p ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"}`}>
               {p.toUpperCase()}
             </button>
           ))}
@@ -1026,7 +1026,7 @@ export default function VoicePage() {
                       onKeyDown={(e) => e.key === "Enter" && applySearchAmount(r.customer_id)}
                       className="w-20 h-7 rounded border border-border bg-secondary px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-right" />
                     <button onClick={() => applySearchAmount(r.customer_id)} disabled={!searchAmounts[r.customer_id]}
-                      className="h-7 w-7 flex items-center justify-center rounded bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 disabled:opacity-30 transition-colors">
+                      className="h-7 w-7 flex items-center justify-center rounded bg-muted text-foreground border border-border hover:bg-muted/80 disabled:opacity-30 transition-colors">
                       <CheckCircle className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -1056,7 +1056,7 @@ export default function VoicePage() {
                     <span className="text-xs text-muted-foreground">{queueDone ? "All done" : `${queueIndex + 1} / ${queue.length}`}</span>
                     <div className="flex gap-1">
                       {queue.map((_, i) => (
-                        <div key={i} className={`h-1.5 rounded-full transition-all ${i < queueIndex ? "w-3 bg-emerald-500" : i === queueIndex ? "w-4 bg-primary" : "w-1.5 bg-border"}`} />
+                        <div key={i} className={`h-1.5 rounded-full transition-all ${i < queueIndex ? "w-3 bg-emerald-500" : i === queueIndex ? "w-4 bg-foreground/70" : "w-1.5 bg-border"}`} />
                       ))}
                     </div>
                   </div>
@@ -1077,11 +1077,11 @@ export default function VoicePage() {
                     const score = entry.score ?? (entry.matched ? 95 : 0);
                     const scoreColor = score >= 90 ? "text-emerald-400" : score >= 70 ? "text-amber-400" : "text-red-400";
                     return (
-                      <div key={i} className={`rounded-xl border transition-all duration-200 ${isDone ? "opacity-40 border-border bg-card" : isActive ? "border-primary/60 bg-primary/5 shadow-md shadow-primary/10" : "border-border/40 bg-card/60 opacity-70"}`}>
+                      <div key={i} className={`rounded-xl border transition-all duration-200 ${isDone ? "opacity-40 border-border bg-card" : isActive ? "border-foreground/25 bg-foreground/5 shadow-md shadow-foreground/8" : "border-border/40 bg-card/60 opacity-70"}`}>
                         <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
                           <div className="flex items-center gap-2 min-w-0">
                             {isDone && <div className="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center"><CheckCircle className="h-3 w-3 text-emerald-400" /></div>}
-                            {isActive && <span className="flex-shrink-0 text-[10px] font-bold text-primary bg-primary/20 px-1.5 py-0.5 rounded tracking-wide">NOW</span>}
+                            {isActive && <span className="flex-shrink-0 text-[10px] font-bold text-foreground bg-foreground/10 px-1.5 py-0.5 rounded tracking-wide">NOW</span>}
                             {!isDone && !isActive && <span className="flex-shrink-0 text-[10px] font-medium text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">#{i + 1}</span>}
                             <span className={`text-sm font-semibold truncate ${isDone ? "text-muted-foreground line-through" : "text-foreground"}`}>{entry.spoken_name}</span>
                           </div>
@@ -1098,7 +1098,7 @@ export default function VoicePage() {
                         </div>
                         {entry.customer_name && (
                           <div className="px-3 pb-1.5">
-                            <span className="text-xs text-muted-foreground">→ {entry.customer_name} <span className="text-primary/70">#{entry.customer_id}</span></span>
+                            <span className="text-xs text-muted-foreground">→ {entry.customer_name} <span className="text-muted-foreground/60">#{entry.customer_id}</span></span>
                           </div>
                         )}
                         {isActive && (
@@ -1106,16 +1106,16 @@ export default function VoicePage() {
                             {entry.matched ? (
                               <div className="flex items-center gap-2 py-1">
                                 <CircularProgress value={progressValue} size={18} color={queueDisplayMode === "online" ? "blue" : "emerald"} />
-                                <span className={`text-xs ${queueDisplayMode === "online" ? "text-blue-400" : "text-emerald-400"}`}>{queueDisplayMode === "online" ? "Marking ONLINE in 3s…" : "Applying in 2s…"}</span>
+                                <span className={`text-xs ${queueDisplayMode === "online" ? "text-sky-600 dark:text-sky-400" : "text-emerald-700 dark:text-emerald-400"}`}>{queueDisplayMode === "online" ? "Marking ONLINE in 3s…" : "Applying in 2s…"}</span>
                               </div>
                             ) : (
                               <div className="space-y-1.5">
                                 <p className="text-xs text-muted-foreground font-medium">Pick the correct match:</p>
                                 {entry.alternatives && entry.alternatives.length > 0 ? entry.alternatives.map((alt) => (
                                   <button key={alt.customer_id} onClick={() => pickAltForCurrent(alt)}
-                                    className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-colors text-left">
+                                    className="flex items-center justify-between w-full px-2.5 py-2 rounded-lg border border-border hover:border-border hover:bg-muted/50 transition-colors text-left">
                                     <div className="flex items-center gap-1.5">
-                                      <ChevronRight className="h-3 w-3 text-primary flex-shrink-0" />
+                                      <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                                       <span className="text-xs font-medium text-foreground">{alt.name}</span>
                                       <span className="text-xs text-muted-foreground">#{alt.customer_id}</span>
                                     </div>
@@ -1131,7 +1131,7 @@ export default function VoicePage() {
                     );
                   })}
                   {queueDone && (
-                    <div className={`flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-xl border ${queueDisplayMode === "online" ? "text-blue-400 bg-blue-500/10 border-blue-500/20" : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"}`}>
+                    <div className={`flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-xl border ${queueDisplayMode === "online" ? "text-sky-700 dark:text-sky-400 bg-sky-500/10 border-sky-500/20" : "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20"}`}>
                       <CheckCircle className="h-3.5 w-3.5" />
                       {queueDisplayMode === "online" ? "Online payers marked" : "Queue complete"}
                     </div>
@@ -1147,7 +1147,7 @@ export default function VoicePage() {
                   <p className="text-xs font-semibold text-foreground">UPI — {date}</p>
                   <p className="text-[10px] text-muted-foreground">{upiTxnsForDate.length} txns · mapped first</p>
                 </div>
-                <button onClick={applyMappedUpiTransactions} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-colors">
+                <button onClick={applyMappedUpiTransactions} className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded bg-muted text-foreground border border-border hover:bg-muted/80 transition-colors">
                   <Zap className="h-3 w-3" /> Apply
                 </button>
               </div>
@@ -1174,7 +1174,7 @@ export default function VoicePage() {
                           </td>
                           <td className="px-1.5 py-1.5 w-8 text-center flex-shrink-0">
                             {txn.mapped_customer_type ? (
-                              <span className={`text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/15 text-primary" : "bg-blue-500/15 text-blue-400"}`}>{txn.mapped_customer_type}</span>
+                              <span className={`text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"}`}>{txn.mapped_customer_type}</span>
                             ) : <span className="text-[9px] text-muted-foreground/30">—</span>}
                           </td>
                           <td className="px-1 py-1.5 w-7 text-center flex-shrink-0">
@@ -1198,7 +1198,7 @@ export default function VoicePage() {
               <div className="flex items-center rounded-lg border border-border overflow-hidden">
                 {(["transaction", "online"] as const).map((m) => (
                   <button key={m} onClick={() => setMicMode(m)} disabled={recording || loading}
-                    className={`px-4 py-1.5 text-xs font-semibold transition-colors ${micMode === m ? m === "online" ? "bg-blue-500/20 text-blue-400" : "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+                    className={`px-4 py-1.5 text-xs font-semibold transition-colors ${micMode === m ? m === "online" ? "bg-sky-500/15 text-sky-700 dark:text-sky-400" : "bg-foreground/10 text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
                     {m === "transaction" ? "Transaction" : "Online Payers"}
                   </button>
                 ))}
@@ -1211,8 +1211,8 @@ export default function VoicePage() {
                   </button>
                 )}
                 <button onClick={recording ? stopRecording : startRecording} disabled={loading}
-                  className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-all ${recording ? "bg-red-500/20 border-2 border-red-500 animate-pulse" : micMode === "online" ? "bg-blue-500/20 border-2 border-blue-500 hover:bg-blue-500/30" : "bg-primary/20 border-2 border-primary hover:bg-primary/30"}`}>
-                  {recording ? <MicOff className="h-7 w-7 text-red-400" /> : micMode === "online" ? <Wifi className="h-7 w-7 text-blue-400" /> : <Mic className="h-7 w-7 text-primary" />}
+                  className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-all ${recording ? "bg-red-500/20 border-2 border-red-500 animate-pulse" : micMode === "online" ? "bg-sky-500/15 border-2 border-sky-500/60 hover:bg-sky-500/25" : "bg-primary/15 border-2 border-primary/60 hover:bg-primary/25"}`}>
+                  {recording ? <MicOff className="h-7 w-7 text-red-400" /> : micMode === "online" ? <Wifi className="h-7 w-7 text-sky-600 dark:text-sky-400" /> : <Mic className="h-7 w-7 text-foreground/70" />}
                   {recording && <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-card border border-red-500 flex items-center justify-center text-[10px] font-bold text-red-400">{countdown}</span>}
                 </button>
               </div>
@@ -1224,14 +1224,14 @@ export default function VoicePage() {
               ) : recording ? (
                 <div className="w-full">
                   <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full animate-pulse ${micMode === "online" ? "bg-blue-500" : "bg-red-500"}`} style={{ width: "100%" }} />
+                    <div className={`h-full rounded-full animate-pulse ${micMode === "online" ? "bg-sky-500" : "bg-red-500"}`} style={{ width: "100%" }} />
                   </div>
-                  <p className={`text-xs text-center mt-1 ${micMode === "online" ? "text-blue-400/70" : "text-muted-foreground"}`}>{countdown}s — tap to stop</p>
+                  <p className={`text-xs text-center mt-1 ${micMode === "online" ? "text-sky-600/70 dark:text-sky-400/70" : "text-muted-foreground"}`}>{countdown}s — tap to stop</p>
                 </div>
               ) : micMode === "transaction" ? (
-                <p className="text-[11px] text-muted-foreground text-center">say name + amount <span className="text-primary/70">→ amount entry</span></p>
+                <p className="text-[11px] text-muted-foreground text-center">say name + amount <span className="text-foreground/60">→ amount entry</span></p>
               ) : (
-                <p className="text-[11px] text-blue-400/70 text-center">say name + amount <span className="text-blue-400">→ amount + online check</span></p>
+                <p className="text-[11px] text-sky-600/70 dark:text-sky-400/70 text-center">say name + amount <span className="text-sky-600 dark:text-sky-400">→ amount + online check</span></p>
               )}
             </div>
           </div>
@@ -1281,17 +1281,17 @@ export default function VoicePage() {
                               </td>
                             </tr>
                             <tr key={`pinned-${r.customer_id}`} ref={(el) => { if (el) rowRefs.current.set(r.customer_id, el); else rowRefs.current.delete(r.customer_id); }}
-                              className={`border-b border-amber-500/20 transition-colors ${isHighlighted ? "bg-primary/10 ring-1 ring-inset ring-primary/40" : "bg-amber-500/5 hover:bg-amber-500/10"}`}>
-                              <td className={`px-3 py-2 text-xs font-medium ${isHighlighted ? "text-primary" : "text-muted-foreground"}`}>{r.customer_id}</td>
-                              <td className={`px-3 py-2 font-medium truncate max-w-[120px] ${isHighlighted ? "text-primary" : "text-foreground"}`}>{r.customer_name}</td>
+                              className={`border-b border-amber-500/20 transition-colors ${isHighlighted ? "bg-foreground/8 ring-1 ring-inset ring-foreground/20" : "bg-amber-500/5 hover:bg-amber-500/10"}`}>
+                              <td className={`px-3 py-2 text-xs font-medium ${isHighlighted ? "text-foreground" : "text-muted-foreground"}`}>{r.customer_id}</td>
+                              <td className={`px-3 py-2 font-medium truncate max-w-[120px] ${isHighlighted ? "text-foreground" : "text-foreground"}`}>{r.customer_name}</td>
                               <td className="px-3 py-2">
                                 <input type="text" value={r.amount} onChange={(e) => setRows((prev) => { const next = [...prev]; next[r.rowIdx] = { ...next[r.rowIdx], amount: e.target.value }; return next; })}
-                                  className={`w-20 h-7 rounded border px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring ${isHighlighted ? "border-primary/60 bg-primary/5" : "border-border bg-secondary"}`} />
+                                  className={`w-20 h-7 rounded border px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring ${isHighlighted ? "border-foreground/25 bg-foreground/5" : "border-border bg-secondary"}`} />
                               </td>
                               <td className="px-3 py-2">
                                 <div className="flex flex-col gap-0.5">
                                   <button type="button" onClick={() => setRows((prev) => { const next = [...prev]; const newMode = next[r.rowIdx].payment_mode === "CASH" ? "ONLINE" : "CASH"; next[r.rowIdx] = { ...next[r.rowIdx], payment_mode: newMode, is_paid: newMode === "CASH" }; return next; })}
-                                    className={`text-xs font-semibold px-2 py-0.5 rounded-full transition-colors ${r.payment_mode === "ONLINE" ? "bg-blue-500/20 text-blue-400 border border-blue-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"}`}>{r.payment_mode}</button>
+                                    className={`text-xs font-semibold px-2 py-0.5 rounded-full transition-colors ${r.payment_mode === "ONLINE" ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"}`}>{r.payment_mode}</button>
                                   <button type="button" onClick={() => setRows((prev) => { const next = [...prev]; next[r.rowIdx] = { ...next[r.rowIdx], is_paid: !next[r.rowIdx].is_paid }; return next; })}
                                     className={`text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors ${r.is_paid ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>{r.is_paid ? "Paid" : "Unpaid"}</button>
                                 </div>
@@ -1305,7 +1305,7 @@ export default function VoicePage() {
                         <React.Fragment key={`seg-${group.segment_id}`}>
                           <tr>
                             <td colSpan={4} className="px-3 py-1.5 bg-secondary/60 border-b border-border/50">
-                              <span className="text-xs font-semibold text-primary uppercase tracking-wider">{group.segment_name}</span>
+                              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{group.segment_name}</span>
                             </td>
                           </tr>
                           {group.rows.filter((r) => r.customer_id !== pinnedCustomerId).map((r) => {
@@ -1314,19 +1314,19 @@ export default function VoicePage() {
                               <tr key={r.customer_id} ref={(el) => { if (el) rowRefs.current.set(r.customer_id, el); else rowRefs.current.delete(r.customer_id); }}
                                 className={`border-b border-border/50 transition-colors ${
                                   isHighlighted
-                                    ? activeQueueModeRef.current === "online" ? "bg-blue-500/10 ring-1 ring-inset ring-blue-500/40" : "bg-primary/10 ring-1 ring-inset ring-primary/40"
+                                    ? activeQueueModeRef.current === "online" ? "bg-sky-500/10 ring-1 ring-inset ring-sky-500/30" : "bg-foreground/8 ring-1 ring-inset ring-foreground/20"
                                     : "hover:bg-secondary/20"
                                 }`}>
-                                <td className={`px-3 py-2 text-xs font-medium ${isHighlighted ? (activeQueueModeRef.current === "online" ? "text-blue-400" : "text-primary") : "text-muted-foreground"}`}>{r.customer_id}</td>
-                                <td className={`px-3 py-2 font-medium truncate max-w-[120px] ${isHighlighted ? (activeQueueModeRef.current === "online" ? "text-blue-400" : "text-primary") : "text-foreground"}`}>{r.customer_name}</td>
+                                <td className={`px-3 py-2 text-xs font-medium ${isHighlighted ? (activeQueueModeRef.current === "online" ? "text-sky-600 dark:text-sky-400" : "text-foreground") : "text-muted-foreground"}`}>{r.customer_id}</td>
+                                <td className={`px-3 py-2 font-medium truncate max-w-[120px] ${isHighlighted ? (activeQueueModeRef.current === "online" ? "text-sky-600 dark:text-sky-400" : "text-foreground") : "text-foreground"}`}>{r.customer_name}</td>
                                 <td className="px-3 py-2">
                                   <input type="text" value={r.amount} onChange={(e) => setRows((prev) => { const next = [...prev]; next[r.rowIdx] = { ...next[r.rowIdx], amount: e.target.value }; return next; })}
-                                    className={`w-20 h-7 rounded border px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring ${isHighlighted ? "border-primary/60 bg-primary/5" : "border-border bg-secondary"}`} />
+                                    className={`w-20 h-7 rounded border px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring ${isHighlighted ? "border-foreground/25 bg-foreground/5" : "border-border bg-secondary"}`} />
                                 </td>
                                 <td className="px-3 py-2">
                                   <div className="flex flex-col gap-0.5">
                                     <button type="button" onClick={() => setRows((prev) => { const next = [...prev]; const newMode = next[r.rowIdx].payment_mode === "CASH" ? "ONLINE" : "CASH"; next[r.rowIdx] = { ...next[r.rowIdx], payment_mode: newMode, is_paid: newMode === "CASH" }; return next; })}
-                                      className={`text-xs font-semibold px-2 py-0.5 rounded-full transition-colors ${r.payment_mode === "ONLINE" ? "bg-blue-500/20 text-blue-400 border border-blue-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"}`}>{r.payment_mode}</button>
+                                      className={`text-xs font-semibold px-2 py-0.5 rounded-full transition-colors ${r.payment_mode === "ONLINE" ? "bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"}`}>{r.payment_mode}</button>
                                     <button type="button" onClick={() => setRows((prev) => { const next = [...prev]; next[r.rowIdx] = { ...next[r.rowIdx], is_paid: !next[r.rowIdx].is_paid }; return next; })}
                                       className={`text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors ${r.is_paid ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>{r.is_paid ? "Paid" : "Unpaid"}</button>
                                   </div>
@@ -1354,7 +1354,7 @@ export default function VoicePage() {
       {showGoTop && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="fixed left-6 bottom-6 z-50 flex h-11 w-11 items-center justify-center rounded-full shadow-xl border border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 hover:scale-105 transition-all active:scale-95"
+          className="fixed left-6 bottom-6 z-50 flex h-11 w-11 items-center justify-center rounded-full shadow-xl border border-border bg-background text-muted-foreground hover:text-foreground hover:border-border hover:scale-105 transition-all active:scale-95"
           title="Back to top"
         >
           <ArrowUpToLine className="h-4 w-4" />
@@ -1369,8 +1369,8 @@ export default function VoicePage() {
             queuePaused
               ? "bg-background border-amber-500 text-amber-400 shadow-amber-500/25"
               : queueDisplayMode === "online"
-              ? "bg-background border-blue-500 text-blue-400 shadow-blue-500/25"
-              : "bg-background border-primary text-primary shadow-primary/25"
+              ? "bg-background border-sky-500/60 text-sky-700 dark:text-sky-400 shadow-sky-500/15"
+              : "bg-background border-foreground/30 text-foreground shadow-foreground/10"
           }`}
         >
           {queuePaused
@@ -1385,7 +1385,7 @@ export default function VoicePage() {
 
 // ── Voice-to-text transcription animation ─────────────────────────────────────
 function TranscribingOverlay({ color = "primary" }: { color?: "primary" | "blue" }) {
-  const c = color === "blue" ? "#60a5fa" : "var(--color-primary, #818cf8)";
+  const c = color === "blue" ? "#38bdf8" : "var(--color-primary, #a8d3c2)";
   const barHeights = [0.35, 0.75, 0.55, 1.0, 0.65, 0.85, 0.45, 0.9, 0.6, 0.3];
   return (
     <div className="w-full flex flex-col items-center gap-2.5">
@@ -1467,7 +1467,7 @@ function CircularProgress({
   const circumference = 2 * Math.PI * r;
   const offset = circumference * (1 - value / 100);
   const cx = size / 2;
-  const strokeColor = color === "emerald" ? "#34d399" : color === "blue" ? "#60a5fa" : "var(--color-primary, #6366f1)";
+  const strokeColor = color === "emerald" ? "#34d399" : color === "blue" ? "#38bdf8" : "var(--color-primary, #a8d3c2)";
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
       <circle cx={cx} cy={cx} r={r} fill="none" strokeWidth="2" stroke="currentColor" className="text-border" />

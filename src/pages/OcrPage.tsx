@@ -221,8 +221,8 @@ function RecordCard({
           }
           className={`text-xs px-2 py-1 rounded-lg font-bold transition-colors ${
             row.product_type === "IOP"
-              ? "bg-purple-500/20 text-purple-400"
-              : "bg-blue-500/20 text-blue-400"
+              ? "bg-accent/60 text-foreground/70"
+              : "bg-primary/25 text-foreground/70"
           }`}
         >
           {row.product_type}
@@ -500,7 +500,7 @@ export default function OcrPage() {
           <p className="text-xs text-muted-foreground leading-relaxed">{uploadError}</p>
           <button
             onClick={() => { setUploadError(null); fileInputRef.current?.click(); }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 transition-colors"
           >
             <RotateCcw className="h-3.5 w-3.5" /> Try again
           </button>
@@ -514,20 +514,20 @@ export default function OcrPage() {
       return (
         <div className="w-full max-w-md mx-auto rounded-2xl border border-border bg-card p-8 space-y-4">
           <div className="flex items-center gap-3">
-            <FileText className="h-8 w-8 text-primary flex-shrink-0" />
+            <FileText className="h-8 w-8 text-muted-foreground flex-shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-semibold truncate">{fileName}</p>
               <p className="text-xs text-muted-foreground">
                 {formatBytes(uploaded)} of {formatBytes(fileSize)}
               </p>
             </div>
-            <span className="ml-auto text-sm font-bold text-primary flex-shrink-0">
+            <span className="ml-auto text-sm font-bold text-foreground/70 flex-shrink-0">
               {uploadProgress}%
             </span>
           </div>
           <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
             <div
-              className="bg-primary h-2 rounded-full transition-all duration-150"
+              className="bg-foreground/70 h-2 rounded-full transition-all duration-150"
               style={{ width: `${uploadProgress}%` }}
             />
           </div>
@@ -539,7 +539,7 @@ export default function OcrPage() {
     if (uploadStage === "processing") {
       return (
         <div className="w-full max-w-md mx-auto rounded-2xl border border-border bg-card p-10 text-center space-y-3">
-          <Loader2 className="h-10 w-10 mx-auto text-primary animate-spin" />
+          <Loader2 className="h-10 w-10 mx-auto text-muted-foreground animate-spin" />
           <p className="text-sm font-semibold">Preparing first page…</p>
           <p className="text-xs text-muted-foreground">Optimising image for best OCR accuracy</p>
         </div>
@@ -550,8 +550,8 @@ export default function OcrPage() {
       <div
         className={`w-full max-w-md mx-auto border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${
           isDragging
-            ? "border-primary bg-primary/10"
-            : "border-border hover:border-primary/50 hover:bg-muted/30"
+            ? "border-foreground/30 bg-primary/15"
+            : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
         }`}
         onClick={() => fileInputRef.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
@@ -602,7 +602,7 @@ export default function OcrPage() {
       <button
         onClick={handleExtract}
         disabled={extracting}
-        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors"
+        className="flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 disabled:opacity-60 transition-colors"
       >
         {extracting ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -625,7 +625,7 @@ export default function OcrPage() {
     <div className="flex-1 overflow-auto rounded-xl border border-border bg-muted/20 min-h-0">
       {loadingImage ? (
         <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           <p className="text-sm">Loading page…</p>
         </div>
       ) : pageImageB64 ? (
@@ -653,7 +653,7 @@ export default function OcrPage() {
         className="w-full flex items-center justify-between px-0 py-2.5 hover:text-foreground transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Wifi className="h-3.5 w-3.5 text-blue-400" />
+          <Wifi className="h-3.5 w-3.5 text-primary" />
           <span className="text-sm font-semibold text-foreground">
             UPI — {extractedDate ?? "…"}
           </span>
@@ -689,7 +689,7 @@ export default function OcrPage() {
                         <CheckCircle className="h-3 w-3 flex-shrink-0" />
                         {txn.mapped_customer_name || `#${txn.mapped_customer_id}`}
                         {txn.mapped_customer_type && (
-                          <span className={`ml-1 text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/15 text-primary" : "bg-blue-500/15 text-blue-400"}`}>
+                          <span className={`ml-1 text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"}`}>
                             {txn.mapped_customer_type}
                           </span>
                         )}
@@ -738,7 +738,7 @@ export default function OcrPage() {
           <button
             onClick={handleSubmit}
             disabled={submitting || assignedCount === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 disabled:opacity-60 transition-colors"
           >
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -752,7 +752,7 @@ export default function OcrPage() {
 
       {extracting ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 py-12 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           <div>
             <p className="text-sm font-semibold">Gemini is reading the page…</p>
             <p className="text-xs text-muted-foreground mt-1">Usually takes 10–20 seconds</p>
@@ -767,7 +767,7 @@ export default function OcrPage() {
           </div>
           <button
             onClick={() => { setExtractError(null); handleExtract(); }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 transition-colors"
           >
             <RotateCcw className="h-3.5 w-3.5" /> Try again
           </button>

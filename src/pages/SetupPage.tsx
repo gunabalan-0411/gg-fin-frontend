@@ -122,9 +122,9 @@ export default function SetupPage({ onComplete }: Props) {
           <div className="space-y-3">
             <button
               onClick={connectDrive}
-              className="w-full flex items-center gap-4 rounded-2xl border border-primary/30 bg-primary/10 px-5 py-4 text-left hover:bg-primary/20 transition-colors group"
+              className="w-full flex items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 text-left hover:bg-muted/50 transition-colors group"
             >
-              <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+              <div className="shrink-0 w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
                 <GoogleIcon />
               </div>
               <div className="flex-1 min-w-0">
@@ -133,7 +133,7 @@ export default function SetupPage({ onComplete }: Props) {
                   Connect your Google account to load your existing data
                 </p>
               </div>
-              <ArrowRight className="h-4 w-4 text-primary opacity-60 group-hover:opacity-100 shrink-0" />
+              <ArrowRight className="h-4 w-4 text-muted-foreground opacity-60 group-hover:opacity-100 shrink-0" />
             </button>
 
             <button

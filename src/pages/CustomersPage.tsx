@@ -168,7 +168,7 @@ export default function CustomersPage() {
           >
             <Undo2 className="h-4 w-4" />
             {undoStack.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary text-[9px] text-white flex items-center justify-center font-bold">
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-foreground text-[9px] text-background flex items-center justify-center font-bold">
                 {undoStack.length}
               </span>
             )}
@@ -181,7 +181,7 @@ export default function CustomersPage() {
           >
             <Redo2 className="h-4 w-4" />
             {redoStack.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary text-[9px] text-white flex items-center justify-center font-bold">
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-foreground text-[9px] text-background flex items-center justify-center font-bold">
                 {redoStack.length}
               </span>
             )}
@@ -202,7 +202,7 @@ export default function CustomersPage() {
                 key={p}
                 onClick={() => { setProduct(p); setPage(0); setBalanceFilter(false); }}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  product === p ? "bg-primary text-white" : "bg-card text-muted-foreground hover:text-foreground"
+                  product === p ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {p.toUpperCase()}
@@ -213,7 +213,7 @@ export default function CustomersPage() {
             onClick={() => { setBalanceFilter((f) => !f); setPage(0); }}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
               balanceFilter
-                ? "bg-primary text-white border-primary"
+                ? "bg-foreground text-background border-foreground"
                 : "bg-card text-muted-foreground border-border hover:text-foreground"
             }`}
           >
@@ -384,7 +384,7 @@ function CustomerCardMobile({ customer: c, product, onNameClick, onEdit, onDupli
         <div className="min-w-0">
           <button
             onClick={onNameClick}
-            className="font-semibold text-sm text-foreground hover:text-primary transition-colors text-left leading-tight"
+            className="font-semibold text-sm text-foreground hover:text-muted-foreground transition-colors text-left leading-tight"
           >
             {c.customer_name ?? "—"}
           </button>
@@ -448,7 +448,7 @@ function CustomerRow({ customer: c, product, onNameClick, onEdit, onDuplicate, o
     <tr className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
       <td className="px-4 py-3 text-muted-foreground">{c.customer_id}</td>
       <td className="px-4 py-3">
-        <button onClick={onNameClick} className="font-medium text-foreground hover:text-primary transition-colors text-left">
+        <button onClick={onNameClick} className="font-medium text-foreground hover:text-muted-foreground transition-colors text-left">
           {c.customer_name ?? "—"}
         </button>
       </td>
@@ -651,7 +651,7 @@ function CustomerDetailModal({ customer, product, onClose }: {
                 key={f}
                 onClick={() => setTxnFilter(f)}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  txnFilter === f ? "bg-primary text-white" : "bg-card text-muted-foreground hover:text-foreground"
+                  txnFilter === f ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {f === "all" ? "All" : "Paid Only"}
@@ -738,7 +738,7 @@ function DeleteConfirmModal({ name, onSimpleDelete, onResequenceDelete, onCancel
         <div className="space-y-2 mb-4">
           <button
             onClick={onResequenceDelete}
-            className="w-full text-left px-4 py-3 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-colors"
+            className="w-full text-left px-4 py-3 rounded-lg border border-border hover:border-border hover:bg-muted/50 transition-colors"
           >
             <p className="text-sm font-medium text-foreground">Delete &amp; Re-sequence IDs</p>
             <p className="text-xs text-muted-foreground mt-0.5">Renumbers all subsequent IDs in customers, transactions &amp; name map</p>
@@ -883,7 +883,7 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
           {field("customer_name", "Name (English)")}
           <div className="col-span-2">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Name (Tamil) {tamilLoading && <span className="text-primary animate-pulse">transliterating…</span>}
+              Name (Tamil) {tamilLoading && <span className="text-muted-foreground animate-pulse">transliterating…</span>}
             </label>
             <Input
               key={`customer_name_ta-${initial?.customer_id ?? "new"}-${(duplicateFrom as EdiCustomer | null)?.customer_id ?? ""}`}
