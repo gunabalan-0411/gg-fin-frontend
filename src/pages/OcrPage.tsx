@@ -135,7 +135,7 @@ function CustomerCombobox({
         <AlertTriangle className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-yellow-400 pointer-events-none" />
       )}
       {open && row.customer_suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-popover border border-border rounded-xl shadow-xl overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
           {row.customer_suggestions.map((s) => (
             <button
               key={s.id}
