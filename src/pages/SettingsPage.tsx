@@ -231,13 +231,57 @@ function LocalBackupSection({ showToast }: { showToast: (m: string, t?: "success
 }
 
 // ── Section: UPI Import ───────────────────────────────────────────────────────
+type SyncProgress = { stage: string; total: number; processed: number; imported: number; skipped: number };
+
 function UpiImportSection({ showToast }: { showToast: (m: string, t?: "success" | "error") => void }) {
   const xlsRef = useRef<HTMLInputElement>(null);
   const [gmailStatus, setGmailStatus] = useState<{ connected: boolean; email: string | null }>({ connected: false, email: null });
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [importing, setImporting] = useState(false);
 
   useEffect(() => { upiApi.gmailStatus().then(({ data }) => setGmailStatus(data)).catch(() => {}); }, []);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncProgress({ stage: "listing", total: 0, processed: 0, imported: 0, skipped: 0 });
+    try {
+      const token = localStorage.getItem("gg_fin_token");
+      const resp = await fetch("/api/upi/gmail/sync-stream", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `Server error ${resp.status}`);
+      }
+      const reader = resp.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const ev: SyncProgress & { error?: string } = JSON.parse(line.slice(6));
+            if (ev.error) { showToast(ev.error, "error"); return; }
+            setSyncProgress(ev);
+            if (ev.stage === "done") {
+              showToast(`Synced: ${ev.imported} imported, ${ev.skipped} skipped`);
+            }
+          } catch { /* partial chunk */ }
+        }
+      }
+    } catch (e: any) {
+      showToast(e?.message || "Sync failed", "error");
+    } finally {
+      setSyncing(false);
+      setSyncProgress(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -252,41 +296,64 @@ function UpiImportSection({ showToast }: { showToast: (m: string, t?: "success" 
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gmail Sync</p>
         {gmailStatus.connected ? (
-          <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="h-4 w-4 text-emerald-400" />
-              <div>
-                <p className="text-sm font-medium text-foreground">Connected — {gmailStatus.email}</p>
-                <p className="text-xs text-muted-foreground">Syncs HDFC credit emails from the last 1 year</p>
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Connected — {gmailStatus.email}</p>
+                  <p className="text-xs text-muted-foreground">Syncs HDFC credit emails from the last 1 year</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-medium hover:bg-primary/25 disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "Syncing…" : "Sync Now"}
+                </button>
+                <button
+                  onClick={async () => {
+                    await upiApi.gmailDisconnect();
+                    setGmailStatus({ connected: false, email: null });
+                    showToast("Gmail disconnected");
+                  }}
+                  disabled={syncing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-medium hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+                >
+                  <Unlink className="h-3.5 w-3.5" /> Disconnect
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={async () => {
-                  setSyncing(true);
-                  try {
-                    const { data } = await upiApi.gmailSync();
-                    showToast(`Synced: ${data.imported} imported, ${data.skipped} skipped`);
-                  } catch (e: any) { showToast(e?.response?.data?.detail || "Sync failed", "error"); }
-                  finally { setSyncing(false); }
-                }}
-                disabled={syncing}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-medium hover:bg-primary/25 disabled:opacity-50 transition-colors"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
-                {syncing ? "Syncing…" : "Sync Now"}
-              </button>
-              <button
-                onClick={async () => {
-                  await upiApi.gmailDisconnect();
-                  setGmailStatus({ connected: false, email: null });
-                  showToast("Gmail disconnected");
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-medium hover:bg-red-500/25 transition-colors"
-              >
-                <Unlink className="h-3.5 w-3.5" /> Disconnect
-              </button>
-            </div>
+            {syncProgress && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>
+                    {syncProgress.stage === "listing"
+                      ? "Fetching email list…"
+                      : `${syncProgress.processed} / ${syncProgress.total} emails`}
+                  </span>
+                  <span className="tabular-nums">
+                    {syncProgress.imported > 0 && (
+                      <span className="text-emerald-400 mr-2">{syncProgress.imported} imported</span>
+                    )}
+                    {syncProgress.skipped > 0 && `${syncProgress.skipped} skipped`}
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-black/20 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-200"
+                    style={{
+                      width: syncProgress.total > 0
+                        ? `${Math.round((syncProgress.processed / syncProgress.total) * 100)}%`
+                        : "0%",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-between rounded-xl border border-border bg-secondary/40 px-4 py-3">
