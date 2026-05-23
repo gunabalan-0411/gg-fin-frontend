@@ -165,32 +165,32 @@ export default function DashboardPage() {
           title="IOP Profit"
           value={kpiValues.iop_profit}
           icon={TrendingUp}
-          iconBg="bg-[#6359E9]/20"
-          iconColor="text-[#6359E9]"
+          iconBg="bg-primary/20"
+          iconColor="text-foreground/70"
           trend={prevTrend ? { prev: prevTrend.iop_profit } : undefined}
         />
         <KPICard
           title="EDI Profit"
           value={kpiValues.edi_profit}
           icon={TrendingUp}
-          iconBg="bg-[#64CFF6]/20"
-          iconColor="text-[#64CFF6]"
+          iconBg="bg-accent/60"
+          iconColor="text-foreground/70"
           trend={prevTrend ? { prev: prevTrend.edi_profit } : undefined}
         />
         <KPICard
           title="Expenses"
           value={kpiValues.expense}
           icon={TrendingDown}
-          iconBg="bg-[#EB001B]/15"
-          iconColor="text-[#EB001B]"
+          iconBg="bg-destructive/15"
+          iconColor="text-destructive"
           trend={prevTrend ? { prev: prevTrend.expense } : undefined}
         />
         <KPICard
           title="Net Profit"
           value={kpiValues.net_profit}
           icon={DollarSign}
-          iconBg="bg-[#02B15A]/15"
-          iconColor="text-[#02B15A]"
+          iconBg="bg-emerald-500/15"
+          iconColor="text-emerald-600 dark:text-emerald-400"
           trend={prevTrend ? { prev: prevTrend.net_profit } : undefined}
         />
       </div>

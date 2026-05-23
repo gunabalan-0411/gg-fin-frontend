@@ -9,11 +9,11 @@ import {
 import { cn } from "@/utils";
 
 const NAV = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Home" },
-  { to: "/customers", icon: Users, label: "Customers" },
-  { to: "/voice", icon: Mic, label: "Voice" },
-  { to: "/transactions", icon: ArrowLeftRight, label: "Collections" },
-  { to: "/expenses", icon: Receipt, label: "Accounts" },
+  { to: "/dashboard",    icon: LayoutDashboard, label: "Home" },
+  { to: "/customers",    icon: Users,            label: "Customers" },
+  { to: "/voice",        icon: Mic,              label: "Voice" },
+  { to: "/transactions", icon: ArrowLeftRight,   label: "Collections" },
+  { to: "/expenses",     icon: Receipt,          label: "Accounts" },
 ];
 
 export default function MobileNav() {
@@ -29,8 +29,8 @@ export default function MobileNav() {
             to={to}
             className={({ isActive }) =>
               cn(
-                "flex flex-col items-center gap-0.5 px-2 rounded-xl min-w-[56px] transition-all duration-150 active:scale-95",
-                isActive ? "text-primary" : "text-muted-foreground"
+                "flex flex-col items-center gap-0.5 px-2 rounded-xl min-w-[52px] transition-all duration-150 active:scale-95",
+                isActive ? "text-foreground" : "text-muted-foreground"
               )
             }
           >
@@ -38,11 +38,11 @@ export default function MobileNav() {
               <>
                 <div
                   className={cn(
-                    "flex items-center justify-center w-10 h-7 rounded-lg transition-all duration-150",
-                    isActive ? "bg-primary/15" : ""
+                    "flex items-center justify-center w-9 h-7 rounded-lg transition-all duration-150",
+                    isActive ? "bg-primary/25" : ""
                   )}
                 >
-                  <Icon className="h-[18px] w-[18px]" />
+                  <Icon className="h-[17px] w-[17px]" />
                 </div>
                 <span className="text-[10px] font-medium leading-tight">{label}</span>
               </>

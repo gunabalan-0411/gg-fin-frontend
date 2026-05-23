@@ -3,47 +3,81 @@
 @tailwind utilities;
 
 @layer base {
-  /* Dark theme — Zain Butt Finance palette */
+  /* ─── Mint pastel — light mode (default) ──────────────────────────────── */
   :root {
-    --background: 243 47% 9%;        /* #0F0E24 deep navy */
-    --foreground: 220 30% 93%;
-    --card: 241 38% 18%;             /* #1D1D41 card navy */
-    --card-foreground: 220 30% 93%;
-    --primary: 245 76% 63%;          /* #6359E9 vivid purple */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 241 32% 23%;        /* #27264E inner navy */
-    --secondary-foreground: 220 30% 93%;
-    --muted: 241 30% 20%;
-    --muted-foreground: 240 18% 60%;
-    --accent: 197 88% 68%;           /* #64CFF6 bright cyan */
-    --accent-foreground: 243 47% 9%;
-    --border: 241 28% 25%;
-    --input: 241 28% 25%;
-    --ring: 245 76% 63%;
-    --radius: 0.75rem;
-    /* Chart palette tokens */
-    --chart-purple: #6359E9;
-    --chart-cyan: #64CFF6;
-    --chart-green: #02B15A;
-    --chart-red: #EB001B;
+    /* Surfaces */
+    --background:          108 20% 95%;   /* #f1f5f0 */
+    --foreground:           28 14% 15%;   /* #2a2520 */
+    --card:                  0  0% 100%;  /* #ffffff */
+    --card-foreground:      28 14% 15%;
+    --popover:               0  0% 100%;
+    --popover-foreground:   28 14% 15%;
+
+    /* Primary — mint */
+    --primary:             160 38% 74%;   /* #a8d3c2 */
+    --primary-foreground:   28 14% 15%;
+
+    /* Secondary — elevated surface */
+    --secondary:           120 20% 97%;   /* #f8faf6 */
+    --secondary-foreground: 28 14% 15%;
+
+    /* Muted — sunken surface */
+    --muted:                38 27% 91%;   /* #efeae0 */
+    --muted-foreground:     30 11% 49%;   /* #8a7f70 */
+
+    /* Accent — sage */
+    --accent:              120 21% 85%;   /* #cfe1cf */
+    --accent-foreground:    28 14% 15%;
+
+    /* Destructive */
+    --destructive:          15 39% 61%;   /* #c98370 */
+    --destructive-foreground: 0  0% 100%;
+
+    /* Borders & inputs */
+    --border:               37 30% 86%;   /* #e8dfd0 */
+    --input:                37 30% 86%;
+    --ring:                160 38% 74%;   /* #a8d3c2 */
+
+    /* Radius */
+    --radius: 0.5rem;
+
+    /* Semantic */
+    --pos:   140 17% 52%;   /* #6f9a7c  income green  */
+    --neg:    15 39% 61%;   /* #c98370  expense red   */
+    --warn:   37 64% 57%;   /* #d4a64f  warning amber */
   }
 
-  .light {
-    --background: 220 20% 97%;
-    --foreground: 241 38% 15%;
-    --card: 0 0% 100%;
-    --card-foreground: 241 38% 15%;
-    --primary: 245 76% 58%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 20% 93%;
-    --secondary-foreground: 241 38% 15%;
-    --muted: 220 20% 93%;
-    --muted-foreground: 240 10% 46%;
-    --accent: 197 88% 55%;
-    --accent-foreground: 0 0% 100%;
-    --border: 220 20% 87%;
-    --input: 220 20% 87%;
-    --ring: 245 76% 58%;
+  /* ─── Dark mode ───────────────────────────────────────────────────────── */
+  .dark {
+    --background:           28 14%  9%;   /* #1a1714 */
+    --foreground:           38 55% 91%;   /* #f1ebdf */
+    --card:                 28 13% 13%;   /* #26221d */
+    --card-foreground:      38 55% 91%;
+    --popover:              27 13% 11%;   /* #211d19 */
+    --popover-foreground:   38 55% 91%;
+
+    --primary:             160 26% 63%;   /* #8eb5a5 mint-dark */
+    --primary-foreground:   28 14%  9%;
+
+    --secondary:            27 13% 11%;   /* #211d19 */
+    --secondary-foreground: 38 55% 91%;
+
+    --muted:                27 13% 11%;
+    --muted-foreground:     30 11% 49%;   /* #8a7f70 */
+
+    --accent:              110 16% 66%;   /* #9eb59a */
+    --accent-foreground:    38 55% 91%;
+
+    --destructive:          18 47% 68%;   /* #d49b86 */
+    --destructive-foreground: 0  0% 100%;
+
+    --border:               27 13% 18%;   /* #322d27 */
+    --input:                27 13% 18%;
+    --ring:                160 26% 63%;
+
+    --pos:  138 24% 64%;   /* #8eb89a */
+    --neg:   18 47% 68%;   /* #d49b86 */
+    --warn:  37 55% 60%;   /* #d4ad60 */
   }
 }
 
@@ -51,132 +85,121 @@
   * {
     @apply border-border;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "ss01", "cv11", "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.3);
+    color: hsl(var(--foreground));
   }
 }
 
-/* Glass card effect */
+/* ─── Semantic color utilities ──────────────────────────────────────────── */
+.text-pos   { color: hsl(var(--pos)); }
+.text-neg   { color: hsl(var(--neg)); }
+.text-warn  { color: hsl(var(--warn)); }
+.bg-pos\/10 { background-color: hsl(var(--pos) / 0.10); }
+.bg-neg\/10 { background-color: hsl(var(--neg) / 0.10); }
+
+/* In light mode, boost emerald text contrast (emerald-400 is too pale on white) */
+:root .text-emerald-400 { color: #3d8a66; }
+:root .border-emerald-500\/20 { border-color: rgb(16 185 129 / 0.2); }
+:root .bg-emerald-500\/10 { background-color: rgb(16 185 129 / 0.1); }
+:root .bg-emerald-500\/15 { background-color: rgb(16 185 129 / 0.12); }
+
+/* ─── Glass card ─────────────────────────────────────────────────────────── */
 .glass-card {
-  @apply bg-card/80 backdrop-blur-sm border border-border/50 rounded-xl shadow-lg;
+  @apply bg-card/90 backdrop-blur-sm border border-border rounded-xl shadow-sm;
 }
 
-/* Dark mode Recharts/Tremor chart fixes (Zain Butt navy palette) */
-html:not(.light) .recharts-wrapper text,
-html:not(.light) .recharts-cartesian-axis-tick-value,
-html:not(.light) .recharts-legend-item-text {
-  fill: hsl(240 18% 65%) !important;
-  color: hsl(240 18% 65%) !important;
+/* ─── Chart overrides — mint palette ────────────────────────────────────── */
+/* Axis & grid lines */
+.recharts-wrapper text,
+.recharts-cartesian-axis-tick-value,
+.recharts-legend-item-text {
+  fill: hsl(var(--muted-foreground)) !important;
+  color: hsl(var(--muted-foreground)) !important;
 }
-html:not(.light) .recharts-cartesian-grid line {
-  stroke: hsl(241 28% 28%) !important;
-  stroke-opacity: 0.7 !important;
+.recharts-cartesian-grid line {
+  stroke: hsl(var(--border)) !important;
+  stroke-opacity: 0.8 !important;
 }
-html:not(.light) .recharts-cartesian-axis line,
-html:not(.light) .recharts-cartesian-axis-line {
-  stroke: hsl(241 28% 30%) !important;
+.recharts-cartesian-axis line,
+.recharts-cartesian-axis-line {
+  stroke: hsl(var(--border)) !important;
 }
 /* Tooltip */
-html:not(.light) .recharts-tooltip-wrapper > div {
-  background-color: hsl(241 38% 14%) !important;
-  border: 1px solid hsl(241 28% 28%) !important;
+.recharts-tooltip-wrapper > div {
+  background-color: hsl(var(--popover)) !important;
+  border: 1px solid hsl(var(--border)) !important;
   border-radius: 10px !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 0.08) !important;
 }
-html:not(.light) .recharts-tooltip-item-name,
-html:not(.light) .recharts-tooltip-item-value,
-html:not(.light) .recharts-tooltip-label {
-  color: hsl(220 30% 93%) !important;
-}
-html:not(.light) .recharts-area {
-  opacity: 0.9;
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-value,
+.recharts-tooltip-label {
+  color: hsl(var(--foreground)) !important;
 }
 
-/* ─── Custom chart color palette ─────────────────────────────────────────────
-   Series order: #64CFF6  →  #661EFF  →  #AEABD8  →  #1D1D41
-   Applied via CSS (Tremor's colors prop only accepts Tailwind names)          */
-
-/* Bar chart fills */
-g.recharts-layer.recharts-bar:nth-of-type(1) .recharts-rectangle { fill: #64CFF6 !important; }
-g.recharts-layer.recharts-bar:nth-of-type(2) .recharts-rectangle { fill: #661EFF !important; }
-g.recharts-layer.recharts-bar:nth-of-type(3) .recharts-rectangle { fill: #AEABD8 !important; }
-g.recharts-layer.recharts-bar:nth-of-type(4) .recharts-rectangle { fill: #1D1D41 !important; }
+/* Bar chart fills — mint series */
+g.recharts-layer.recharts-bar:nth-of-type(1) .recharts-rectangle { fill: hsl(160 38% 62%) !important; }  /* mint */
+g.recharts-layer.recharts-bar:nth-of-type(2) .recharts-rectangle { fill: hsl(138 22% 72%) !important; }  /* sage */
+g.recharts-layer.recharts-bar:nth-of-type(3) .recharts-rectangle { fill: hsl(213 32% 72%) !important; }  /* sky */
+g.recharts-layer.recharts-bar:nth-of-type(4) .recharts-rectangle { fill: hsl(34 14% 67%) !important; }   /* sand */
 
 /* Area chart fills + strokes */
-g.recharts-layer.recharts-area:nth-of-type(1) .recharts-area-area  { fill: #64CFF6 !important; fill-opacity: 0.2 !important; }
-g.recharts-layer.recharts-area:nth-of-type(1) .recharts-area-curve { stroke: #64CFF6 !important; stroke-width: 2px; }
-g.recharts-layer.recharts-area:nth-of-type(2) .recharts-area-area  { fill: #661EFF !important; fill-opacity: 0.2 !important; }
-g.recharts-layer.recharts-area:nth-of-type(2) .recharts-area-curve { stroke: #661EFF !important; stroke-width: 2px; }
-g.recharts-layer.recharts-area:nth-of-type(3) .recharts-area-area  { fill: #AEABD8 !important; fill-opacity: 0.2 !important; }
-g.recharts-layer.recharts-area:nth-of-type(3) .recharts-area-curve { stroke: #AEABD8 !important; stroke-width: 2px; }
-g.recharts-layer.recharts-area:nth-of-type(4) .recharts-area-area  { fill: #1D1D41 !important; fill-opacity: 0.4 !important; }
-g.recharts-layer.recharts-area:nth-of-type(4) .recharts-area-curve { stroke: #1D1D41 !important; stroke-width: 2px; }
+g.recharts-layer.recharts-area:nth-of-type(1) .recharts-area-area  { fill: hsl(160 38% 62%) !important; fill-opacity: 0.15 !important; }
+g.recharts-layer.recharts-area:nth-of-type(1) .recharts-area-curve { stroke: hsl(160 38% 62%) !important; stroke-width: 2px; }
+g.recharts-layer.recharts-area:nth-of-type(2) .recharts-area-area  { fill: hsl(140 17% 52%) !important; fill-opacity: 0.15 !important; }
+g.recharts-layer.recharts-area:nth-of-type(2) .recharts-area-curve { stroke: hsl(140 17% 52%) !important; stroke-width: 2px; }
+g.recharts-layer.recharts-area:nth-of-type(3) .recharts-area-area  { fill: hsl(213 32% 72%) !important; fill-opacity: 0.15 !important; }
+g.recharts-layer.recharts-area:nth-of-type(3) .recharts-area-curve { stroke: hsl(213 32% 72%) !important; stroke-width: 2px; }
 
 /* Line chart strokes */
-g.recharts-layer.recharts-line:nth-of-type(1) .recharts-line-curve { stroke: #64CFF6 !important; }
-g.recharts-layer.recharts-line:nth-of-type(2) .recharts-line-curve { stroke: #661EFF !important; }
-g.recharts-layer.recharts-line:nth-of-type(3) .recharts-line-curve { stroke: #AEABD8 !important; }
+g.recharts-layer.recharts-line:nth-of-type(1) .recharts-line-curve { stroke: hsl(160 38% 62%) !important; }
+g.recharts-layer.recharts-line:nth-of-type(2) .recharts-line-curve { stroke: hsl(140 17% 52%) !important; }
+g.recharts-layer.recharts-line:nth-of-type(3) .recharts-line-curve { stroke: hsl(213 32% 72%) !important; }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  @apply bg-background;
-}
-::-webkit-scrollbar-thumb {
-  @apply bg-border rounded-full;
-}
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
 
 /* ─── Mobile optimizations ───────────────────────────────────────────────── */
-
-/* Eliminate tap delay on touch devices */
 * {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-
-/* Smooth momentum scrolling on iOS */
 .overflow-y-auto,
 .overflow-x-auto {
   -webkit-overflow-scrolling: touch;
 }
-
-/* Prevent font size inflation on orientation change (iOS Safari) */
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-/* Prevent inputs from zooming on iOS (must be >= 16px) */
 @media (max-width: 767px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px !important;
-  }
+  input, select, textarea { font-size: 16px !important; }
 }
 
-/* Safe area insets (notch / home indicator) */
+/* Safe area insets */
 .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 8px); }
 .pl-safe { padding-left: env(safe-area-inset-left, 0px); }
 .pr-safe { padding-right: env(safe-area-inset-right, 0px); }
 
-/* Mobile card touch feedback */
+/* Mobile card press feedback */
 @media (max-width: 767px) {
-  .mobile-card-press {
-    transition: transform 0.1s ease, background-color 0.1s ease;
-  }
-  .mobile-card-press:active {
-    transform: scale(0.98);
-    @apply bg-secondary/50;
-  }
+  .mobile-card-press { transition: transform 0.1s ease, background-color 0.1s ease; }
+  .mobile-card-press:active { transform: scale(0.98); @apply bg-secondary/50; }
 }
 
-/* Minimum touch target (44×44px per WCAG) */
+/* Minimum touch target */
 .touch-target {
   min-width: 44px;
   min-height: 44px;
@@ -185,11 +208,6 @@ html {
   justify-content: center;
 }
 
-/* Hide scrollbar on mobile nav elements */
-.hide-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.hide-scrollbar::-webkit-scrollbar {
-  display: none;
-}
+/* Hide scrollbar */
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }

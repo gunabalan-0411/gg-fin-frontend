@@ -12,16 +12,18 @@ export default function Header({
 }) {
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+
+  // Default to light mode (mint theme is a light-first design)
   const [isDark, setIsDark] = useState(() => {
     const saved = localStorage.getItem("gg_fin_theme");
-    return saved ? saved === "dark" : true;
+    return saved === "dark";
   });
 
   useEffect(() => {
     if (isDark) {
-      document.documentElement.classList.remove("light");
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.add("light");
+      document.documentElement.classList.remove("dark");
     }
     localStorage.setItem("gg_fin_theme", isDark ? "dark" : "light");
   }, [isDark]);
@@ -33,9 +35,9 @@ export default function Header({
 
   return (
     <header
-      className="flex items-center justify-between px-4 border-b border-border bg-card sticky top-0 z-30"
+      className="flex items-center justify-between px-4 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-30"
       style={{
-        minHeight: "56px",
+        minHeight: "52px",
         paddingTop: "env(safe-area-inset-top, 0px)",
       }}
     >
@@ -43,36 +45,36 @@ export default function Header({
         {showMenuButton && (
           <button
             onClick={onMenuClick}
-            className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Open navigation menu"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-4 w-4" />
           </button>
         )}
-        <img src="/brand/mark.svg" alt="gg fin" className="h-7 w-auto opacity-70" />
+        <img src="/brand/mark.svg" alt="gg fin" className="h-6 w-auto opacity-60" />
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex items-center gap-1">
         <button
           onClick={() => setIsDark(!isDark)}
-          className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           title={isDark ? "Switch to light mode" : "Switch to dark mode"}
         >
-          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </button>
 
-        <div className="hidden sm:block h-6 w-px bg-border mx-1" />
+        <div className="hidden sm:block h-4 w-px bg-border mx-1" />
 
         <div className="hidden sm:flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20">
-            <User className="h-4 w-4 text-primary" />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/20">
+            <User className="h-3.5 w-3.5 text-primary-foreground/60" />
           </div>
           <span className="text-sm font-medium text-foreground">Admin</span>
         </div>
 
         <button
           onClick={handleLogout}
-          className="flex items-center gap-1.5 ml-1 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors min-h-[36px]"
+          className="flex items-center gap-1.5 ml-1 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors min-h-[34px]"
           aria-label="Logout"
         >
           <LogOut className="h-3.5 w-3.5" />

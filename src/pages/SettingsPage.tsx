@@ -828,8 +828,8 @@ export default function SettingsPage() {
       {toast && (
         <div className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
           toast.type === "success"
-            ? "bg-[#02B15A]/20 border border-[#02B15A]/40 text-[#02B15A]"
-            : "bg-red-500/20 border border-red-500/40 text-red-400"
+            ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+            : "bg-destructive/15 border border-destructive/30 text-destructive"
         }`}>
           {toast.type === "success" ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
           {toast.msg}

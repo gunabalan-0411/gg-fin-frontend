@@ -64,7 +64,7 @@ function LoginAnimation({ onDone }: { onDone: () => void }) {
       <div
         style={{
           position: "fixed", inset: 0, zIndex: 9999,
-          background: "#0F0E24",
+          background: "#f1f5f0",
           display: "flex", alignItems: "center", justifyContent: "center",
           animation: "lg-overlay-in 0.25s ease both, lg-bg-exit 0.55s ease 2.05s both",
         }}
@@ -179,59 +179,85 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      {/* Background gradient */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
-      </div>
-
-      <div className="relative w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <img src="/brand/mark.svg" alt="gg fin" className="h-32 w-auto mx-auto mb-4" />
-          <p className="font-serif text-2xl tracking-widest" style={{ color: "#00A896" }}>
-            gg <span style={{ color: "#4FC3F7" }}>fin</span>
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">Sign in to your account</p>
+    <div className="min-h-screen grid md:grid-cols-2 bg-background">
+      {/* Left panel — gradient brand side */}
+      <div
+        className="hidden md:flex flex-col p-12 relative overflow-hidden"
+        style={{ background: "linear-gradient(180deg, hsl(160 38% 82%) 0%, hsl(120 21% 85%) 55%, hsl(138 22% 87%) 100%)" }}
+      >
+        {/* Brand mark */}
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-foreground/90 flex items-center justify-center">
+            <span className="font-mono text-xs font-semibold text-background tracking-tight">gf</span>
+          </div>
+          <span className="text-[15px] font-semibold text-foreground tracking-tight">gg fin</span>
         </div>
 
-        {/* Card */}
-        <div className="glass-card">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Username</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder="admin"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+        {/* Quote / tagline at bottom */}
+        <div className="mt-auto max-w-xs">
+          <p className="text-[22px] font-light leading-snug tracking-tight text-foreground">
+            Your quiet<br />lending ledger.
+          </p>
+          <p className="mt-3 font-mono text-[11px] text-foreground/50 uppercase tracking-widest">
+            Personal · Precise · Private
+          </p>
+        </div>
 
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+        {/* Decorative circles */}
+        <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-white/30 pointer-events-none" />
+        <div className="absolute -right-8 -bottom-8 w-40 h-40 rounded-full bg-white/20 pointer-events-none" />
+      </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
-            </Button>
-          </form>
+      {/* Right panel — form */}
+      <div className="flex items-center justify-center p-8">
+        <div className="w-full max-w-sm">
+          {/* Mobile brand */}
+          <div className="flex items-center gap-2.5 mb-8 md:hidden">
+            <div className="w-7 h-7 rounded-lg bg-foreground flex items-center justify-center">
+              <span className="font-mono text-[11px] font-semibold text-background tracking-tight">gf</span>
+            </div>
+            <span className="text-[15px] font-semibold text-foreground tracking-tight">gg fin</span>
+          </div>
+
+          <h1 className="text-xl font-semibold text-foreground mb-1">Sign in</h1>
+          <p className="text-sm text-muted-foreground mb-7">Enter your credentials to continue</p>
+
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Username</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+                  <Input
+                    className="pl-9"
+                    placeholder="admin"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+                  <Input
+                    className="pl-9"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <Button type="submit" className="w-full mt-2" disabled={loading}>
+                {loading ? "Signing in…" : "Sign In"}
+              </Button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
