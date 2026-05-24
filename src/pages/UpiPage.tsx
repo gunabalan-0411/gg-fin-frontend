@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+﻿import { useEffect, useRef, useState, useMemo } from "react";
+import type { CSSProperties, ElementType, ReactNode } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
 import {
-  CheckCircle, AlertCircle, Trash2, Link2, Unlink, ChevronDown, X, Search, Eye,
+  Trash2, Link2, Unlink, X, Search, Eye, Mail, FileText, Check,
+  Database, Sparkles, Filter,
 } from "lucide-react";
-import { upiApi, customersApi } from "@/services/api";
+import { upiApi } from "@/services/api";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface UpiTxn {
   id: number;
@@ -51,12 +53,13 @@ interface FuzzySuggestion {
   balance: number;
 }
 
-interface Customer {
-  customer_id: number;
-  customer_name: string | null;
-}
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
+const fmt = (n: number) => "â‚¹" + Math.round(n).toLocaleString("en-IN");
+const fmtFull = (n: number) =>
+  "â‚¹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// â”€â”€ Toast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function useToast() {
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -69,7 +72,58 @@ function useToast() {
   return { toast, show };
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// â”€â”€ TypeBadge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function TypeBadge({ type }: { type: string }) {
+  return (
+    <span style={{
+      fontFamily: "\"Geist Mono\", ui-monospace, monospace",
+      fontSize: 9,
+      padding: "1px 5px",
+      borderRadius: 3,
+      background: type === "iop"
+        ? "hsl(var(--accent) / 0.5)"
+        : "hsl(var(--primary) / 0.24)",
+      color: "hsl(var(--foreground) / 0.65)",
+      textTransform: "uppercase" as const,
+      fontWeight: 600,
+      flexShrink: 0,
+    }}>
+      {type}
+    </span>
+  );
+}
+
+// â”€â”€ IBtn (icon button) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function IBtn({
+  onClick, title, children, danger,
+}: {
+  onClick: () => void; title?: string; children: ReactNode; danger?: boolean;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        width: 28, height: 28, borderRadius: 6,
+        display: "grid", placeItems: "center",
+        background: hov ? (danger ? "hsl(var(--neg) / 0.14)" : "hsl(var(--muted))") : "transparent",
+        border: "none",
+        color: hov ? (danger ? "hsl(var(--neg))" : "hsl(var(--foreground))") : "hsl(var(--muted-foreground))",
+        cursor: "pointer",
+        transition: "background-color .12s, color .12s",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// â”€â”€ Main page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function UpiPage() {
   const { toast, show } = useToast();
@@ -83,34 +137,24 @@ export default function UpiPage() {
   const [sourceFilter, setSourceFilter] = useSessionState<"" | "gmail" | "csv">("upi.sourceFilter", "");
   const [mappedFilter, setMappedFilter] = useSessionState<"" | "true" | "false">("upi.mappedFilter", "");
 
-  // Map transaction modal
-  const [mapTxn, setMapTxn] = useState<UpiTxn | null>(null);
-  const [mapType, setMapType] = useState<"edi" | "iop">("edi");
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [mapCustomerId, setMapCustomerId] = useState<number | "">("");
-  const [saving, setSaving] = useState(false);
-
-  // Delete confirm
-  const [deleteTxn, setDeleteTxn] = useState<UpiTxn | null>(null);
-
-  // VPA mappings
+  // VPA mapping state
   const [vpaMappings, setVpaMappings] = useState<VpaMapping[]>([]);
-
-  // Unique VPAs from last 6 months
   const [uniqueVpas, setUniqueVpas] = useState<UniqueVpa[]>([]);
   const [vpaLoading, setVpaLoading] = useState(false);
   const [showUnmappedOnly, setShowUnmappedOnly] = useState(false);
-
-  // Detail popover
-  const [detailTxn, setDetailTxn] = useState<UpiTxn | null>(null);
-
-  // Selected VPA for mapping
   const [selectedVpa, setSelectedVpa] = useState<UniqueVpa | null>(null);
   const [fuzzySuggestions, setFuzzySuggestions] = useState<FuzzySuggestion[]>([]);
   const [customersWithBalance, setCustomersWithBalance] = useState<CustomerWithBalance[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // UI state
+  const [detailTxn, setDetailTxn] = useState<UpiTxn | null>(null);
+  const [deleteTxn, setDeleteTxn] = useState<UpiTxn | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [q, setQ] = useState("");
+  const [cockpitTab, setCockpitTab] = useState<"map" | "saved">("map");
+
+  // â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   useEffect(() => {
     fetchTxns();
@@ -121,16 +165,59 @@ export default function UpiPage() {
 
   useEffect(() => { fetchTxns(); }, [dateFrom, dateTo, sourceFilter, mappedFilter]);
 
+  // â”€â”€ Computed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  const mappedVpaSet = useMemo(() => new Set(vpaMappings.map(m => m.upi_vpa)), [vpaMappings]);
+
+  const filteredTxns = useMemo(() => {
+    if (!q.trim()) return txns;
+    const lower = q.toLowerCase();
+    return txns.filter(t => {
+      const blob = `${t.sender_name ?? ""} ${t.sender_vpa ?? ""} ${t.upi_ref_no} ${t.amount}`.toLowerCase();
+      return blob.includes(lower);
+    });
+  }, [txns, q]);
+
+  const grouped = useMemo(() => {
+    const map: Record<string, UpiTxn[]> = {};
+    filteredTxns.forEach(t => { (map[t.transaction_date] = map[t.transaction_date] ?? []).push(t); });
+    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filteredTxns]);
+
+  const filteredVpas = useMemo(() =>
+    showUnmappedOnly ? uniqueVpas.filter(v => !mappedVpaSet.has(v.vpa)) : uniqueVpas,
+    [uniqueVpas, showUnmappedOnly, mappedVpaSet]
+  );
+
   const filteredCustomers = useMemo(() => {
     if (!customerSearch.trim()) return customersWithBalance;
-    const q = customerSearch.toLowerCase();
-    return customersWithBalance.filter((c) =>
-      c.customer_name.toLowerCase().includes(q) ||
-      String(c.customer_id).includes(q)
+    const lower = customerSearch.toLowerCase();
+    return customersWithBalance.filter(c =>
+      c.customer_name.toLowerCase().includes(lower) || String(c.customer_id).includes(lower)
     );
   }, [customersWithBalance, customerSearch]);
 
-  // ── API calls ─────────────────────────────────────────────────────────────
+  const mappedCount = txns.filter(t => t.mapped_customer_id).length;
+  const gmailCount = txns.filter(t => t.source === "gmail").length;
+  const csvCount   = txns.filter(t => t.source === "csv").length;
+  const totalAmt   = txns.reduce((s, t) => s + parseFloat(t.amount || "0"), 0);
+  const mappedAmt  = txns.filter(t => t.mapped_customer_id).reduce((s, t) => s + parseFloat(t.amount || "0"), 0);
+  const mappedPct  = txns.length === 0 ? 0 : Math.round(mappedCount / txns.length * 100);
+
+  const allChecked = filteredTxns.length > 0 && filteredTxns.every(t => selected.has(t.id));
+  const toggleAll = () => {
+    const next = new Set(selected);
+    if (allChecked) filteredTxns.forEach(t => next.delete(t.id));
+    else filteredTxns.forEach(t => next.add(t.id));
+    setSelected(next);
+  };
+  const toggleOne = (id: number) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelected(next);
+  };
+
+  // â”€â”€ API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function fetchTxns() {
     setLoading(true);
@@ -177,19 +264,9 @@ export default function UpiPage() {
         const { data } = await upiApi.fuzzySuggest(v.sender_name);
         setFuzzySuggestions(data.data);
       } catch {
-        // ignore fuzzy errors
+        // ignore
       }
     }
-  }
-
-  async function handleMapFromSuggestion(s: FuzzySuggestion) {
-    if (!selectedVpa) return;
-    await saveVpaMapping(selectedVpa.vpa, s.customer_id, s.type, s.customer_name);
-  }
-
-  async function handleMapFromSearch(c: CustomerWithBalance) {
-    if (!selectedVpa) return;
-    await saveVpaMapping(selectedVpa.vpa, c.customer_id, c.type, c.customer_name);
   }
 
   async function saveVpaMapping(vpa: string, customerId: number, type: string, name: string) {
@@ -214,35 +291,6 @@ export default function UpiPage() {
     fetchUniqueVpas();
   }
 
-  async function openMapModal(txn: UpiTxn) {
-    setMapTxn(txn);
-    setMapType(txn.mapped_customer_type || "edi");
-    setMapCustomerId(txn.mapped_customer_id ?? "");
-    await loadCustomers(txn.mapped_customer_type || "edi");
-  }
-
-  async function loadCustomers(type: "edi" | "iop") {
-    const { data } = type === "edi"
-      ? await customersApi.listEdi({ limit: 500 })
-      : await customersApi.listIop({ limit: 500 });
-    setCustomers(data.data || []);
-  }
-
-  async function handleMapSave() {
-    if (!mapTxn || mapCustomerId === "") return;
-    setSaving(true);
-    try {
-      await upiApi.mapCustomer(mapTxn.id, { customer_id: Number(mapCustomerId), customer_type: mapType });
-      show("Customer mapped!");
-      setMapTxn(null);
-      fetchTxns();
-    } catch (e: any) {
-      show(e?.response?.data?.detail || "Mapping failed", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function handleUnmap(txn: UpiTxn) {
     await upiApi.mapCustomer(txn.id, { customer_id: null, customer_type: null });
     show("Mapping removed");
@@ -257,489 +305,684 @@ export default function UpiPage() {
     fetchTxns();
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  async function openMapForTxn(txn: UpiTxn) {
+    setCockpitTab("map");
+    setShowUnmappedOnly(false);
+    if (txn.sender_vpa) {
+      const vpa = uniqueVpas.find(v => v.vpa === txn.sender_vpa);
+      if (vpa) await handleSelectVpa(vpa);
+    }
+  }
 
-  const mapped = txns.filter((t) => t.mapped_customer_id).length;
-  const gmailCount = txns.filter((t) => t.source === "gmail").length;
-  const csvCount = txns.filter((t) => t.source === "csv").length;
-  const totalAmt = txns.reduce((s, t) => s + parseFloat(t.amount || "0"), 0);
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  const unmappedVpaCount = uniqueVpas.filter(v => !mappedVpaSet.has(v.vpa)).length;
+
+  // â”€â”€ inline style helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  const card: CSSProperties = {
+    background: "hsl(var(--card))",
+    border: "1px solid hsl(var(--border))",
+    borderRadius: 12,
+    overflow: "hidden",
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+  };
+
+  const cardH: CSSProperties = {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "10px 14px",
+    borderBottom: "1px solid hsl(var(--border))",
+    background: "hsl(var(--secondary))",
+    flexShrink: 0, gap: 10,
+  };
+
+  const smBtn: CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 5,
+    padding: "4px 9px", borderRadius: 6,
+    fontSize: 12, fontWeight: 500,
+    background: "hsl(var(--card))",
+    border: "1px solid hsl(var(--border))",
+    color: "hsl(var(--foreground))",
+    cursor: "pointer",
+  };
+
+  const fieldStyle: CSSProperties = {
+    background: "hsl(var(--card))",
+    border: "1px solid hsl(var(--border))",
+    borderRadius: 6,
+    padding: "5px 8px",
+    fontSize: 12.5,
+    color: "hsl(var(--foreground))",
+    outline: 0,
+    cursor: "pointer",
+  };
+
+  const pip = (
+    <span style={{ width: 3, height: 3, borderRadius: 999, background: "hsl(var(--muted-foreground) / 0.5)", display: "inline-block", flexShrink: 0 }} />
+  );
 
   return (
-    <div className="p-6 space-y-5">
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", background: "hsl(var(--background))" }}>
 
-      {/* Toast */}
+      {/* â”€â”€ Summary bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <div style={{
+        padding: "13px 16px",
+        background: "hsl(var(--secondary))",
+        borderBottom: "1px solid hsl(var(--border))",
+        flexShrink: 0,
+        display: "grid",
+        gridTemplateColumns: "minmax(240px, 1.4fr) repeat(3, minmax(120px, 1fr))",
+        gap: 14,
+        alignItems: "center",
+      }}>
+        {/* Reconciliation */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
+            <span style={{ width: 5, height: 5, borderRadius: 999, background: "hsl(var(--pos))", display: "inline-block" }} />
+            Reconciliation Â· last 30 days
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
+            <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 24, fontWeight: 500, letterSpacing: "-.025em", lineHeight: 1 }}>
+              {mappedCount}
+              <span style={{ color: "hsl(var(--muted-foreground))", fontWeight: 400 }}> / {txns.length}</span>
+            </div>
+            <div style={{
+              fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 11.5,
+              padding: "2px 9px", borderRadius: 999, fontWeight: 500,
+              background: mappedPct < 70 ? "hsl(var(--warn) / 0.18)" : "hsl(var(--pos) / 0.14)",
+              color: mappedPct < 70 ? "hsl(var(--warn))" : "hsl(var(--pos))",
+            }}>
+              {mappedPct}% mapped
+            </div>
+          </div>
+          <div style={{ height: 5, background: "hsl(var(--muted))", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+            <div style={{ width: mappedPct + "%", background: "hsl(var(--pos))", borderRadius: 999, transition: "width .3s" }} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 7, fontSize: 11.5, color: "hsl(var(--muted-foreground))", fontFamily: "\"Geist Mono\", ui-monospace, monospace", flexWrap: "wrap" }}>
+            <span><b style={{ color: "hsl(var(--foreground) / 0.7)", fontWeight: 500 }}>{fmt(mappedAmt)}</b> matched</span>
+            {pip}
+            <span><b style={{ color: "hsl(var(--foreground) / 0.7)", fontWeight: 500 }}>{fmt(totalAmt - mappedAmt)}</b> pending</span>
+            {pip}
+            <span><b style={{ color: "hsl(var(--foreground) / 0.7)", fontWeight: 500 }}>{vpaMappings.length}</b> saved maps</span>
+          </div>
+        </div>
+
+        {/* Gmail tile */}
+        <div style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+            <span style={{ fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".08em", display: "flex", alignItems: "center", gap: 5 }}>
+              <Mail size={11} /> Gmail
+            </span>
+            <span style={{ width: 20, height: 20, borderRadius: 5, display: "grid", placeItems: "center", background: "hsl(220 60% 60% / 0.14)", color: "#5b8db8" }}>
+              <Mail size={11} />
+            </span>
+          </div>
+          <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 18, fontWeight: 500, letterSpacing: "-.02em", lineHeight: 1.2 }}>{gmailCount}</div>
+          <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
+            {txns.length ? Math.round(gmailCount / txns.length * 100) : 0}% of imports
+          </div>
+        </div>
+
+        {/* XLS tile */}
+        <div style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+            <span style={{ fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".08em", display: "flex", alignItems: "center", gap: 5 }}>
+              <FileText size={11} /> XLS
+            </span>
+            <span style={{ width: 20, height: 20, borderRadius: 5, display: "grid", placeItems: "center", background: "hsl(var(--warn) / 0.18)", color: "hsl(var(--warn))" }}>
+              <FileText size={11} />
+            </span>
+          </div>
+          <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 18, fontWeight: 500, letterSpacing: "-.02em", lineHeight: 1.2 }}>{csvCount}</div>
+          <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
+            {txns.length ? Math.round(csvCount / txns.length * 100) : 0}% of imports
+          </div>
+        </div>
+
+        {/* Total Credit tile */}
+        <div style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+            <span style={{ fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".08em" }}>Total credit</span>
+            <span style={{ width: 20, height: 20, borderRadius: 5, display: "grid", placeItems: "center", background: "hsl(var(--pos) / 0.14)", color: "hsl(var(--pos))", fontSize: 12, fontWeight: 700 }}>â‚¹</span>
+          </div>
+          <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 18, fontWeight: 500, letterSpacing: "-.02em", lineHeight: 1.2 }}>{fmt(totalAmt)}</div>
+          <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
+            avg {txns.length ? fmt(totalAmt / txns.length) : "â‚¹0"}
+          </div>
+        </div>
+      </div>
+
+      {/* â”€â”€ Two-column grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 14, padding: "14px 16px", flex: 1, overflow: "hidden" }}>
+
+        {/* LEFT: Transaction list */}
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+          <div style={card}>
+
+            {/* Card header */}
+            <div style={cardH}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Transactions</div>
+                <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 1, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
+                  {filteredTxns.length} of {total} Â· last 30 days
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button onClick={toggleAll} style={smBtn}>
+                  <span style={{ width: 14, height: 14, borderRadius: 3, border: allChecked ? "none" : "1.5px solid hsl(var(--border))", background: allChecked ? "hsl(var(--foreground))" : "hsl(var(--card))", display: "grid", placeItems: "center", color: "hsl(var(--background))", flexShrink: 0 }}>
+                    {allChecked && <Check size={9} />}
+                  </span>
+                  Select all
+                </button>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--background))", flexShrink: 0, flexWrap: "wrap" }}>
+              {/* Search */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, padding: "3px 10px", flex: 1, maxWidth: 300, minWidth: 150 }}>
+                <Search size={12} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
+                <input
+                  placeholder="Search name, VPA, refâ€¦"
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  style={{ flex: 1, background: "transparent", border: 0, outline: 0, fontSize: 12.5, padding: "3px 0", color: "hsl(var(--foreground))" }}
+                />
+                {q && (
+                  <button onClick={() => setQ("")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "hsl(var(--muted-foreground))", display: "grid", placeItems: "center" }}>
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+              <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value as any)} style={fieldStyle}>
+                <option value="">All sources</option>
+                <option value="gmail">Gmail</option>
+                <option value="csv">XLS</option>
+              </select>
+              <select value={mappedFilter} onChange={e => setMappedFilter(e.target.value as any)} style={fieldStyle}>
+                <option value="">All</option>
+                <option value="true">Mapped</option>
+                <option value="false">Unmapped</option>
+              </select>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                style={{ ...fieldStyle, fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }} />
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                style={{ ...fieldStyle, fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }} />
+              {(q || sourceFilter || mappedFilter || dateFrom || dateTo) && (
+                <button
+                  onClick={() => { setQ(""); setSourceFilter(""); setMappedFilter(""); setDateFrom(""); setDateTo(""); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "hsl(var(--muted-foreground))", textDecoration: "underline" }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Bulk bar */}
+            {selected.size > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "hsl(var(--foreground))", color: "hsl(var(--background))", borderBottom: "1px solid hsl(var(--border))", flexShrink: 0 }}>
+                <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontWeight: 500, background: "rgba(255,255,255,.1)", padding: "2px 8px", borderRadius: 999, fontSize: 12 }}>
+                  {selected.size} selected
+                </span>
+                <span style={{ flex: 1 }} />
+                <button
+                  onClick={() => setSelected(new Set())}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 9px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: "transparent", border: "1px solid rgba(255,255,255,.2)", color: "hsl(var(--background))", cursor: "pointer" }}
+                >
+                  <X size={11} /> Clear
+                </button>
+              </div>
+            )}
+
+            {/* Transaction scroll */}
+            <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingBottom: 12 }}>
+              {loading ? (
+                <div style={{ padding: "40px 20px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>Loadingâ€¦</div>
+              ) : grouped.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 20px", color: "hsl(var(--muted-foreground))" }}>
+                  <div style={{ width: 44, height: 44, margin: "0 auto 12px", background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderRadius: 12, display: "grid", placeItems: "center" }}>
+                    <Search size={18} />
+                  </div>
+                  <div style={{ fontSize: 13.5, fontWeight: 500, color: "hsl(var(--foreground) / 0.7)", marginBottom: 4 }}>No transactions found</div>
+                  <div style={{ fontSize: 12.5 }}>Try clearing filters or adjusting the date range.</div>
+                </div>
+              ) : grouped.map(([date, list]) => {
+                const daySum = list.reduce((s, t) => s + parseFloat(t.amount || "0"), 0);
+                const dateObj = new Date(date + "T00:00:00");
+                const dayLabel = dateObj.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+                return (
+                  <div key={date}>
+                    {/* Day header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px 4px", fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".1em" }}>
+                      <span>{dayLabel}</span>
+                      <span style={{ flex: 1, height: 1, background: "hsl(var(--border))" }} />
+                      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", color: "hsl(var(--foreground) / 0.65)", fontWeight: 500, letterSpacing: 0 }}>{fmt(daySum)}</span>
+                      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", color: "hsl(var(--muted-foreground) / 0.6)", fontWeight: 400, letterSpacing: 0, fontSize: 10 }}>{list.length} txns</span>
+                    </div>
+                    {/* Rows */}
+                    {list.map(t => {
+                      const isSel = selected.has(t.id);
+                      const SrcIcon = t.source === "gmail" ? Mail : FileText;
+                      return (
+                        <TxRow
+                          key={t.id}
+                          t={t}
+                          isSel={isSel}
+                          SrcIcon={SrcIcon}
+                          onToggle={() => toggleOne(t.id)}
+                          onView={() => setDetailTxn(t)}
+                          onMap={() => openMapForTxn(t)}
+                          onUnmap={() => handleUnmap(t)}
+                          onDelete={() => setDeleteTxn(t)}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {txns.length > 0 && (
+                <div style={{ padding: "8px 14px", fontSize: 11, color: "hsl(var(--muted-foreground))" }}>
+                  Showing {filteredTxns.length} of {total} transactions
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: Mapping cockpit */}
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+          <div style={card}>
+
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: 0, padding: "0 12px", background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))", flexShrink: 0 }}>
+              {([
+                { id: "map" as const, label: "Map VPAs", icon: <Link2 size={13} />, count: unmappedVpaCount },
+                { id: "saved" as const, label: "Saved", icon: <Database size={13} />, count: vpaMappings.length },
+              ]).map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setCockpitTab(tab.id)}
+                  style={{
+                    padding: "11px 13px", fontSize: 12.5, fontWeight: 500,
+                    color: cockpitTab === tab.id ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                    borderBottom: cockpitTab === tab.id ? "2px solid hsl(var(--foreground))" : "2px solid transparent",
+                    marginBottom: -1,
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    background: "none", border: "none", cursor: "pointer",
+                    transition: "color .12s",
+                  }}
+                >
+                  {tab.icon} {tab.label}
+                  <span style={{
+                    fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 10,
+                    background: cockpitTab === tab.id ? "hsl(var(--foreground))" : "hsl(var(--muted))",
+                    color: cockpitTab === tab.id ? "hsl(var(--background))" : "hsl(var(--muted-foreground))",
+                    padding: "1px 5px", borderRadius: 999,
+                  }}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+              <div style={{ flex: 1 }} />
+              {cockpitTab === "map" && (
+                <button
+                  onClick={() => setShowUnmappedOnly(v => !v)}
+                  style={{
+                    margin: "6px 0", padding: "4px 9px", borderRadius: 6, fontSize: 11.5, fontWeight: 500,
+                    background: showUnmappedOnly ? "hsl(var(--foreground))" : "transparent",
+                    border: "none",
+                    color: showUnmappedOnly ? "hsl(var(--background))" : "hsl(var(--muted-foreground))",
+                    cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5,
+                  }}
+                >
+                  <Filter size={11} /> Unmapped
+                </button>
+              )}
+            </div>
+
+            {/* Cockpit body */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12 }}>
+
+              {/* Map VPAs tab â€” VPA list */}
+              {cockpitTab === "map" && !selectedVpa && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 2px" }}>
+                    <span style={{ fontSize: 11.5, color: "hsl(var(--muted-foreground))" }}>{filteredVpas.length} VPAs</span>
+                    <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 10.5, color: "hsl(var(--muted-foreground))", border: "1px solid hsl(var(--border))", borderRadius: 4, padding: "1px 5px", background: "hsl(var(--secondary))" }}>
+                      click to map
+                    </span>
+                  </div>
+                  {vpaLoading ? (
+                    <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: "hsl(var(--muted-foreground))" }}>Loadingâ€¦</div>
+                  ) : filteredVpas.length === 0 ? (
+                    <EmptyState icon={<Check size={18} />} title="Nothing to map" body="All VPAs in the last 6 months are mapped." />
+                  ) : filteredVpas.map(v => (
+                    <VpaCard key={v.vpa} v={v} isMapped={mappedVpaSet.has(v.vpa)} onClick={() => handleSelectVpa(v)} />
+                  ))}
+                </>
+              )}
+
+              {/* Map VPAs tab â€” selected VPA with suggestions */}
+              {cockpitTab === "map" && selectedVpa && (
+                <>
+                  {/* Selected VPA */}
+                  <div style={{ background: "hsl(var(--card))", border: "2px solid hsl(var(--foreground))", borderRadius: 10, padding: "10px 12px", marginBottom: 14, boxShadow: "0 0 0 3px hsl(var(--primary) / 0.2)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12, color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{selectedVpa.vpa}</span>
+                      <button
+                        onClick={() => { setSelectedVpa(null); setFuzzySuggestions([]); setCustomerSearch(""); }}
+                        style={{ width: 26, height: 26, borderRadius: 5, display: "grid", placeItems: "center", background: "none", border: "none", cursor: "pointer", color: "hsl(var(--muted-foreground))", flexShrink: 0 }}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 13.5, fontWeight: 500, marginTop: 2 }}>{selectedVpa.sender_name || "â€”"}</div>
+                    <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 5, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
+                      <b style={{ color: "hsl(var(--foreground) / 0.65)" }}>{selectedVpa.count}</b>Ã— txns
+                    </div>
+                  </div>
+
+                  {/* AI Suggestions */}
+                  {fuzzySuggestions.length > 0 && (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", marginBottom: 8, padding: "0 2px", fontSize: 11, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                        <Sparkles size={11} style={{ marginRight: 5, color: "hsl(var(--primary))" }} />
+                        AI suggestions
+                      </div>
+                      {fuzzySuggestions.map(s => {
+                        const scoreColor = s.score >= 80 ? "hsl(var(--pos))" : s.score >= 60 ? "hsl(var(--warn))" : "hsl(var(--muted-foreground))";
+                        const scoreBg = s.score >= 80 ? "hsl(var(--pos) / 0.14)" : s.score >= 60 ? "hsl(var(--warn) / 0.18)" : "hsl(var(--muted))";
+                        return (
+                          <SuggestionCard
+                            key={`${s.type}_${s.customer_id}`}
+                            type={s.type} id={s.customer_id} name={s.customer_name}
+                            score={s.score} scoreColor={scoreColor} scoreBg={scoreBg}
+                            onClick={() => saveVpaMapping(selectedVpa.vpa, s.customer_id, s.type, s.customer_name)}
+                          />
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {/* Search all */}
+                  <div style={{ margin: "14px 2px 8px", fontSize: 11, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                    Search all
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, padding: "4px 10px", marginBottom: 8 }}>
+                    <Search size={13} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
+                    <input
+                      placeholder="Name or customer IDâ€¦"
+                      value={customerSearch}
+                      onChange={e => setCustomerSearch(e.target.value)}
+                      autoFocus
+                      style={{ flex: 1, background: "transparent", border: 0, outline: 0, fontSize: 12.5, padding: "3px 0", color: "hsl(var(--foreground))" }}
+                    />
+                  </div>
+                  {filteredCustomers.length === 0 ? (
+                    <div style={{ padding: 16, textAlign: "center", fontSize: 12, color: "hsl(var(--muted-foreground))" }}>No customers found</div>
+                  ) : filteredCustomers.map(c => (
+                    <SuggestionCard
+                      key={`${c.type}_${c.customer_id}`}
+                      type={c.type} id={c.customer_id} name={c.customer_name}
+                      meta={`bal ${fmt(c.balance)}`}
+                      onClick={() => saveVpaMapping(selectedVpa.vpa, c.customer_id, c.type, c.customer_name)}
+                    />
+                  ))}
+                </>
+              )}
+
+              {/* Saved tab */}
+              {cockpitTab === "saved" && (
+                vpaMappings.length === 0 ? (
+                  <EmptyState icon={<Database size={18} />} title="No saved mappings yet" body="Map a VPA to a customer and it'll appear here." />
+                ) : (
+                  <div style={{ marginTop: -12, marginLeft: -12, marginRight: -12 }}>
+                    {vpaMappings.map(m => (
+                      <div
+                        key={m.id}
+                        style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", padding: "9px 14px", borderBottom: "1px solid hsl(var(--border) / 0.5)", transition: "background-color .12s" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "hsl(var(--secondary))"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 2 }}>
+                            <TypeBadge type={m.customer_type} />
+                            <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 11, color: "hsl(var(--muted-foreground))" }}>#{m.customer_id}</span>
+                            <span style={{ fontSize: 12.5, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.customer_name}</span>
+                          </div>
+                          <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 11, color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.upi_vpa}</div>
+                        </div>
+                        <IBtn onClick={() => handleDeleteVpaMapping(m.id)} title="Remove" danger>
+                          <Trash2 size={13} />
+                        </IBtn>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* â”€â”€ Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {detailTxn && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "grid", placeItems: "center", padding: 40, background: "hsl(var(--foreground) / 0.25)", backdropFilter: "blur(2px)" }} onClick={() => setDetailTxn(null)}>
+          <div style={{ width: "100%", maxWidth: 460, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "0 18px 50px rgba(0,0,0,.15)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid hsl(var(--border))" }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>Transaction details</h3>
+              <IBtn onClick={() => setDetailTxn(null)}><X size={14} /></IBtn>
+            </div>
+            <div style={{ padding: "4px 18px", maxHeight: "65vh", overflowY: "auto" }}>
+              {([
+                ["Ref",      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }}>{detailTxn.upi_ref_no}</span>],
+                ["Date",     new Date(detailTxn.transaction_date + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })],
+                ["Amount",   <span style={{ color: detailTxn.transaction_type === "credit" ? "hsl(var(--pos))" : "hsl(var(--neg))", fontWeight: 500, fontSize: 15, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>{detailTxn.transaction_type === "credit" ? "+" : "âˆ’"}{fmtFull(parseFloat(detailTxn.amount))}</span>],
+                ["Source",   <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 500, background: detailTxn.source === "gmail" ? "hsl(220 60% 60% / 0.14)" : "hsl(var(--warn) / 0.18)", color: detailTxn.source === "gmail" ? "#5b8db8" : "hsl(var(--warn))" }}>{detailTxn.source === "gmail" ? <Mail size={10} /> : <FileText size={10} />} {detailTxn.source === "gmail" ? "Gmail" : "XLS"}</span>],
+                ["Sender",   detailTxn.sender_name || "â€”"],
+                ["VPA",      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }}>{detailTxn.sender_vpa || "â€”"}</span>],
+                ["Notes",    detailTxn.notes || "â€”"],
+                ["Customer", detailTxn.mapped_customer_id
+                  ? <span style={{ color: "hsl(var(--pos))" }}><span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", textTransform: "uppercase" as const, fontSize: 10, marginRight: 6 }}>{detailTxn.mapped_customer_type}</span>#{detailTxn.mapped_customer_id} Â· {detailTxn.mapped_customer_name}</span>
+                  : <span style={{ color: "hsl(var(--muted-foreground))", fontStyle: "italic" }}>not mapped</span>],
+              ] as [string, ReactNode][]).map(([k, v]) => (
+                <div key={k} style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: 12, alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid hsl(var(--border) / 0.4)", fontSize: 12.5 }}>
+                  <span style={{ color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".06em", fontSize: 10.5 }}>{k}</span>
+                  <span>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: "12px 18px", borderTop: "1px solid hsl(var(--border))", background: "hsl(var(--secondary))", display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={() => setDetailTxn(null)} style={smBtn}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* â”€â”€ Delete Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {deleteTxn && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "grid", placeItems: "center", padding: 40, background: "hsl(var(--foreground) / 0.25)", backdropFilter: "blur(2px)" }} onClick={() => setDeleteTxn(null)}>
+          <div style={{ width: "100%", maxWidth: 400, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "0 18px 50px rgba(0,0,0,.15)" }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: 22 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: "hsl(var(--neg) / 0.15)", color: "hsl(var(--neg))", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <Trash2 size={16} />
+                </div>
+                <div>
+                  <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 500 }}>Delete transaction</h3>
+                  <p style={{ margin: 0, fontSize: 13, color: "hsl(var(--muted-foreground))", lineHeight: 1.5 }}>
+                    Remove UPI ref <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }}>{deleteTxn.upi_ref_no}</span> for{" "}
+                    <b style={{ color: "hsl(var(--foreground) / 0.7)" }}>{fmtFull(parseFloat(deleteTxn.amount))}</b>? This cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={() => setDeleteTxn(null)} style={smBtn}>Cancel</button>
+                <button onClick={handleDelete} style={{ ...smBtn, background: "hsl(var(--neg))", border: "none", color: "#fff" }}>Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* â”€â”€ Toast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {toast && (
-        <div className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
-          toast.type === "success"
-            ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
-            : "bg-red-500/20 border border-red-500/40 text-red-400"
-        }`}>
-          {toast.type === "success" ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+        <div style={{ position: "fixed", left: "50%", bottom: 24, transform: "translateX(-50%)", background: "hsl(var(--foreground))", color: "hsl(var(--background))", padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, boxShadow: "0 18px 50px rgba(0,0,0,.15)", display: "flex", alignItems: "center", gap: 8, zIndex: 100, whiteSpace: "nowrap" }}>
+          {toast.type === "success" ? <Check size={14} /> : <X size={14} />}
           {toast.msg}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Header */}
+// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function TxRow({ t, isSel, SrcIcon, onToggle, onView, onMap, onUnmap, onDelete }: {
+  t: UpiTxn;
+  isSel: boolean;
+  SrcIcon: ElementType;
+  onToggle: () => void;
+  onView: () => void;
+  onMap: () => void;
+  onUnmap: () => void;
+  onDelete: () => void;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "20px 26px 1fr auto auto",
+        gap: 10, alignItems: "center",
+        padding: "9px 14px",
+        borderBottom: "1px solid hsl(var(--border) / 0.5)",
+        background: isSel ? "hsl(var(--primary) / 0.12)" : hov ? "hsl(var(--secondary))" : undefined,
+        transition: "background-color .12s",
+      }}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+    >
+      {/* Checkbox */}
+      <button
+        onClick={onToggle}
+        style={{ width: 16, height: 16, borderRadius: 4, border: isSel ? "none" : "1.5px solid hsl(var(--border))", background: isSel ? "hsl(var(--foreground))" : "hsl(var(--card))", display: "grid", placeItems: "center", color: "hsl(var(--background))", cursor: "pointer", flexShrink: 0 }}
+      >
+        {isSel && <Check size={9} />}
+      </button>
+
+      {/* Source icon */}
+      <div style={{ width: 26, height: 26, borderRadius: 6, display: "grid", placeItems: "center", background: t.source === "gmail" ? "hsl(220 60% 60% / 0.14)" : "hsl(var(--warn) / 0.18)", color: t.source === "gmail" ? "#5b8db8" : "hsl(var(--warn))", flexShrink: 0 }}>
+        <SrcIcon size={13} />
+      </div>
+
+      {/* Body */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+          {t.sender_name || <span style={{ fontSize: 10, fontStyle: "italic", color: "hsl(var(--muted-foreground) / 0.6)", fontWeight: 400 }}>no sender name</span>}
+        </div>
+        <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", fontFamily: "\"Geist Mono\", ui-monospace, monospace", marginTop: 1, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{t.sender_vpa || "â€”"}</span>
+          <span style={{ width: 3, height: 3, borderRadius: 999, background: "hsl(var(--muted-foreground) / 0.4)", display: "inline-block", flexShrink: 0 }} />
+          <span>{t.upi_ref_no.slice(-8)}</span>
+          {t.mapped_customer_id && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 7px", borderRadius: 999, background: "hsl(var(--pos) / 0.14)", color: "hsl(var(--pos))", fontFamily: "inherit", fontWeight: 500, fontSize: 10.5 }}>
+              <Check size={9} />
+              <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 9, padding: "0 3px", borderRadius: 3, background: "rgba(255,255,255,.45)", color: "hsl(var(--foreground) / 0.6)", textTransform: "uppercase" }}>{t.mapped_customer_type}</span>
+              {t.mapped_customer_name || "#" + t.mapped_customer_id}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Amount */}
+      <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontWeight: 500, fontSize: 14, letterSpacing: "-.01em", color: t.transaction_type === "credit" ? "hsl(var(--pos))" : "hsl(var(--neg))", whiteSpace: "nowrap" }}>
+        {t.transaction_type === "credit" ? "+" : "âˆ’"}â‚¹{Math.round(parseFloat(t.amount)).toLocaleString("en-IN")}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 1, opacity: hov || isSel ? 1 : 0, transition: "opacity .12s" }}>
+        <IBtn onClick={onView} title="Details"><Eye size={13} /></IBtn>
+        <IBtn onClick={onMap} title="Map to customer"><Link2 size={13} /></IBtn>
+        {t.mapped_customer_id && <IBtn onClick={onUnmap} title="Remove mapping"><Unlink size={13} /></IBtn>}
+        <IBtn onClick={onDelete} title="Delete" danger><Trash2 size={13} /></IBtn>
+      </div>
+    </div>
+  );
+}
+
+function VpaCard({ v, isMapped, onClick }: { v: UniqueVpa; isMapped: boolean; onClick: () => void }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ background: "hsl(var(--card))", border: `1px solid ${hov ? "hsl(var(--muted-foreground))" : "hsl(var(--border))"}`, borderRadius: 10, padding: "10px 12px", marginBottom: 7, cursor: "pointer", transition: "border-color .12s" }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12, color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{v.vpa}</span>
+        {isMapped && <Check size={14} style={{ color: "hsl(var(--pos))", flexShrink: 0, marginLeft: 6 }} />}
+      </div>
+      <div style={{ fontSize: 13.5, fontWeight: 500, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {v.sender_name || <span style={{ color: "hsl(var(--muted-foreground))", fontWeight: 400, fontStyle: "italic" }}>no name</span>}
+      </div>
+      <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 5, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
+        <b style={{ color: "hsl(var(--foreground) / 0.65)" }}>{v.count}</b>Ã— txns
+      </div>
+    </div>
+  );
+}
+
+function SuggestionCard({ type, id, name, score, scoreColor, scoreBg, meta, onClick }: {
+  type: string; id: number; name: string;
+  score?: number; scoreColor?: string; scoreBg?: string;
+  meta?: string;
+  onClick: () => void;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ background: hov ? "hsl(var(--card))" : "hsl(var(--secondary))", border: `1px solid ${hov ? "hsl(var(--muted-foreground))" : "hsl(var(--border))"}`, borderRadius: 8, padding: "9px 11px", marginBottom: 5, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", cursor: "pointer", transition: "background-color .12s, border-color .12s" }}
+    >
       <div>
-        <h1 className="text-2xl font-bold text-foreground">UPI Transactions</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Merged view of Gmail-imported and XLS-imported HDFC UPI transactions
-        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+          <TypeBadge type={type} />
+          <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 11, color: "hsl(var(--muted-foreground))" }}>#{id}</span>
+          {score !== undefined && (
+            <div style={{ marginLeft: "auto", width: 56, height: 3, background: "hsl(var(--muted))", borderRadius: 999, overflow: "hidden" }}>
+              <div style={{ width: score + "%", height: "100%", borderRadius: 999, background: scoreColor }} />
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>{name}</div>
       </div>
+      {score !== undefined && (
+        <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 11, padding: "2px 7px", borderRadius: 999, fontWeight: 500, background: scoreBg, color: scoreColor, whiteSpace: "nowrap" }}>
+          {Math.round(score)}%
+        </span>
+      )}
+      {meta && (
+        <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 11, color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>{meta}</span>
+      )}
+    </div>
+  );
+}
 
-      {/* Summary pills */}
-      <div className="flex flex-wrap gap-3">
-        {[
-          { label: "Total",       value: total,     color: "bg-muted text-foreground border border-border" },
-          { label: "Gmail",       value: gmailCount, color: "bg-primary/20 text-foreground" },
-          { label: "XLS",         value: csvCount,   color: "bg-amber-500/12 text-amber-700 dark:text-amber-400" },
-          { label: "Mapped",      value: mapped,     color: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400" },
-          {
-            label: "Total Credit",
-            value: `₹${totalAmt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
-            color: "bg-accent/50 text-foreground",
-          },
-        ].map(({ label, value, color }) => (
-          <div key={label} className={`px-4 py-2 rounded-xl text-sm font-semibold ${color}`}>
-            {label}: {value}
-          </div>
-        ))}
+function EmptyState({ icon, title, body }: { icon: ReactNode; title: string; body: string }) {
+  return (
+    <div style={{ textAlign: "center", padding: "40px 20px", color: "hsl(var(--muted-foreground))" }}>
+      <div style={{ width: 44, height: 44, margin: "0 auto 12px", background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderRadius: 12, display: "grid", placeItems: "center" }}>
+        {icon}
       </div>
-
-      {/* Two-column layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-[3fr_2fr] gap-5 items-start">
-
-        {/* ── LEFT: Transaction Table ── */}
-        <div className="space-y-3">
-          {/* Filters */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground">From</label>
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                className="rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50" />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground">To</label>
-              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                className="rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50" />
-            </div>
-            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as any)}
-              className="rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50">
-              <option value="">All Sources</option>
-              <option value="gmail">Gmail</option>
-              <option value="csv">XLS</option>
-            </select>
-            <select value={mappedFilter} onChange={(e) => setMappedFilter(e.target.value as any)}
-              className="rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50">
-              <option value="">All</option>
-              <option value="true">Mapped</option>
-              <option value="false">Unmapped</option>
-            </select>
-            {(dateFrom || dateTo || sourceFilter || mappedFilter) && (
-              <button onClick={() => { setDateFrom(""); setDateTo(""); setSourceFilter(""); setMappedFilter(""); }}
-                className="text-xs text-muted-foreground hover:text-foreground underline">Clear</button>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-secondary/30">
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Ref No</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground">Amount</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
-                  ) : txns.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center">
-                        <p className="text-muted-foreground text-sm">No transactions yet.</p>
-                        <p className="text-muted-foreground/60 text-xs mt-1">
-                          Go to Settings → UPI Data Import to connect Gmail or upload an XLS file.
-                        </p>
-                      </td>
-                    </tr>
-                  ) : txns.map((t) => (
-                    <tr key={t.id} className="border-b border-border/50 hover:bg-secondary/20 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{t.upi_ref_no}</td>
-                      <td className="px-4 py-3 text-sm text-foreground">{t.transaction_date}</td>
-                      <td className="px-4 py-3 text-right font-semibold">
-                        <span className={t.transaction_type === "credit" ? "text-emerald-400" : "text-red-400"}>
-                          {t.transaction_type === "debit" ? "−" : "+"}₹{parseFloat(t.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-foreground">
-                        <div>{t.sender_name || "—"}</div>
-                        {t.mapped_customer_id && (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <CheckCircle className="h-3 w-3 text-emerald-400 flex-shrink-0" />
-                            <span className="text-xs text-emerald-400">
-                              {t.mapped_customer_type?.toUpperCase()} #{t.mapped_customer_id}
-                              {t.mapped_customer_name ? ` — ${t.mapped_customer_name}` : ""}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => setDetailTxn(t)}
-                            className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                            title="View details">
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => openMapModal(t)}
-                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                            title="Map to customer">
-                            <Link2 className="h-3.5 w-3.5" />
-                          </button>
-                          {t.mapped_customer_id && (
-                            <button onClick={() => handleUnmap(t)}
-                              className="p-1.5 rounded-lg hover:bg-amber-500/15 text-muted-foreground hover:text-amber-400 transition-colors"
-                              title="Remove mapping">
-                              <Unlink className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <button onClick={() => setDeleteTxn(t)}
-                            className="p-1.5 rounded-lg hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors"
-                            title="Delete">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {txns.length > 0 && (
-              <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
-                Showing {txns.length} of {total} transactions
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── RIGHT: Mapping Panel (two components, vertical) ── */}
-        <div className="space-y-4">
-
-          {/* ── Component 1: UPI ID → Customer (side-by-side) ── */}
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="px-4 py-3 border-b border-border bg-secondary/30 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="font-semibold text-foreground text-sm">UPI ID → Customer</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Select a UPI ID, then choose a customer on the right</p>
-              </div>
-              <button
-                onClick={() => setShowUnmappedOnly((v) => !v)}
-                className={`text-xs px-2.5 py-1 rounded-lg border transition-colors flex-shrink-0 ${
-                  showUnmappedOnly
-                    ? "bg-foreground text-background border-foreground"
-                    : "border-border text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                Unmapped only
-              </button>
-            </div>
-            <div className="grid grid-cols-2 divide-x divide-border" style={{ minHeight: 200 }}>
-
-              {/* Left: VPA list */}
-              <div className="overflow-y-auto" style={{ maxHeight: 380 }}>
-                {vpaLoading ? (
-                  <div className="p-4 text-center text-xs text-muted-foreground">Loading…</div>
-                ) : uniqueVpas.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-muted-foreground">No UPI IDs in last 6 months.</div>
-                ) : uniqueVpas.filter((v) => !showUnmappedOnly || !vpaMappings.find((m) => m.upi_vpa === v.vpa)).map((v) => {
-                  const existing = vpaMappings.find((m) => m.upi_vpa === v.vpa);
-                  const isSelected = selectedVpa?.vpa === v.vpa;
-                  return (
-                    <button
-                      key={v.vpa}
-                      onClick={() => handleSelectVpa(v)}
-                      className={`w-full text-left px-3 py-2.5 border-b border-border/50 transition-colors ${
-                        isSelected ? "bg-primary/20 border-l-2 border-l-foreground/30" : "hover:bg-muted/50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-1 mb-0.5">
-                        <p className="text-xs font-mono text-foreground truncate leading-tight">{v.vpa}</p>
-                        {existing && <CheckCircle className="h-3 w-3 text-emerald-400 flex-shrink-0 mt-0.5" />}
-                      </div>
-                      {v.sender_name && (
-                        <p className="text-xs text-muted-foreground truncate">{v.sender_name}</p>
-                      )}
-                      <span className="text-xs text-muted-foreground/60">{v.count}×</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Right: Customer picker (or placeholder) */}
-              {selectedVpa ? (
-                <div className="overflow-y-auto p-3 space-y-3" style={{ maxHeight: 380 }}>
-                  {/* Selected VPA label */}
-                  <div className="flex items-center justify-between gap-1">
-                    <p className="text-xs font-mono text-foreground/70 truncate">{selectedVpa.vpa}</p>
-                    <button
-                      onClick={() => { setSelectedVpa(null); setFuzzySuggestions([]); setCustomerSearch(""); }}
-                      className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground flex-shrink-0"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-
-                  {/* Fuzzy suggestions */}
-                  {fuzzySuggestions.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-1.5">Suggestions</p>
-                      <div className="space-y-1">
-                        {fuzzySuggestions.map((s) => (
-                          <button
-                            key={`${s.type}_${s.customer_id}`}
-                            onClick={() => handleMapFromSuggestion(s)}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border hover:border-border hover:bg-muted/50 transition-colors text-left group"
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1 mb-1">
-                                <span className={`text-xs px-1 py-0.5 rounded font-medium flex-shrink-0 ${
-                                  s.type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
-                                }`}>{s.type.toUpperCase()}</span>
-                                <span className="text-xs text-foreground truncate">#{s.customer_id}</span>
-                              </div>
-                              <p className="text-xs text-foreground truncate">{s.customer_name}</p>
-                              <div className="mt-1 h-0.5 rounded-full bg-secondary overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full ${s.score >= 80 ? "bg-emerald-500" : s.score >= 60 ? "bg-amber-500" : "bg-muted-foreground"}`}
-                                  style={{ width: `${s.score}%` }}
-                                />
-                              </div>
-                              <p className="text-xs text-muted-foreground/60 mt-0.5">{s.score.toFixed(0)}%</p>
-                            </div>
-                            <Link2 className="h-3 w-3 text-muted-foreground group-hover:text-foreground flex-shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Search */}
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Search</p>
-                    <div className="relative mb-1.5">
-                      <Search className="absolute left-2 top-2 h-3 w-3 text-muted-foreground pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="Name or ID…"
-                        value={customerSearch}
-                        onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
-                      />
-                    </div>
-                    <div className="space-y-0.5 max-h-36 overflow-y-auto">
-                      {filteredCustomers.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-2">No results.</p>
-                      ) : filteredCustomers.map((c) => (
-                        <button
-                          key={`${c.type}_${c.customer_id}`}
-                          onClick={() => handleMapFromSearch(c)}
-                          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-secondary/60 transition-colors text-left"
-                        >
-                          <span className={`text-xs px-1 py-0.5 rounded font-medium flex-shrink-0 ${
-                            c.type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
-                          }`}>{c.type.toUpperCase()}</span>
-                          <span className="text-xs text-foreground truncate">#{c.customer_id} {c.customer_name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-4 text-center">
-                  <p className="text-xs text-muted-foreground/50">← Select a UPI ID</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Component 2: Saved Mappings (Name Map) ── */}
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="px-4 py-3 border-b border-border bg-secondary/30">
-              <h2 className="font-semibold text-foreground text-sm">
-                Name Map
-                {vpaMappings.length > 0 && (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">({vpaMappings.length})</span>
-                )}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Saved UPI ID → Customer mappings</p>
-            </div>
-            {vpaMappings.length === 0 ? (
-              <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-                No mappings saved yet. Map a UPI ID above.
-              </div>
-            ) : (
-              <div className="divide-y divide-border max-h-64 overflow-y-auto">
-                {vpaMappings.map((m) => (
-                  <div key={m.id} className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-secondary/20 transition-colors">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-xs px-1 py-0.5 rounded font-medium flex-shrink-0 ${
-                          m.customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
-                        }`}>{m.customer_type.toUpperCase()}</span>
-                        <span className="text-xs text-foreground font-medium truncate">
-                          #{m.customer_id}{m.customer_name ? ` — ${m.customer_name}` : ""}
-                        </span>
-                      </div>
-                      <p className="text-xs font-mono text-muted-foreground truncate">{m.upi_vpa}</p>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteVpaMapping(m.id)}
-                      className="p-1.5 rounded-lg hover:bg-red-500/15 text-muted-foreground hover:text-red-400 transition-colors flex-shrink-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-        </div>
-      </div>
-
-      {/* Transaction Detail Modal */}
-      {detailTxn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDetailTxn(null)}>
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-foreground">Transaction Details</h2>
-              <button onClick={() => setDetailTxn(null)} className="text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="space-y-2 text-sm">
-              {[
-                ["Ref No", <span className="font-mono text-xs">{detailTxn.upi_ref_no}</span>],
-                ["Date", detailTxn.transaction_date],
-                ["Amount", <span className={detailTxn.transaction_type === "credit" ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
-                  {detailTxn.transaction_type === "debit" ? "−" : "+"}₹{parseFloat(detailTxn.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </span>],
-                ["Type", <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${detailTxn.transaction_type === "credit" ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>{detailTxn.transaction_type}</span>],
-                ["Source", <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${detailTxn.source === "gmail" ? "bg-blue-500/15 text-blue-400" : "bg-amber-500/15 text-amber-400"}`}>{detailTxn.source === "gmail" ? "Gmail" : "XLS"}</span>],
-                ["Sender Name", detailTxn.sender_name || "—"],
-                ["Sender VPA", <span className="font-mono text-xs">{detailTxn.sender_vpa || "—"}</span>],
-                ["Notes", detailTxn.notes || "—"],
-                ["Customer", detailTxn.mapped_customer_id
-                  ? <span className="text-emerald-400">{detailTxn.mapped_customer_type?.toUpperCase()} #{detailTxn.mapped_customer_id}{detailTxn.mapped_customer_name ? ` — ${detailTxn.mapped_customer_name}` : ""}</span>
-                  : <span className="text-muted-foreground/50">Not mapped</span>],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="flex items-start justify-between gap-4">
-                  <span className="text-muted-foreground flex-shrink-0">{label}</span>
-                  <span className="text-foreground text-right">{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Map Customer Modal */}
-      {mapTxn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-foreground">Map to Customer</h2>
-              <button onClick={() => setMapTxn(null)} className="text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="rounded-xl bg-secondary/30 px-4 py-3 mb-4 text-sm space-y-1">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Ref</span>
-                <span className="font-mono text-xs text-foreground">{mapTxn.upi_ref_no}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Amount</span>
-                <span className={`font-semibold ${mapTxn.transaction_type === "credit" ? "text-emerald-400" : "text-red-400"}`}>
-                  {mapTxn.transaction_type === "debit" ? "−" : "+"}₹{parseFloat(mapTxn.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-              {mapTxn.sender_name && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Sender</span>
-                  <span className="text-foreground">{mapTxn.sender_name}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex rounded-xl border border-border overflow-hidden mb-3">
-              {(["edi", "iop"] as const).map((t) => (
-                <button key={t}
-                  onClick={() => { setMapType(t); setMapCustomerId(""); loadCustomers(t); }}
-                  className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                    mapType === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
-                  }`}>
-                  {t.toUpperCase()}
-                </button>
-              ))}
-            </div>
-            <div className="relative mb-4">
-              <select value={mapCustomerId}
-                onChange={(e) => setMapCustomerId(e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full appearance-none rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 pr-8">
-                <option value="">— Select customer —</option>
-                {customers.map((c) => (
-                  <option key={c.customer_id} value={c.customer_id}>
-                    #{c.customer_id} — {c.customer_name || "Unnamed"}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-3 h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setMapTxn(null)}
-                className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-secondary transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleMapSave} disabled={saving || mapCustomerId === ""}
-                className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirm Modal */}
-      {deleteTxn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <div className="flex items-start gap-3 mb-5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/15 flex-shrink-0">
-                <Trash2 className="h-4 w-4 text-red-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-foreground">Delete Transaction</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Remove UPI ref <span className="font-mono text-xs">{deleteTxn.upi_ref_no}</span>? This cannot be undone.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setDeleteTxn(null)}
-                className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-secondary transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleDelete}
-                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors">
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div style={{ fontSize: 13.5, fontWeight: 500, color: "hsl(var(--foreground) / 0.7)", marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 12.5 }}>{body}</div>
     </div>
   );
 }
