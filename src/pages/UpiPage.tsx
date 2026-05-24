@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import type { CSSProperties, ElementType, ReactNode } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
 import {
@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { upiApi } from "@/services/api";
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface UpiTxn {
   id: number;
@@ -53,13 +53,13 @@ interface FuzzySuggestion {
   balance: number;
 }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) => "â‚¹" + Math.round(n).toLocaleString("en-IN");
+const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 const fmtFull = (n: number) =>
-  "â‚¹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// â”€â”€ Toast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Toast ─────────────────────────────────────────────────────────────────────
 
 function useToast() {
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -72,7 +72,7 @@ function useToast() {
   return { toast, show };
 }
 
-// â”€â”€ TypeBadge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── TypeBadge ─────────────────────────────────────────────────────────────────
 
 function TypeBadge({ type }: { type: string }) {
   return (
@@ -94,7 +94,7 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-// â”€â”€ IBtn (icon button) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── IBtn (icon button) ────────────────────────────────────────────────────────
 
 function IBtn({
   onClick, title, children, danger,
@@ -123,7 +123,7 @@ function IBtn({
   );
 }
 
-// â”€â”€ Main page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function UpiPage() {
   const { toast, show } = useToast();
@@ -154,7 +154,7 @@ export default function UpiPage() {
   const [q, setQ] = useState("");
   const [cockpitTab, setCockpitTab] = useState<"map" | "saved">("map");
 
-  // â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Init ──────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     fetchTxns();
@@ -165,7 +165,7 @@ export default function UpiPage() {
 
   useEffect(() => { fetchTxns(); }, [dateFrom, dateTo, sourceFilter, mappedFilter]);
 
-  // â”€â”€ Computed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Computed ──────────────────────────────────────────────────────────────
 
   const mappedVpaSet = useMemo(() => new Set(vpaMappings.map(m => m.upi_vpa)), [vpaMappings]);
 
@@ -217,7 +217,7 @@ export default function UpiPage() {
     setSelected(next);
   };
 
-  // â”€â”€ API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── API ───────────────────────────────────────────────────────────────────
 
   async function fetchTxns() {
     setLoading(true);
@@ -314,11 +314,11 @@ export default function UpiPage() {
     }
   }
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Render ────────────────────────────────────────────────────────────────
 
   const unmappedVpaCount = uniqueVpas.filter(v => !mappedVpaSet.has(v.vpa)).length;
 
-  // â”€â”€ inline style helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── inline style helpers ──────────────────────────────────────────────────
 
   const card: CSSProperties = {
     background: "hsl(var(--card))",
@@ -367,7 +367,7 @@ export default function UpiPage() {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", background: "hsl(var(--background))" }}>
 
-      {/* â”€â”€ Summary bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Summary bar ────────────────────────────────────────────────────── */}
       <div style={{
         padding: "13px 16px",
         background: "hsl(var(--secondary))",
@@ -382,7 +382,7 @@ export default function UpiPage() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
             <span style={{ width: 5, height: 5, borderRadius: 999, background: "hsl(var(--pos))", display: "inline-block" }} />
-            Reconciliation Â· last 30 days
+            Reconciliation · last 30 days
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
             <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 24, fontWeight: 500, letterSpacing: "-.025em", lineHeight: 1 }}>
@@ -446,16 +446,16 @@ export default function UpiPage() {
         <div style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 10, padding: "10px 12px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
             <span style={{ fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".08em" }}>Total credit</span>
-            <span style={{ width: 20, height: 20, borderRadius: 5, display: "grid", placeItems: "center", background: "hsl(var(--pos) / 0.14)", color: "hsl(var(--pos))", fontSize: 12, fontWeight: 700 }}>â‚¹</span>
+            <span style={{ width: 20, height: 20, borderRadius: 5, display: "grid", placeItems: "center", background: "hsl(var(--pos) / 0.14)", color: "hsl(var(--pos))", fontSize: 12, fontWeight: 700 }}>₹</span>
           </div>
           <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 18, fontWeight: 500, letterSpacing: "-.02em", lineHeight: 1.2 }}>{fmt(totalAmt)}</div>
           <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
-            avg {txns.length ? fmt(totalAmt / txns.length) : "â‚¹0"}
+            avg {txns.length ? fmt(totalAmt / txns.length) : "₹0"}
           </div>
         </div>
       </div>
 
-      {/* â”€â”€ Two-column grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Two-column grid ────────────────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 14, padding: "14px 16px", flex: 1, overflow: "hidden" }}>
 
         {/* LEFT: Transaction list */}
@@ -467,7 +467,7 @@ export default function UpiPage() {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 500 }}>Transactions</div>
                 <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 1, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
-                  {filteredTxns.length} of {total} Â· last 30 days
+                  {filteredTxns.length} of {total} · last 30 days
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -486,7 +486,7 @@ export default function UpiPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 6, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, padding: "3px 10px", flex: 1, maxWidth: 300, minWidth: 150 }}>
                 <Search size={12} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
                 <input
-                  placeholder="Search name, VPA, refâ€¦"
+                  placeholder="Search name, VPA, ref…"
                   value={q}
                   onChange={e => setQ(e.target.value)}
                   style={{ flex: 1, background: "transparent", border: 0, outline: 0, fontSize: 12.5, padding: "3px 0", color: "hsl(var(--foreground))" }}
@@ -540,7 +540,7 @@ export default function UpiPage() {
             {/* Transaction scroll */}
             <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingBottom: 12 }}>
               {loading ? (
-                <div style={{ padding: "40px 20px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>Loadingâ€¦</div>
+                <div style={{ padding: "40px 20px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>Loading…</div>
               ) : grouped.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "40px 20px", color: "hsl(var(--muted-foreground))" }}>
                   <div style={{ width: 44, height: 44, margin: "0 auto 12px", background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderRadius: 12, display: "grid", placeItems: "center" }}>
@@ -646,7 +646,7 @@ export default function UpiPage() {
             {/* Cockpit body */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12 }}>
 
-              {/* Map VPAs tab â€” VPA list */}
+              {/* Map VPAs tab — VPA list */}
               {cockpitTab === "map" && !selectedVpa && (
                 <>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 2px" }}>
@@ -656,7 +656,7 @@ export default function UpiPage() {
                     </span>
                   </div>
                   {vpaLoading ? (
-                    <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: "hsl(var(--muted-foreground))" }}>Loadingâ€¦</div>
+                    <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: "hsl(var(--muted-foreground))" }}>Loading…</div>
                   ) : filteredVpas.length === 0 ? (
                     <EmptyState icon={<Check size={18} />} title="Nothing to map" body="All VPAs in the last 6 months are mapped." />
                   ) : filteredVpas.map(v => (
@@ -665,7 +665,7 @@ export default function UpiPage() {
                 </>
               )}
 
-              {/* Map VPAs tab â€” selected VPA with suggestions */}
+              {/* Map VPAs tab — selected VPA with suggestions */}
               {cockpitTab === "map" && selectedVpa && (
                 <>
                   {/* Selected VPA */}
@@ -679,9 +679,9 @@ export default function UpiPage() {
                         <X size={13} />
                       </button>
                     </div>
-                    <div style={{ fontSize: 13.5, fontWeight: 500, marginTop: 2 }}>{selectedVpa.sender_name || "â€”"}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 500, marginTop: 2 }}>{selectedVpa.sender_name || "—"}</div>
                     <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 5, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
-                      <b style={{ color: "hsl(var(--foreground) / 0.65)" }}>{selectedVpa.count}</b>Ã— txns
+                      <b style={{ color: "hsl(var(--foreground) / 0.65)" }}>{selectedVpa.count}</b>× txns
                     </div>
                   </div>
 
@@ -714,7 +714,7 @@ export default function UpiPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6, padding: "4px 10px", marginBottom: 8 }}>
                     <Search size={13} style={{ color: "hsl(var(--muted-foreground))", flexShrink: 0 }} />
                     <input
-                      placeholder="Name or customer IDâ€¦"
+                      placeholder="Name or customer ID…"
                       value={customerSearch}
                       onChange={e => setCustomerSearch(e.target.value)}
                       autoFocus
@@ -768,7 +768,7 @@ export default function UpiPage() {
         </div>
       </div>
 
-      {/* â”€â”€ Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Detail Modal ──────────────────────────────────────────────────────── */}
       {detailTxn && (
         <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "grid", placeItems: "center", padding: 40, background: "hsl(var(--foreground) / 0.25)", backdropFilter: "blur(2px)" }} onClick={() => setDetailTxn(null)}>
           <div style={{ width: "100%", maxWidth: 460, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "0 18px 50px rgba(0,0,0,.15)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
@@ -780,13 +780,13 @@ export default function UpiPage() {
               {([
                 ["Ref",      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }}>{detailTxn.upi_ref_no}</span>],
                 ["Date",     new Date(detailTxn.transaction_date + "T00:00:00").toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })],
-                ["Amount",   <span style={{ color: detailTxn.transaction_type === "credit" ? "hsl(var(--pos))" : "hsl(var(--neg))", fontWeight: 500, fontSize: 15, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>{detailTxn.transaction_type === "credit" ? "+" : "âˆ’"}{fmtFull(parseFloat(detailTxn.amount))}</span>],
+                ["Amount",   <span style={{ color: detailTxn.transaction_type === "credit" ? "hsl(var(--pos))" : "hsl(var(--neg))", fontWeight: 500, fontSize: 15, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>{detailTxn.transaction_type === "credit" ? "+" : "−"}{fmtFull(parseFloat(detailTxn.amount))}</span>],
                 ["Source",   <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 500, background: detailTxn.source === "gmail" ? "hsl(220 60% 60% / 0.14)" : "hsl(var(--warn) / 0.18)", color: detailTxn.source === "gmail" ? "#5b8db8" : "hsl(var(--warn))" }}>{detailTxn.source === "gmail" ? <Mail size={10} /> : <FileText size={10} />} {detailTxn.source === "gmail" ? "Gmail" : "XLS"}</span>],
-                ["Sender",   detailTxn.sender_name || "â€”"],
-                ["VPA",      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }}>{detailTxn.sender_vpa || "â€”"}</span>],
-                ["Notes",    detailTxn.notes || "â€”"],
+                ["Sender",   detailTxn.sender_name || "—"],
+                ["VPA",      <span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontSize: 12 }}>{detailTxn.sender_vpa || "—"}</span>],
+                ["Notes",    detailTxn.notes || "—"],
                 ["Customer", detailTxn.mapped_customer_id
-                  ? <span style={{ color: "hsl(var(--pos))" }}><span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", textTransform: "uppercase" as const, fontSize: 10, marginRight: 6 }}>{detailTxn.mapped_customer_type}</span>#{detailTxn.mapped_customer_id} Â· {detailTxn.mapped_customer_name}</span>
+                  ? <span style={{ color: "hsl(var(--pos))" }}><span style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", textTransform: "uppercase" as const, fontSize: 10, marginRight: 6 }}>{detailTxn.mapped_customer_type}</span>#{detailTxn.mapped_customer_id} · {detailTxn.mapped_customer_name}</span>
                   : <span style={{ color: "hsl(var(--muted-foreground))", fontStyle: "italic" }}>not mapped</span>],
               ] as [string, ReactNode][]).map(([k, v]) => (
                 <div key={k} style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: 12, alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid hsl(var(--border) / 0.4)", fontSize: 12.5 }}>
@@ -802,7 +802,7 @@ export default function UpiPage() {
         </div>
       )}
 
-      {/* â”€â”€ Delete Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Delete Modal ──────────────────────────────────────────────────────── */}
       {deleteTxn && (
         <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "grid", placeItems: "center", padding: 40, background: "hsl(var(--foreground) / 0.25)", backdropFilter: "blur(2px)" }} onClick={() => setDeleteTxn(null)}>
           <div style={{ width: "100%", maxWidth: 400, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "0 18px 50px rgba(0,0,0,.15)" }} onClick={e => e.stopPropagation()}>
@@ -828,7 +828,7 @@ export default function UpiPage() {
         </div>
       )}
 
-      {/* â”€â”€ Toast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Toast ─────────────────────────────────────────────────────────────── */}
       {toast && (
         <div style={{ position: "fixed", left: "50%", bottom: 24, transform: "translateX(-50%)", background: "hsl(var(--foreground))", color: "hsl(var(--background))", padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 500, boxShadow: "0 18px 50px rgba(0,0,0,.15)", display: "flex", alignItems: "center", gap: 8, zIndex: 100, whiteSpace: "nowrap" }}>
           {toast.type === "success" ? <Check size={14} /> : <X size={14} />}
@@ -839,7 +839,7 @@ export default function UpiPage() {
   );
 }
 
-// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function TxRow({ t, isSel, SrcIcon, onToggle, onView, onMap, onUnmap, onDelete }: {
   t: UpiTxn;
@@ -885,7 +885,7 @@ function TxRow({ t, isSel, SrcIcon, onToggle, onView, onMap, onUnmap, onDelete }
           {t.sender_name || <span style={{ fontSize: 10, fontStyle: "italic", color: "hsl(var(--muted-foreground) / 0.6)", fontWeight: 400 }}>no sender name</span>}
         </div>
         <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", fontFamily: "\"Geist Mono\", ui-monospace, monospace", marginTop: 1, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{t.sender_vpa || "â€”"}</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{t.sender_vpa || "—"}</span>
           <span style={{ width: 3, height: 3, borderRadius: 999, background: "hsl(var(--muted-foreground) / 0.4)", display: "inline-block", flexShrink: 0 }} />
           <span>{t.upi_ref_no.slice(-8)}</span>
           {t.mapped_customer_id && (
@@ -900,7 +900,7 @@ function TxRow({ t, isSel, SrcIcon, onToggle, onView, onMap, onUnmap, onDelete }
 
       {/* Amount */}
       <div style={{ fontFamily: "\"Geist Mono\", ui-monospace, monospace", fontWeight: 500, fontSize: 14, letterSpacing: "-.01em", color: t.transaction_type === "credit" ? "hsl(var(--pos))" : "hsl(var(--neg))", whiteSpace: "nowrap" }}>
-        {t.transaction_type === "credit" ? "+" : "âˆ’"}â‚¹{Math.round(parseFloat(t.amount)).toLocaleString("en-IN")}
+        {t.transaction_type === "credit" ? "+" : "−"}₹{Math.round(parseFloat(t.amount)).toLocaleString("en-IN")}
       </div>
 
       {/* Actions */}
@@ -931,7 +931,7 @@ function VpaCard({ v, isMapped, onClick }: { v: UniqueVpa; isMapped: boolean; on
         {v.sender_name || <span style={{ color: "hsl(var(--muted-foreground))", fontWeight: 400, fontStyle: "italic" }}>no name</span>}
       </div>
       <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 5, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
-        <b style={{ color: "hsl(var(--foreground) / 0.65)" }}>{v.count}</b>Ã— txns
+        <b style={{ color: "hsl(var(--foreground) / 0.65)" }}>{v.count}</b>× txns
       </div>
     </div>
   );

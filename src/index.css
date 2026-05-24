@@ -41,6 +41,10 @@
     /* Radius */
     --radius: 0.5rem;
 
+    /* Typography */
+    --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
     /* Semantic */
     --pos:   140 17% 52%;   /* #6f9a7c  income green  */
     --neg:    15 39% 61%;   /* #c98370  expense red   */
