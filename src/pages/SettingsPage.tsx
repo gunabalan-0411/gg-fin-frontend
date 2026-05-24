@@ -175,7 +175,7 @@ function RestoreModal({ restore, onConfirm, onClose }: { restore: RestoreState; 
             <AlertCircle size={22} style={{ color:"hsl(var(--neg))", flexShrink:0 }}/>
             <p style={{ margin:0, fontWeight:600, fontSize:16, color:"hsl(var(--foreground))" }}>Restore Failed</p>
           </div>
-          <p style={{ margin:"0 0 20px", fontSize:13, color:"hsl(var(--muted-foreground))", wordBreak:"break-words" }}>{restore.message}</p>
+          <p style={{ margin:"0 0 20px", fontSize:13, color:"hsl(var(--muted-foreground))", wordBreak:"break-word" }}>{restore.message}</p>
           <div style={{ display:"flex", justifyContent:"flex-end" }}><Btn onClick={onClose}>Close</Btn></div>
         </>}
       </div>
