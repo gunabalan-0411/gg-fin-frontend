@@ -5,6 +5,7 @@ import Header from "./Header";
 import MobileNav from "./MobileNav";
 import ErrorBoundary from "./ErrorBoundary";
 import OcrPage from "@/pages/OcrPage";
+import VoicePage from "@/pages/VoicePage";
 import { useIsMobile, useIsTablet } from "@/hooks/useBreakpoint";
 import { cn } from "@/utils";
 
@@ -16,6 +17,7 @@ export default function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isCompact = isMobile || isTablet;
   const isOcr = pathname === "/ocr";
+  const isVoice = pathname === "/voice";
 
   return (
     /* 100dvh accounts for mobile browser chrome (address bar) shrinking the viewport */
@@ -64,8 +66,13 @@ export default function Layout() {
           <OcrPage />
         </div>
 
-        {/* All other routes — only rendered when not on /ocr */}
-        {!isOcr && (
+        {/* Voice: always mounted so recording state survives tab switches */}
+        <div className={cn("flex-1 overflow-hidden min-h-0", !isVoice && "hidden")}>
+          <VoicePage />
+        </div>
+
+        {/* All other routes — only rendered when not on /ocr or /voice */}
+        {!isOcr && !isVoice && (
           <main
             className={cn(
               "flex-1 overflow-y-auto overscroll-contain",
