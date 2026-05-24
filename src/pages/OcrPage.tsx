@@ -117,10 +117,12 @@ function CustomerCombobox({
   row,
   onChange,
   fetchSuggestions,
+  compact,
 }: {
   row: Row;
   onChange: (name: string, id: number | null) => void;
   fetchSuggestions?: (query: string) => Promise<Suggestion[]>;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [liveSuggestions, setLiveSuggestions] = useState<Suggestion[]>([]);
@@ -140,7 +142,11 @@ function CustomerCombobox({
     }, 200);
   };
 
-  const suggestions = fetchSuggestions ? liveSuggestions : row.customer_suggestions;
+  // When fetchSuggestions is provided: show live results once user has typed (>=2 chars),
+  // fall back to OCR-extracted suggestions before that.
+  const suggestions = fetchSuggestions
+    ? liveSuggestions.length > 0 ? liveSuggestions : row.customer_suggestions
+    : row.customer_suggestions;
 
   return (
     <div className="relative flex-1 min-w-0">
@@ -150,11 +156,18 @@ function CustomerCombobox({
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 160)}
-        className={`w-full text-sm rounded-lg border px-3 py-1.5 bg-background focus:outline-none focus:ring-2 pr-7 ${
-          row.customer_id
-            ? "border-green-500/40 focus:ring-green-500/20"
-            : "border-yellow-500/40 focus:ring-yellow-500/20"
-        }`}
+        className={compact
+          ? `w-full text-xs rounded border px-1.5 py-1 bg-transparent focus:outline-none focus:bg-background focus:ring-1 pr-5 transition-colors ${
+              row.customer_id
+                ? "border-transparent focus:border-emerald-500/30 focus:ring-emerald-500/10"
+                : "border-transparent focus:border-amber-500/30 focus:ring-amber-500/10"
+            }`
+          : `w-full text-sm rounded-lg border px-3 py-1.5 bg-background focus:outline-none focus:ring-2 pr-7 ${
+              row.customer_id
+                ? "border-green-500/40 focus:ring-green-500/20"
+                : "border-yellow-500/40 focus:ring-yellow-500/20"
+            }`
+        }
         placeholder="Customer name…"
       />
       {!row.customer_id && (
@@ -562,6 +575,118 @@ function AddRowModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── DesktopRow ────────────────────────────────────────────────────────────────
+// Table-style single-line record row for desktop view.
+function DesktopRow({
+  row,
+  onUpdate,
+  onDelete,
+  fetchSuggestions,
+}: {
+  row: Row;
+  onUpdate: (uid: string, patch: Partial<Row>) => void;
+  onDelete: (uid: string) => void;
+  fetchSuggestions?: (query: string) => Promise<Suggestion[]>;
+}) {
+  return (
+    <div
+      className={`grid items-center px-4 py-2 gap-2 group hover:bg-muted/30 transition-colors ${
+        !row.customer_id ? "bg-amber-500/5" : ""
+      }`}
+      style={{ gridTemplateColumns: "14px 1fr 96px 38px 68px 76px 28px" }}
+    >
+      {/* Confidence dot */}
+      <div
+        className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${confidenceDot(row.confidence_score)}`}
+        title={`Confidence: ${Math.round(row.confidence_score * 100)}%`}
+      />
+
+      {/* Customer combobox */}
+      <CustomerCombobox
+        row={row}
+        onChange={(name, id) => onUpdate(row.uid, { customer_name: name, customer_id: id })}
+        fetchSuggestions={fetchSuggestions}
+        compact
+      />
+
+      {/* Date */}
+      <input
+        type="date"
+        value={ddmmyyyyToInput(row.collection_date)}
+        onChange={(e) => onUpdate(row.uid, { collection_date: inputToDdmmyyyy(e.target.value) })}
+        className="text-xs rounded-md border border-transparent px-1.5 py-1 bg-transparent hover:border-border hover:bg-background focus:outline-none focus:border-border focus:bg-background focus:ring-1 focus:ring-foreground/10 w-full"
+      />
+
+      {/* Product type */}
+      <button
+        onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI" })}
+        className={`text-[10.5px] px-1.5 py-1 rounded-md font-bold transition-colors text-center ${
+          row.product_type === "IOP"
+            ? "bg-accent/60 text-foreground/70"
+            : "bg-primary/25 text-foreground/70"
+        }`}
+      >
+        {row.product_type}
+      </button>
+
+      {/* Mode + paid */}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => {
+            const next = row.payment_mode === "CASH" ? "ONLINE" : "CASH";
+            onUpdate(row.uid, { payment_mode: next, is_paid: next === "CASH" });
+          }}
+          className={`text-[10.5px] px-1.5 py-1 rounded-md font-bold transition-colors flex-shrink-0 ${
+            row.payment_mode === "ONLINE"
+              ? "bg-sky-500/15 text-sky-700 dark:text-sky-400"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {row.payment_mode === "ONLINE" ? "ONL" : "CSH"}
+        </button>
+        {row.payment_mode === "ONLINE" && (
+          <button
+            onClick={() => onUpdate(row.uid, { is_paid: !row.is_paid })}
+            title={row.is_paid ? "Paid" : "Unpaid"}
+            className={`flex items-center justify-center h-5 w-5 rounded flex-shrink-0 transition-all ${
+              row.is_paid
+                ? "bg-emerald-500 border border-emerald-500"
+                : "bg-transparent border border-amber-500/60"
+            }`}
+          >
+            {row.is_paid ? (
+              <svg viewBox="0 0 10 8" className="h-2.5 w-2.5 fill-none">
+                <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500/60" />
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Amount */}
+      <div className="flex items-center justify-end gap-0.5">
+        <span className="text-xs text-muted-foreground">₹</span>
+        <input
+          type="number"
+          value={row.amount || ""}
+          onChange={(e) => onUpdate(row.uid, { amount: Number(e.target.value) })}
+          className="w-14 text-xs font-semibold font-mono text-right bg-transparent focus:outline-none focus:bg-background focus:rounded focus:px-1 focus:border focus:border-border"
+        />
+      </div>
+
+      {/* Delete */}
+      <button
+        onClick={() => onDelete(row.uid)}
+        className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
     </div>
   );
 }
@@ -1159,7 +1284,7 @@ export default function OcrPage() {
               row={row}
               onUpdate={updateRow}
               onDelete={deleteRow}
-              fetchSuggestions={row.customer_suggestions.length === 0 ? fetchCustomerSuggestions : undefined}
+              fetchSuggestions={fetchCustomerSuggestions}
             />
           ))}
         </div>
@@ -1228,26 +1353,244 @@ export default function OcrPage() {
   // ── Desktop layout ────────────────────────────────────────────────────────
   return (
     <>
-      <div className="flex h-full overflow-hidden">
-        {/* Left: Image viewer */}
-        <div className="flex-1 flex flex-col gap-4 p-6 border-r border-border overflow-hidden min-w-0">
-          <div className="flex items-center justify-between flex-shrink-0">
-            <h1 className="text-xl font-bold">OCR Entry</h1>
-          </div>
-          {!hasSession ? (
-            <div className="flex-1 flex items-center justify-center">{uploadZone}</div>
-          ) : (
-            <>
-              <div className="flex-shrink-0">{pageControls}</div>
-              {imageArea}
-            </>
-          )}
-        </div>
+      <div className="flex flex-col h-full overflow-hidden">
 
-        {/* Right: Records */}
-        <div className="w-[460px] flex-shrink-0 flex flex-col gap-4 p-6 overflow-hidden">
-          <h1 className="text-xl font-bold flex-shrink-0">Records</h1>
-          <div className="flex-1 min-h-0">{recordsPanel}</div>
+        {/* ── Top info bar (visible when file is loaded) ── */}
+        {hasSession && (
+          <div className="flex items-center gap-3 px-5 h-11 border-b border-border bg-secondary/40 flex-shrink-0">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="text-xs font-medium text-foreground truncate max-w-[260px]">{fileName}</span>
+            <span className="text-[11px] text-muted-foreground/50 font-mono flex-shrink-0">{formatBytes(fileSize)}</span>
+            {!extracting && rows.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 flex-shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                {rows.length} records ready
+              </span>
+            )}
+            {extracting && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 flex-shrink-0">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Extracting…
+              </span>
+            )}
+            <span className="ml-auto text-[11px] text-muted-foreground/60 font-mono flex-shrink-0">
+              p.{pageIndex + 1}/{totalPages}
+            </span>
+          </div>
+        )}
+
+        {/* ── Main split ── */}
+        <div className="flex flex-1 overflow-hidden min-h-0">
+
+          {/* Left: PDF viewer */}
+          <div className="flex-1 flex flex-col gap-4 p-5 border-r border-border overflow-hidden min-w-0">
+            {!hasSession ? (
+              <>
+                <div className="flex-shrink-0">
+                  <h1 className="text-base font-semibold text-foreground">OCR Entry</h1>
+                  <p className="text-xs text-muted-foreground mt-0.5">Upload a handwritten PDF to extract records with Gemini</p>
+                </div>
+                <div className="flex-1 flex items-center justify-center">{uploadZone}</div>
+              </>
+            ) : (
+              <>
+                <div className="flex-shrink-0">{pageControls}</div>
+                {imageArea}
+              </>
+            )}
+          </div>
+
+          {/* Right: Records panel */}
+          <div className="w-[480px] flex-shrink-0 flex flex-col overflow-hidden">
+
+            {/* Records header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-shrink-0">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {rows.length > 0 ? `${rows.length} records` : "Records"}
+                </p>
+                {unassigned > 0 && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-0.5">
+                    <AlertTriangle className="h-3 w-3" />
+                    {unassigned} unassigned
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {hasSession && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add
+                  </button>
+                )}
+                {rows.length > 0 && !extracting && (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting || assignedCount === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-foreground text-background rounded-lg text-xs font-semibold hover:bg-foreground/85 disabled:opacity-50 transition-colors"
+                  >
+                    {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                    Submit{assignedCount > 0 ? ` ${assignedCount}` : ""}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Records body */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {extracting ? (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-semibold">Gemini is reading the page…</p>
+                    <p className="text-xs text-muted-foreground mt-1">Usually takes 10–20 seconds</p>
+                  </div>
+                </div>
+              ) : extractError ? (
+                <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
+                  <AlertCircle className="h-8 w-8 text-red-400" />
+                  <div>
+                    <p className="text-sm font-semibold text-red-400 mb-1">Extraction failed</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{extractError}</p>
+                  </div>
+                  <button
+                    onClick={() => { setExtractError(null); handleExtract(); }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 transition-colors"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Try again
+                  </button>
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+                  <ClipboardList className="h-10 w-10 opacity-20" />
+                  <div className="text-center">
+                    <p className="text-sm">No records yet</p>
+                    <p className="text-xs mt-1 opacity-60">
+                      {hasSession ? 'Click "Extract This Page" to run Gemini' : "Upload a PDF first"}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Column headers */}
+                  <div className="sticky top-0 z-10 grid px-4 py-2 border-b border-border bg-secondary/60 backdrop-blur-sm text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                    style={{ gridTemplateColumns: "14px 1fr 96px 38px 68px 76px 28px" }}>
+                    <div />
+                    <div>Customer</div>
+                    <div>Date</div>
+                    <div>Type</div>
+                    <div>Mode</div>
+                    <div className="text-right">Amount</div>
+                    <div />
+                  </div>
+
+                  {/* Rows */}
+                  <div className="divide-y divide-border/50">
+                    {rows.map((row) => (
+                      <DesktopRow
+                        key={row.uid}
+                        row={row}
+                        onUpdate={updateRow}
+                        onDelete={deleteRow}
+                        fetchSuggestions={fetchCustomerSuggestions}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* UPI reference panel (below records) */}
+            {(upiTxns.length > 0 || loadingUpi) && (
+              <div className="flex-shrink-0 border-t border-border">
+                {/* UPI header */}
+                <button
+                  onClick={() => setUpiExpanded((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Wifi className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400 flex-shrink-0" />
+                    <span className="text-xs font-semibold text-foreground">
+                      UPI{allExtractedDates.length > 0
+                        ? ` — ${allExtractedDates.length === 1 ? allExtractedDates[0] : `${allExtractedDates[0]} + ${allExtractedDates.length - 1} more`}`
+                        : ""}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-mono bg-muted rounded-full px-1.5 py-0.5">
+                      {upiTxns.length}
+                    </span>
+                  </div>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${upiExpanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {upiExpanded && (
+                  <div className="max-h-48 overflow-y-auto border-t border-border/50">
+                    {loadingUpi ? (
+                      <div className="flex items-center justify-center py-5 gap-2 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-xs">Loading…</span>
+                      </div>
+                    ) : upiTxns.length === 0 ? (
+                      <p className="py-5 text-center text-xs text-muted-foreground/50">
+                        No UPI transactions for {allExtractedDates.length > 1 ? "these dates" : (extractedDate ?? "this date")}
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-border/40">
+                        {upiTxns.map((txn) => {
+                          const isMapped = txn.mapped_customer_id != null;
+                          const isStruck = struckUpiIds.has(txn.id);
+                          return (
+                            <div
+                              key={txn.id}
+                              className={`flex items-center gap-3 px-4 py-2 transition-colors group ${
+                                isStruck ? "opacity-40" : isMapped ? "bg-primary/5" : ""
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-xs font-medium truncate ${isStruck ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                                  {txn.sender_name || txn.sender_vpa || "—"}
+                                </p>
+                                {isMapped ? (
+                                  <p className={`text-[10.5px] flex items-center gap-0.5 mt-0.5 truncate ${isStruck ? "line-through text-muted-foreground/50" : "text-emerald-700 dark:text-emerald-400"}`}>
+                                    <CheckCircle className="h-2.5 w-2.5 flex-shrink-0" />
+                                    {txn.mapped_customer_name}
+                                    {txn.mapped_customer_type && (
+                                      <span className={`ml-1 text-[9px] font-bold px-1 py-0.5 rounded uppercase ${txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"}`}>
+                                        {txn.mapped_customer_type}
+                                      </span>
+                                    )}
+                                  </p>
+                                ) : (
+                                  <p className="text-[10.5px] text-muted-foreground/40 mt-0.5">Unmapped</p>
+                                )}
+                              </div>
+                              <span className={`text-xs font-bold font-mono flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>
+                                ₹{Number(txn.amount).toLocaleString("en-IN")}
+                              </span>
+                              <button
+                                onClick={() => setStruckUpiIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id);
+                                  return next;
+                                })}
+                                className="flex-shrink-0 p-1 rounded-md text-muted-foreground/30 hover:text-muted-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                <Strikethrough className="h-3 w-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

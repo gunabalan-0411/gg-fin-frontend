@@ -13,14 +13,20 @@ export default function Layout() {
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isCompact = isMobile || isTablet;
   const isOcr = pathname === "/ocr";
 
   return (
     /* 100dvh accounts for mobile browser chrome (address bar) shrinking the viewport */
     <div className="flex h-[100dvh] overflow-hidden bg-background">
-      {/* Desktop: persistent sidebar */}
-      {!isCompact && <Sidebar />}
+      {/* Desktop: persistent sidebar with collapse toggle */}
+      {!isCompact && (
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((v) => !v)}
+        />
+      )}
 
       {/* Mobile/tablet: slide-in drawer */}
       {isCompact && (
