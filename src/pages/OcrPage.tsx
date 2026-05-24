@@ -510,6 +510,9 @@ function OcrTableRow({
           fetchSuggestions={fetchSuggestions}
           compact
         />
+        {row.customer_id && (
+          <span className="text-[10px] font-mono text-muted-foreground/40 px-1.5 block leading-tight pb-0.5">#{row.customer_id}</span>
+        )}
       </td>
 
       {/* Date */}
@@ -922,9 +925,13 @@ export default function OcrPage() {
                         {txn.sender_name || txn.sender_vpa || "—"}
                       </p>
                       {isMapped && (
-                        <p className={`text-xs flex items-center gap-0.5 mt-0.5 ${isStruck ? "line-through text-muted-foreground/50" : "text-emerald-700 dark:text-emerald-400"}`}>
+                        <button
+                          onClick={() => { if (!isStruck) applyUpiTxn(txn); }}
+                          disabled={isStruck}
+                          className={`text-xs flex items-center gap-0.5 mt-0.5 text-left w-full ${isStruck ? "line-through text-muted-foreground/50 cursor-default" : "text-emerald-700 dark:text-emerald-400 hover:opacity-70 cursor-pointer"}`}
+                        >
                           <CheckCircle className="h-3 w-3 flex-shrink-0" />{txn.mapped_customer_name}
-                        </p>
+                        </button>
                       )}
                     </div>
                     <span className={`text-sm font-bold flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>
@@ -1040,6 +1047,25 @@ export default function OcrPage() {
       </>
     );
   }
+
+  const applyUpiTxn = (txn: UpiTxn) => {
+    if (!txn.mapped_customer_id || !txn.mapped_customer_type) return;
+    const productType = txn.mapped_customer_type.toUpperCase() as "EDI" | "IOP";
+    const matchIdx = rows.findIndex(
+      (r) => r.customer_id === txn.mapped_customer_id && r.product_type === productType
+    );
+    if (matchIdx === -1) {
+      toast.error(`No row for ${txn.mapped_customer_name} (${productType})`);
+      return;
+    }
+    setRows((prev) => {
+      const next = [...prev];
+      next[matchIdx] = { ...next[matchIdx], payment_mode: "ONLINE" as const, is_paid: true, amount: Number(txn.amount) };
+      return next;
+    });
+    setStruckUpiIds((prev) => { const next = new Set(prev); next.add(txn.id); return next; });
+    toast.success(`Applied ₹${Number(txn.amount).toLocaleString("en-IN")} → ${txn.mapped_customer_name}`);
+  };
 
   // ── Desktop layout ─────────────────────────────────────────────────────────
   // Filter UPI by search
@@ -1460,9 +1486,14 @@ export default function OcrPage() {
                             {txn.sender_name || txn.sender_vpa || "—"}
                           </p>
                           {isMapped ? (
-                            <p className={`text-[10.5px] flex items-center gap-0.5 mt-0.5 truncate ${
-                              isStruck ? "line-through text-muted-foreground/50" : "text-emerald-700 dark:text-emerald-400"
-                            }`}>
+                            <button
+                              onClick={() => { if (!isStruck) applyUpiTxn(txn); }}
+                              disabled={isStruck}
+                              title={!isStruck ? `Apply ₹${Number(txn.amount).toLocaleString("en-IN")} as ONLINE + Paid` : undefined}
+                              className={`text-[10.5px] flex items-center gap-0.5 mt-0.5 truncate text-left w-full transition-opacity ${
+                                isStruck ? "line-through text-muted-foreground/50 cursor-default" : "text-emerald-700 dark:text-emerald-400 hover:opacity-70 cursor-pointer"
+                              }`}
+                            >
                               <CheckCircle className="h-2.5 w-2.5 flex-shrink-0" />
                               {txn.mapped_customer_name}
                               {txn.mapped_customer_type && (
@@ -1470,7 +1501,7 @@ export default function OcrPage() {
                                   txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
                                 }`}>{txn.mapped_customer_type}</span>
                               )}
-                            </p>
+                            </button>
                           ) : (
                             <p className="text-[10.5px] text-muted-foreground/40 mt-0.5">Unmapped</p>
                           )}
