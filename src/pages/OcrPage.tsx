@@ -341,7 +341,7 @@ function RecordCard({
         <input type="date" value={ddmmyyyyToInput(row.collection_date)}
           onChange={(e) => onUpdate(row.uid, { collection_date: inputToDdmmyyyy(e.target.value) })}
           className="text-xs rounded-lg border border-border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20" />
-        <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI" })}
+        <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", customer_name: "", customer_id: null, customer_suggestions: [] })}
           className={`text-xs px-2 py-1 rounded-lg font-bold transition-colors ${
             row.product_type === "IOP" ? "bg-accent/60 text-foreground/70" : "bg-primary/25 text-foreground/70"
           }`}>{row.product_type}</button>
@@ -593,7 +593,7 @@ function OcrTableRow({
       {/* Product */}
       <td className="px-1 text-center">
         <button
-          onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI" })}
+          onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", customer_name: "", customer_id: null, customer_suggestions: [] })}
           className={`text-[10.5px] px-2 py-0.5 rounded-md font-bold transition-colors ${
             row.product_type === "IOP" ? "bg-accent/60 text-foreground/70" : "bg-primary/25 text-foreground/70"
           }`}
@@ -667,7 +667,7 @@ function OcrTableRow({
       <td className="pr-2">
         <button
           onClick={() => onDelete(row.uid)}
-          className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground/20 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+          className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-20 group-hover:opacity-100"
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -1145,9 +1145,24 @@ export default function OcrPage() {
                       </div>
                     ) : (
                       <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
-                        {rows.map((row) => (
-                          <RecordCard key={row.uid} row={row} onUpdate={updateRow} onDelete={deleteRow} fetchSuggestions={fetchCustomerSuggestions} />
-                        ))}
+                        {rows.map((row, i) => {
+                          const prevDate = i > 0 ? rows[i - 1].collection_date : null;
+                          const showDivider = prevDate !== null && row.collection_date !== prevDate;
+                          return (
+                            <React.Fragment key={row.uid}>
+                              {showDivider && (
+                                <div className="flex items-center gap-2 py-1 px-1">
+                                  <div className="flex-1 h-px bg-primary/25" />
+                                  <span className="text-[9.5px] font-semibold uppercase tracking-[.1em] text-muted-foreground/60 flex-shrink-0">
+                                    {fmtTxnDate(ddmmToYyyyMmDd(row.collection_date))}
+                                  </span>
+                                  <div className="flex-1 h-px bg-primary/25" />
+                                </div>
+                              )}
+                              <RecordCard row={row} onUpdate={updateRow} onDelete={deleteRow} fetchSuggestions={fetchCustomerSuggestions} />
+                            </React.Fragment>
+                          );
+                        })}
                       </div>
                     )}
                     {mobileUpiSection}
@@ -1566,19 +1581,33 @@ export default function OcrPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {rows.map((row, i) => (
-                            <OcrTableRow
-                              key={row.uid}
-                              row={row}
-                              index={i}
-                              onUpdate={updateRow}
-                              onDelete={deleteRow}
-                              fetchSuggestions={fetchCustomerSuggestions}
-                              isActive={activeRowUid === row.uid}
-                              onHoverIn={() => setActiveRowUid(row.uid)}
-                              onHoverOut={() => setActiveRowUid(null)}
-                            />
-                          ))}
+                          {rows.map((row, i) => {
+                            const prevDate = i > 0 ? rows[i - 1].collection_date : null;
+                            const showDivider = prevDate !== null && row.collection_date !== prevDate;
+                            return (
+                              <React.Fragment key={row.uid}>
+                                {showDivider && (
+                                  <tr>
+                                    <td colSpan={8} className="px-3 pt-2.5 pb-1 bg-muted/30 border-t-2 border-primary/20">
+                                      <span className="text-[9.5px] font-semibold uppercase tracking-[.1em] text-muted-foreground/60">
+                                        {fmtTxnDate(ddmmToYyyyMmDd(row.collection_date))}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                )}
+                                <OcrTableRow
+                                  row={row}
+                                  index={i}
+                                  onUpdate={updateRow}
+                                  onDelete={deleteRow}
+                                  fetchSuggestions={fetchCustomerSuggestions}
+                                  isActive={activeRowUid === row.uid}
+                                  onHoverIn={() => setActiveRowUid(row.uid)}
+                                  onHoverOut={() => setActiveRowUid(null)}
+                                />
+                              </React.Fragment>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

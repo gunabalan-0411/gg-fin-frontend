@@ -44,7 +44,7 @@ export default function CollectionsPage() {
     if (editing) {
       updateMutation.mutate({ id: editing.transaction_id, data });
     } else {
-      createMutation.mutate({ ...data, collection_date: date });
+      createMutation.mutate(data);
     }
     setShowForm(false);
     setEditing(null);
@@ -306,6 +306,7 @@ function TransactionFormModal({
   const [amount, setAmount] = useState(String(initial?.amount ?? ""));
   const [mode, setMode] = useState(initial?.payment_mode ?? "CASH");
   const [status, setStatus] = useState(initial?.payment_status ?? "PAID");
+  const [editDate, setEditDate] = useState(initial?.collection_date ?? date);
 
   // Re-sync form fields when `initial` changes (e.g. switching between edit targets)
   useEffect(() => {
@@ -313,7 +314,8 @@ function TransactionFormModal({
     setAmount(String(initial?.amount ?? ""));
     setMode(initial?.payment_mode ?? "CASH");
     setStatus(initial?.payment_status ?? "PAID");
-  }, [initial]);
+    setEditDate(initial?.collection_date ?? date);
+  }, [initial, date]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,6 +324,7 @@ function TransactionFormModal({
       amount: Number(amount),
       payment_mode: mode,
       payment_status: status,
+      collection_date: editDate,
     });
   };
 
@@ -366,7 +369,10 @@ function TransactionFormModal({
             </select>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Date: {date}</p>
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
+          <DatePicker value={editDate} onChange={setEditDate} className="w-full" />
+        </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit">Save</Button>
