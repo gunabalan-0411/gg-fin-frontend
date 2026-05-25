@@ -69,6 +69,31 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// ── Per-model timing (persisted in localStorage) ───────────────────────────────
+const MODEL_TIMING_KEY = "ocr_model_timings";
+type ModelTiming = { count: number; avgMs: number };
+
+function loadModelTimings(): Record<string, ModelTiming> {
+  try { return JSON.parse(localStorage.getItem(MODEL_TIMING_KEY) ?? "{}"); }
+  catch { return {}; }
+}
+
+function saveModelTiming(model: string, elapsedMs: number): void {
+  const t = loadModelTimings();
+  const prev = t[model] ?? { count: 0, avgMs: 0 };
+  const n = prev.count + 1;
+  t[model] = { count: n, avgMs: (prev.avgMs * prev.count + elapsedMs) / n };
+  try { localStorage.setItem(MODEL_TIMING_KEY, JSON.stringify(t)); } catch {}
+}
+
+function getModelAvgMs(model: string): number {
+  return loadModelTimings()[model]?.avgMs ?? 0;
+}
+
+function getModelRunCount(model: string): number {
+  return loadModelTimings()[model]?.count ?? 0;
+}
+
 function httpError(err: any): string {
   const status: number | undefined = err?.response?.status;
   const detail: string | undefined = err?.response?.data?.detail;
@@ -127,6 +152,38 @@ function fmtTxnDate(iso: string): string {
   if (parts.length !== 3) return iso;
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${parts[2]} ${months[parseInt(parts[1], 10) - 1] ?? ""} ${parts[0]}`;
+}
+
+// ── SkeletonRow ───────────────────────────────────────────────────────────────
+const SKEL_WIDTHS = [72, 55, 83, 61, 78, 52, 68, 45];
+function SkeletonRow({ index }: { index: number }) {
+  const delay = `${index * 90}ms`;
+  return (
+    <tr className="border-b border-border/40">
+      <td className="pl-3 pr-1 py-3.5">
+        <div className="h-2 w-2 rounded-full bg-muted animate-pulse" style={{ animationDelay: delay }} />
+      </td>
+      <td className="px-1 py-3.5">
+        <div className="h-2.5 rounded-md bg-muted animate-pulse" style={{ width: `${SKEL_WIDTHS[index % SKEL_WIDTHS.length]}%`, animationDelay: delay }} />
+      </td>
+      <td className="px-1 py-3.5 w-28">
+        <div className="h-2.5 w-[72px] rounded-md bg-muted animate-pulse" style={{ animationDelay: `${index * 90 + 25}ms` }} />
+      </td>
+      <td className="px-1 py-3.5 w-12 text-center">
+        <div className="h-5 w-8 rounded-md bg-muted animate-pulse mx-auto" style={{ animationDelay: `${index * 90 + 50}ms` }} />
+      </td>
+      <td className="px-1 py-3.5 w-20">
+        <div className="h-5 w-12 rounded-full bg-muted animate-pulse" style={{ animationDelay: `${index * 90 + 75}ms` }} />
+      </td>
+      <td className="px-1 py-3.5 w-24 text-right">
+        <div className="h-2.5 w-14 rounded-md bg-muted animate-pulse ml-auto" style={{ animationDelay: `${index * 90 + 100}ms` }} />
+      </td>
+      <td className="px-3 py-3.5 w-14 text-right">
+        <div className="h-2.5 w-7 rounded-md bg-muted animate-pulse ml-auto" style={{ animationDelay: `${index * 90 + 125}ms` }} />
+      </td>
+      <td className="pr-2 w-6" />
+    </tr>
+  );
 }
 
 // ── CustomerCombobox ──────────────────────────────────────────────────────────
@@ -637,6 +694,9 @@ export default function OcrPage() {
   const [loadingImage, setLoadingImage] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractElapsed, setExtractElapsed] = useState(0);
+  const [modelAvgMs, setModelAvgMs] = useState(0);
+  const extractTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileTab, setMobileTab] = useState<"image" | "records">("image");
   const [zoom, setZoom] = useState(1);
@@ -683,6 +743,11 @@ export default function OcrPage() {
       .finally(() => { if (!cancelled) setLoadingImage(false); });
     return () => { cancelled = true; };
   }, [sessionId, pageIndex]);
+
+  // Clear extraction timer on unmount
+  useEffect(() => {
+    return () => { if (extractTimerRef.current) clearInterval(extractTimerRef.current); };
+  }, []);
 
   const processFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -750,8 +815,16 @@ export default function OcrPage() {
     if (!sessionId) return;
     setExtracting(true);
     setExtractError(null);
+    setExtractElapsed(0);
+    const avg = getModelAvgMs(selectedModel);
+    setModelAvgMs(avg);
+    const startTime = Date.now();
+    if (extractTimerRef.current) clearInterval(extractTimerRef.current);
+    extractTimerRef.current = setInterval(() => setExtractElapsed(Date.now() - startTime), 100);
     try {
       const { data } = await ocrApi.extract({ session_id: sessionId, page_index: pageIndex, model: selectedModel });
+      const elapsed = Date.now() - startTime;
+      saveModelTiming(selectedModel, elapsed);
       setPageImageB64(data.page_image_b64);
       const extracted = (data.records as any[]).map((r) => {
         const mode = ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE";
@@ -765,6 +838,7 @@ export default function OcrPage() {
     } catch (err: any) {
       setExtractError(httpError(err));
     } finally {
+      if (extractTimerRef.current) { clearInterval(extractTimerRef.current); extractTimerRef.current = null; }
       setExtracting(false);
     }
   };
@@ -1131,6 +1205,14 @@ export default function OcrPage() {
   };
 
   // ── Desktop layout ─────────────────────────────────────────────────────────
+  // Progress % — uses stored avg time; caps at 95 until response arrives
+  const extractPct = extracting
+    ? modelAvgMs > 0
+      ? Math.min((extractElapsed / modelAvgMs) * 100, 95)
+      : Math.min((extractElapsed / 28000) * 90, 90)
+    : 0;
+  const runCount = getModelRunCount(selectedModel);
+
   // Filter UPI by search
   const filteredUpi = upiSearch
     ? upiTxns.filter((t) =>
@@ -1373,10 +1455,60 @@ export default function OcrPage() {
             {/* Records content */}
             <div className="flex-1 overflow-y-auto min-h-0">
               {extracting ? (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  <div><p className="text-sm font-semibold">Gemini is reading the page…</p>
-                    <p className="text-xs text-muted-foreground mt-1">Usually 10–20 seconds</p></div>
+                <div className="p-4">
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    {/* Progress header */}
+                    <div className="flex items-center gap-2.5 px-4 py-2.5 bg-secondary border-b border-border">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground flex-shrink-0" />
+                      <span className="text-[13px] font-medium">
+                        Gemini {selectedModel.replace("gemini-", "")} reading…
+                      </span>
+                      <div className="flex-1" />
+                      <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
+                        {(extractElapsed / 1000).toFixed(1)}s
+                        {modelAvgMs > 0 && ` / ~${Math.round(modelAvgMs / 1000)}s`}
+                      </span>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="px-4 pt-3 pb-2">
+                      <div className="w-full bg-muted rounded-full h-1 overflow-hidden">
+                        <div
+                          className="h-1 rounded-full transition-[width] duration-200 ease-linear"
+                          style={{ width: `${extractPct}%`, background: "hsl(var(--primary))" }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-[9.5px] text-muted-foreground/70">
+                          {runCount > 0
+                            ? `avg ${Math.round(modelAvgMs / 1000)}s · ${runCount} run${runCount === 1 ? "" : "s"}`
+                            : "Recording timing for future estimates…"}
+                        </span>
+                        <span className="text-[9.5px] font-mono text-muted-foreground">{Math.round(extractPct)}%</span>
+                      </div>
+                    </div>
+
+                    {/* Skeleton table */}
+                    <div className="border-t border-border overflow-auto">
+                      <table className="w-full border-collapse" style={{ fontSize: "12.5px" }}>
+                        <thead>
+                          <tr className="border-b border-border">
+                            <th className="pl-3 pr-1 py-2 text-left w-7 bg-secondary" />
+                            <th className="px-1 py-2 text-left font-medium text-[11px] uppercase tracking-[.06em] text-muted-foreground bg-secondary">Customer</th>
+                            <th className="px-1 py-2 text-left font-medium text-[11px] uppercase tracking-[.06em] text-muted-foreground bg-secondary w-28">Date</th>
+                            <th className="px-1 py-2 text-center font-medium text-[11px] uppercase tracking-[.06em] text-muted-foreground bg-secondary w-12">Type</th>
+                            <th className="px-1 py-2 text-left font-medium text-[11px] uppercase tracking-[.06em] text-muted-foreground bg-secondary w-20">Mode</th>
+                            <th className="px-1 py-2 text-right font-medium text-[11px] uppercase tracking-[.06em] text-muted-foreground bg-secondary w-24">Amount</th>
+                            <th className="px-3 py-2 text-right font-medium text-[11px] uppercase tracking-[.06em] text-muted-foreground bg-secondary w-14">Conf.</th>
+                            <th className="pr-2 bg-secondary w-6" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} index={i} />)}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               ) : extractError ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
