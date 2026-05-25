@@ -43,8 +43,14 @@ export default function CollectionsPage() {
   const handleSave = (data: object) => {
     if (editing) {
       updateMutation.mutate({ id: editing.transaction_id, data });
+      // Navigate to the new date if it changed so the record stays visible
+      const newDate = (data as any).collection_date as string | undefined;
+      if (newDate && newDate !== date) setDate(newDate);
     } else {
       createMutation.mutate(data);
+      // Navigate to the date the new record was created on
+      const newDate = (data as any).collection_date as string | undefined;
+      if (newDate && newDate !== date) setDate(newDate);
     }
     setShowForm(false);
     setEditing(null);
