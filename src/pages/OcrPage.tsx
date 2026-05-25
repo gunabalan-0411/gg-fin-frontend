@@ -29,7 +29,7 @@ import { ocrApi, upiApi } from "@/services/api";
 import toast from "react-hot-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Suggestion = { id: number; name: string; score: number };
+type Suggestion = { id: number; name: string; score: number; balance?: number };
 
 type Row = {
   uid: string;
@@ -122,6 +122,13 @@ function ddmmToYyyyMmDd(dmy: string): string {
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
+function fmtTxnDate(iso: string): string {
+  const parts = iso.split("-");
+  if (parts.length !== 3) return iso;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${parts[2]} ${months[parseInt(parts[1], 10) - 1] ?? ""} ${parts[0]}`;
+}
+
 // ── CustomerCombobox ──────────────────────────────────────────────────────────
 function CustomerCombobox({
   row,
@@ -131,7 +138,7 @@ function CustomerCombobox({
 }: {
   row: Row;
   onChange: (name: string, id: number | null) => void;
-  fetchSuggestions?: (query: string) => Promise<Suggestion[]>;
+  fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -144,7 +151,7 @@ function CustomerCombobox({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       if (value.trim().length >= 2) {
-        const results = await fetchSuggestions(value.trim());
+        const results = await fetchSuggestions(value.trim(), row.product_type);
         setLiveSuggestions(results);
       } else {
         setLiveSuggestions([]);
@@ -254,7 +261,7 @@ function RecordCard({
   row: Row;
   onUpdate: (uid: string, patch: Partial<Row>) => void;
   onDelete: (uid: string) => void;
-  fetchSuggestions?: (query: string) => Promise<Suggestion[]>;
+  fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
 }) {
   return (
     <div className={`rounded-xl border p-3 space-y-2 ${
@@ -325,7 +332,7 @@ function AddRowModal({
   defaultDate: string;
   onClose: () => void;
   onAdd: (row: Omit<Row, "uid" | "confidence_score" | "notes" | "customer_suggestions">) => void;
-  fetchSuggestions: (query: string) => Promise<Suggestion[]>;
+  fetchSuggestions: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
 }) {
   const [customerName, setCustomerName] = useState("");
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -358,7 +365,7 @@ function AddRowModal({
     setCustomerName(value); setCustomerId(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      if (value.trim().length >= 2) setSuggestions(await fetchSuggestions(value.trim()));
+      if (value.trim().length >= 2) setSuggestions(await fetchSuggestions(value.trim(), productType));
       else setSuggestions([]);
     }, 200);
   };
@@ -482,7 +489,7 @@ function OcrTableRow({
   index: number;
   onUpdate: (uid: string, patch: Partial<Row>) => void;
   onDelete: (uid: string) => void;
-  fetchSuggestions?: (query: string) => Promise<Suggestion[]>;
+  fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
   isActive?: boolean;
   onHoverIn?: () => void;
   onHoverOut?: () => void;
@@ -802,14 +809,20 @@ export default function OcrPage() {
     setTotalPages(0); setPageIndex(0); setUploadError(null); setExtractError(null);
   };
 
-  const fetchCustomerSuggestions = async (query: string): Promise<Suggestion[]> => {
+  const fetchCustomerSuggestions = async (query: string, productType: "EDI" | "IOP" = "EDI"): Promise<Suggestion[]> => {
     try {
       const { data } = await upiApi.fuzzySuggest(query);
-      return (data.data ?? []).map((item: any) => ({
-        id: item.customer_id ?? item.id,
-        name: item.customer_name ?? item.name ?? "",
-        score: item.score ?? 0.8,
-      }));
+      const typeFilter = productType.toLowerCase();
+      return (data.data ?? [])
+        .filter((item: any) => {
+          const itemType = (item.type ?? "edi").toLowerCase();
+          return itemType === typeFilter && (item.balance ?? 0) > 0;
+        })
+        .map((item: any) => ({
+          id: item.customer_id ?? item.id,
+          name: item.customer_name ?? item.name ?? "",
+          score: item.score ?? 0.8,
+        }));
     } catch { return []; }
   };
 
@@ -907,60 +920,72 @@ export default function OcrPage() {
           <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${upiExpanded ? "rotate-180" : ""}`} />
         </button>
         {upiExpanded && (
-          <div className="mt-1.5 space-y-1 max-h-52 overflow-y-auto">
+          <div className="mt-1.5 max-h-52 overflow-y-auto">
             {loadingUpi ? (
               <div className="flex items-center justify-center py-5 gap-2 text-muted-foreground bg-primary/5 rounded-xl border border-primary/15">
                 <Loader2 className="h-4 w-4 animate-spin" /><span className="text-xs">Loading UPI…</span>
               </div>
-            ) : (
-              upiTxns.map((txn) => {
-                const isMapped = txn.mapped_customer_id != null;
-                const isStruck = struckUpiIds.has(txn.id);
-                const isApplied = appliedUpiTxns.has(txn.id);
-                return (
-                  <div key={txn.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
-                    isStruck ? "opacity-40 bg-muted/40 border-border/40"
-                    : isApplied ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40"
-                    : isMapped ? "bg-primary/8 border-primary/20" : "bg-card border-border/60"
-                  }`}>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${isStruck ? "line-through text-muted-foreground" : ""}`}>
-                        {txn.sender_name || txn.sender_vpa || "—"}
-                      </p>
-                      {isMapped && (
-                        <p className={`text-xs flex items-center gap-0.5 mt-0.5 truncate ${isStruck ? "line-through text-muted-foreground/50" : isApplied ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-700 dark:text-emerald-400"}`}>
-                          <CheckCircle className="h-3 w-3 flex-shrink-0" />{txn.mapped_customer_name}
-                        </p>
-                      )}
-                    </div>
-                    <span className={`text-sm font-bold flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>
-                      ₹{Number(txn.amount).toLocaleString("en-IN")}
-                    </span>
-                    {isMapped && !isStruck && (
-                      isApplied ? (
-                        <button
-                          onClick={() => undoUpiTxn(txn)}
-                          className="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted-foreground bg-muted/60 hover:bg-muted border border-border/50 transition-colors"
-                        >
-                          <RotateCcw className="h-2.5 w-2.5" />Undo
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => applyUpiTxn(txn)}
-                          className="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-colors"
-                        >
-                          <CheckCircle className="h-2.5 w-2.5" />Apply
-                        </button>
-                      )
-                    )}
-                    <button onClick={() => setStruckUpiIds((prev) => { const next = new Set(prev); next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id); return next; })}
-                      className="flex-shrink-0 p-1.5 rounded-lg text-muted-foreground/40 hover:text-muted-foreground hover:bg-secondary transition-colors">
-                      <Strikethrough className="h-3.5 w-3.5" />
-                    </button>
+            ) : (() => {
+              const mobileByDate = upiTxns.reduce((acc: Record<string, UpiTxn[]>, txn: UpiTxn) => {
+                const d = txn.transaction_date as string;
+                (acc[d] ??= []).push(txn);
+                return acc;
+              }, {} as Record<string, UpiTxn[]>);
+              const mobileDates = Object.keys(mobileByDate).sort().reverse();
+              return mobileDates.map((date) => (
+                <React.Fragment key={date}>
+                  <div className="flex items-center justify-between px-3 py-1 bg-muted/60 border-b border-border/40">
+                    <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-muted-foreground/60">{fmtTxnDate(date)}</span>
+                    <span className="text-[9px] font-mono text-muted-foreground/40">{mobileByDate[date].length}</span>
                   </div>
-                );
-              })
-            )}
+                  <div className="space-y-1 px-0 py-1">
+                    {mobileByDate[date].map((txn) => {
+                      const isMapped = txn.mapped_customer_id != null;
+                      const isStruck = struckUpiIds.has(txn.id);
+                      const isApplied = appliedUpiTxns.has(txn.id);
+                      return (
+                        <div key={txn.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
+                          isStruck ? "opacity-40 bg-muted/40 border-border/40"
+                          : isApplied ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40"
+                          : isMapped ? "bg-primary/8 border-primary/20" : "bg-card border-border/60"
+                        }`}>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${isStruck ? "line-through text-muted-foreground" : ""}`}>
+                              {txn.sender_name || txn.sender_vpa || "—"}
+                            </p>
+                            {isMapped && (
+                              <p className={`text-xs flex items-center gap-0.5 mt-0.5 truncate ${isStruck ? "line-through text-muted-foreground/50" : isApplied ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                                <CheckCircle className="h-3 w-3 flex-shrink-0" />{txn.mapped_customer_name}
+                              </p>
+                            )}
+                          </div>
+                          <span className={`text-sm font-bold flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>
+                            ₹{Number(txn.amount).toLocaleString("en-IN")}
+                          </span>
+                          {isMapped && !isStruck && (
+                            isApplied ? (
+                              <button onClick={() => undoUpiTxn(txn)}
+                                className="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted-foreground bg-muted/60 hover:bg-muted border border-border/50 transition-colors">
+                                <RotateCcw className="h-2.5 w-2.5" />Undo
+                              </button>
+                            ) : (
+                              <button onClick={() => applyUpiTxn(txn)}
+                                className="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-colors">
+                                <CheckCircle className="h-2.5 w-2.5" />Apply
+                              </button>
+                            )
+                          )}
+                          <button onClick={() => setStruckUpiIds((prev) => { const next = new Set(prev); next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id); return next; })}
+                            className="flex-shrink-0 p-1.5 rounded-lg text-muted-foreground/40 hover:text-muted-foreground hover:bg-secondary transition-colors">
+                            <Strikethrough className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </React.Fragment>
+              ));
+            })()}
           </div>
         )}
       </div>
@@ -1112,6 +1137,14 @@ export default function OcrPage() {
         (t.sender_name + " " + t.sender_vpa + " " + t.mapped_customer_name).toLowerCase().includes(upiSearch.toLowerCase())
       )
     : upiTxns;
+
+  // Group UPI transactions by date (newest first)
+  const upiByDate = filteredUpi.reduce((acc: Record<string, UpiTxn[]>, txn: UpiTxn) => {
+    const d = txn.transaction_date as string;
+    (acc[d] ??= []).push(txn);
+    return acc;
+  }, {} as Record<string, UpiTxn[]>);
+  const upiGroupDates = Object.keys(upiByDate).sort().reverse();
 
   return (
     <>
@@ -1505,78 +1538,89 @@ export default function OcrPage() {
                   {upiSearch ? "No matches" : `No UPI credits for ${allExtractedDates.length > 1 ? "these dates" : extractedDate}`}
                 </p>
               ) : (
-                <div className="py-1">
-                  {filteredUpi.map((txn) => {
-                    const isMapped = txn.mapped_customer_id != null;
-                    const isStruck = struckUpiIds.has(txn.id);
-                    const isApplied = appliedUpiTxns.has(txn.id);
-                    return (
-                      <div
-                        key={txn.id}
-                        className={`flex items-center gap-2 px-4 py-2.5 cursor-default group border-b border-border/30 transition-colors last:border-0 ${
-                          isStruck ? "opacity-40"
-                          : isApplied ? "bg-emerald-50/70 dark:bg-emerald-950/20"
-                          : isMapped ? "hover:bg-primary/10"
-                          : "hover:bg-muted/60"
-                        }`}
-                        style={isMapped && !isStruck && !isApplied ? {
-                          background: "color-mix(in oklab, hsl(var(--primary)) 8%, transparent)"
-                        } : undefined}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[12.5px] font-medium truncate ${isStruck ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                            {txn.sender_name || txn.sender_vpa || "—"}
-                          </p>
-                          {isMapped ? (
-                            <p className={`text-[10.5px] flex items-center gap-0.5 mt-0.5 truncate ${
-                              isStruck ? "line-through text-muted-foreground/50"
-                              : isApplied ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-emerald-700 dark:text-emerald-400"
-                            }`}>
-                              <CheckCircle className="h-2.5 w-2.5 flex-shrink-0" />
-                              {txn.mapped_customer_name}
-                              {txn.mapped_customer_type && (
-                                <span className={`ml-1 text-[8.5px] font-bold px-1 py-px rounded uppercase ${
-                                  txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
-                                }`}>{txn.mapped_customer_type}</span>
-                              )}
-                            </p>
-                          ) : (
-                            <p className="text-[10.5px] text-muted-foreground/40 mt-0.5">Unmapped</p>
-                          )}
-                        </div>
-                        <span className={`text-[12.5px] font-semibold font-mono flex-shrink-0 ${
-                          isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"
-                        }`}>
-                          ₹{Number(txn.amount).toLocaleString("en-IN")}
+                <div>
+                  {upiGroupDates.map((date) => (
+                    <React.Fragment key={date}>
+                      {/* Date separator */}
+                      <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-1 bg-secondary/95 border-b border-border/40 backdrop-blur-sm">
+                        <span className="text-[9.5px] font-semibold uppercase tracking-[.08em] text-muted-foreground/60">
+                          {fmtTxnDate(date)}
                         </span>
-                        {isMapped && !isStruck && (
-                          isApplied ? (
-                            <button
-                              onClick={() => undoUpiTxn(txn)}
-                              className="flex-shrink-0 flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium text-muted-foreground bg-muted/80 hover:bg-muted border border-border/60 transition-colors"
-                            >
-                              <RotateCcw className="h-2.5 w-2.5" />Undo
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => applyUpiTxn(txn)}
-                              title={`Apply ₹${Number(txn.amount).toLocaleString("en-IN")} as ONLINE + Paid`}
-                              className="flex-shrink-0 flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-colors opacity-0 group-hover:opacity-100"
-                            >
-                              <CheckCircle className="h-2.5 w-2.5" />Apply
-                            </button>
-                          )
-                        )}
-                        <button
-                          onClick={() => setStruckUpiIds((prev) => { const next = new Set(prev); next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id); return next; })}
-                          className="flex-shrink-0 p-1 rounded text-muted-foreground/20 hover:text-muted-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <Strikethrough className="h-3 w-3" />
-                        </button>
+                        <span className="text-[9.5px] font-mono text-muted-foreground/40">{upiByDate[date].length}</span>
                       </div>
-                    );
-                  })}
+                      {upiByDate[date].map((txn) => {
+                        const isMapped = txn.mapped_customer_id != null;
+                        const isStruck = struckUpiIds.has(txn.id);
+                        const isApplied = appliedUpiTxns.has(txn.id);
+                        return (
+                          <div
+                            key={txn.id}
+                            className={`flex items-center gap-2 px-4 py-2.5 cursor-default group border-b border-border/30 transition-colors last:border-0 ${
+                              isStruck ? "opacity-40"
+                              : isApplied ? "bg-emerald-50/70 dark:bg-emerald-950/20"
+                              : isMapped ? "hover:bg-primary/10"
+                              : "hover:bg-muted/60"
+                            }`}
+                            style={isMapped && !isStruck && !isApplied ? {
+                              background: "color-mix(in oklab, hsl(var(--primary)) 8%, transparent)"
+                            } : undefined}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-[12.5px] font-medium truncate ${isStruck ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                                {txn.sender_name || txn.sender_vpa || "—"}
+                              </p>
+                              {isMapped ? (
+                                <p className={`text-[10.5px] flex items-center gap-0.5 mt-0.5 truncate ${
+                                  isStruck ? "line-through text-muted-foreground/50"
+                                  : isApplied ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-emerald-700 dark:text-emerald-400"
+                                }`}>
+                                  <CheckCircle className="h-2.5 w-2.5 flex-shrink-0" />
+                                  {txn.mapped_customer_name}
+                                  {txn.mapped_customer_type && (
+                                    <span className={`ml-1 text-[8.5px] font-bold px-1 py-px rounded uppercase ${
+                                      txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
+                                    }`}>{txn.mapped_customer_type}</span>
+                                  )}
+                                </p>
+                              ) : (
+                                <p className="text-[10.5px] text-muted-foreground/40 mt-0.5">Unmapped</p>
+                              )}
+                            </div>
+                            <span className={`text-[12.5px] font-semibold font-mono flex-shrink-0 ${
+                              isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"
+                            }`}>
+                              ₹{Number(txn.amount).toLocaleString("en-IN")}
+                            </span>
+                            {isMapped && !isStruck && (
+                              isApplied ? (
+                                <button
+                                  onClick={() => undoUpiTxn(txn)}
+                                  className="flex-shrink-0 flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium text-muted-foreground bg-muted/80 hover:bg-muted border border-border/60 transition-colors"
+                                >
+                                  <RotateCcw className="h-2.5 w-2.5" />Undo
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => applyUpiTxn(txn)}
+                                  title={`Apply ₹${Number(txn.amount).toLocaleString("en-IN")} as ONLINE + Paid`}
+                                  className="flex-shrink-0 flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                  <CheckCircle className="h-2.5 w-2.5" />Apply
+                                </button>
+                              )
+                            )}
+                            <button
+                              onClick={() => setStruckUpiIds((prev) => { const next = new Set(prev); next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id); return next; })}
+                              className="flex-shrink-0 p-1 rounded text-muted-foreground/20 hover:text-muted-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <Strikethrough className="h-3 w-3" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
                 </div>
               )}
             </div>
