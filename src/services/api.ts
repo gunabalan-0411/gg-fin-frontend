@@ -263,4 +263,12 @@ export const driveApi = {
   refreshToken: () => api.get<{ refresh_token: string }>("/drive/refresh-token"),
 };
 
+// ── SQL Console ───────────────────────────────────────────────────────────
+export const sqlApi = {
+  query: (sql: string) =>
+    api.post<{ columns: string[]; rows: (string | null)[][]; row_count: number; elapsed_ms: number; affected: number | null }>("/sql/query", { sql }),
+  tables: () =>
+    api.get<{ tables: Record<string, { name: string; type: string }[]> }>("/sql/tables"),
+};
+
 export default api;

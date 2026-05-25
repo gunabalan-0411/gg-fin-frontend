@@ -13,6 +13,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import NameMapPage from "@/pages/NameMapPage";
 import UpiPage from "@/pages/UpiPage";
 import OcrPage from "@/pages/OcrPage";
+import SqlPage from "@/pages/SqlPage";
 import OAuthCallbackPage from "@/pages/OAuthCallbackPage";
 import { useAuthStore } from "@/hooks/useAuth";
 import { setupApi } from "@/services/api";
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="namemap" element={<NameMapPage />} />
           <Route path="upi" element={<UpiPage />} />
+          <Route path="sql" element={<SqlPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

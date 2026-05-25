@@ -10,6 +10,7 @@ import {
   BookText,
   Wallet,
   Landmark,
+  Database,
   X,
   ChevronLeft,
   ChevronRight,
@@ -32,6 +33,7 @@ const nav: NavItem[] = [
   { to: "/upi",          icon: Wallet,           label: "UPI Transactions" },
   { to: "/namemap",      icon: BookText,         label: "Mapping Configs" },
   null,
+  { to: "/sql",          icon: Database,         label: "SQL Console" },
   { to: "/settings",     icon: Settings,         label: "Settings" },
 ];
 
