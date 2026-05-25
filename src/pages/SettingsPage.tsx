@@ -6,7 +6,7 @@ import {
   Unlink, Upload, HardDriveDownload, HardDriveUpload, HardDrive,
   Mail, FolderSync, Cpu, MonitorDot, Key, Copy, Eye, EyeOff,
 } from "lucide-react";
-import { backupApi, upiApi, driveApi, voiceApi } from "@/services/api";
+import { authApi, backupApi, upiApi, driveApi, voiceApi } from "@/services/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type DriveFile = { id: string; name: string; size: string; modifiedTime: string };
@@ -16,14 +16,15 @@ type RestoreState =
   | { phase: "restoring"; progress: number; message: string }
   | { phase: "done"; message: string }
   | { phase: "error"; message: string };
-type NavSection = "local" | "upi" | "drive" | "device";
+type NavSection = "local" | "upi" | "drive" | "device" | "security";
 type SyncProgress = { stage: string; total: number; processed: number; imported: number; skipped: number };
 
 const NAV_ITEMS: { id: NavSection; label: string; icon: ElementType; desc: string }[] = [
-  { id: "local",  label: "Local Backup",  icon: HardDrive,  desc: "Export & restore SQL" },
-  { id: "upi",    label: "UPI Import",    icon: Mail,       desc: "Gmail & XLS import" },
-  { id: "drive",  label: "Google Drive",  icon: FolderSync, desc: "Cloud backup & restore" },
-  { id: "device", label: "Inference",     icon: Cpu,        desc: "CPU / GPU device" },
+  { id: "local",    label: "Local Backup",  icon: HardDrive,   desc: "Export & restore SQL" },
+  { id: "upi",      label: "UPI Import",    icon: Mail,        desc: "Gmail & XLS import" },
+  { id: "drive",    label: "Google Drive",  icon: FolderSync,  desc: "Cloud backup & restore" },
+  { id: "device",   label: "Inference",     icon: Cpu,         desc: "CPU / GPU device" },
+  { id: "security", label: "Security",      icon: ShieldCheck, desc: "Change password" },
 ];
 
 const monoFont = '"Geist Mono", ui-monospace, monospace';
@@ -873,6 +874,119 @@ function DeviceCard({ label, desc, icon, isOn, isDisabled, variantOn, speedPct, 
   );
 }
 
+// ── SecuritySection ────────────────────────────────────────────────────────────
+function SecuritySection({ showToast }: { showToast: (msg: string, type: "success"|"error") => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext]       = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving]   = useState(false);
+  const [showCur, setShowCur] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+
+  const mismatch = next.length > 0 && confirm.length > 0 && next !== confirm;
+  const tooShort = next.length > 0 && next.length < 6;
+  const canSave  = current.length > 0 && next.length >= 6 && next === confirm;
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await authApi.changePassword(current, next);
+      showToast("Password changed successfully", "success");
+      setCurrent(""); setNext(""); setConfirm("");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail ?? "Failed to change password";
+      showToast(detail, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (
+    label: string,
+    value: string,
+    onChange: (v: string) => void,
+    show: boolean,
+    toggle: () => void,
+    hint?: string,
+    isError?: boolean,
+  ) => (
+    <div>
+      <label style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em", color:"hsl(var(--muted-foreground))", display:"block", marginBottom:4 }}>
+        {label}
+      </label>
+      <div style={{ position:"relative" }}>
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          autoComplete="off"
+          style={{
+            width:"100%", boxSizing:"border-box",
+            padding:"8px 36px 8px 12px", borderRadius:8, fontSize:13,
+            border:`1px solid ${isError ? "hsl(var(--destructive)/0.5)" : "hsl(var(--border))"}`,
+            background:"hsl(var(--background))", color:"hsl(var(--foreground))",
+            outline:"none", fontFamily:"inherit",
+          }}
+        />
+        <button
+          type="button"
+          onClick={toggle}
+          style={{
+            position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
+            background:"none", border:"none", cursor:"pointer", color:"hsl(var(--muted-foreground))",
+            padding:0, display:"flex",
+          }}
+        >
+          {show ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </div>
+      {hint && (
+        <p style={{ fontSize:11, marginTop:4, color: isError ? "hsl(var(--destructive))" : "hsl(var(--muted-foreground))" }}>
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom:20 }}>
+        <h2 style={{ fontSize:16, fontWeight:700, color:"hsl(var(--foreground))", margin:0 }}>Security</h2>
+        <p style={{ fontSize:13, color:"hsl(var(--muted-foreground))", marginTop:4 }}>Change your login password.</p>
+      </div>
+
+      <div style={{ background:"hsl(var(--card))", border:"1px solid hsl(var(--border))", borderRadius:12, padding:24, maxWidth:400 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {field("Current password", current, setCurrent, showCur, () => setShowCur(v => !v))}
+          {field(
+            "New password", next, setNext, showNew, () => setShowNew(v => !v),
+            tooShort ? "Must be at least 6 characters" : undefined,
+            tooShort,
+          )}
+          {field(
+            "Confirm new password", confirm, setConfirm, showNew, () => setShowNew(v => !v),
+            mismatch ? "Passwords do not match" : undefined,
+            mismatch,
+          )}
+          <button
+            onClick={handleSave}
+            disabled={!canSave || saving}
+            style={{
+              marginTop:4, padding:"9px 0", borderRadius:8, border:"none", cursor: canSave && !saving ? "pointer" : "not-allowed",
+              background:"hsl(var(--foreground))", color:"hsl(var(--background))",
+              fontSize:13, fontWeight:600, opacity: canSave && !saving ? 1 : 0.45,
+              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+            }}
+          >
+            {saving ? "Saving…" : "Change Password"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useSessionState<NavSection>("settings.activeSection", "local");
@@ -901,10 +1015,11 @@ export default function SettingsPage() {
   }, []);
 
   const statusFor = (id: NavSection) => {
-    if (id === "local")  return "ok";
-    if (id === "upi")    return gStat.gmailOk ? "ok" : "off";
-    if (id === "drive")  return gStat.driveOk ? "ok" : "off";
-    if (id === "device") return gStat.deviceMode === "cuda" ? "ok" : "warn";
+    if (id === "local")    return "ok";
+    if (id === "upi")      return gStat.gmailOk ? "ok" : "off";
+    if (id === "drive")    return gStat.driveOk ? "ok" : "off";
+    if (id === "device")   return gStat.deviceMode === "cuda" ? "ok" : "warn";
+    if (id === "security") return "ok";
     return "off";
   };
 
@@ -986,6 +1101,7 @@ export default function SettingsPage() {
                 onDeviceChange={(mode, name) => setGStat(s => ({ ...s, deviceMode:mode, deviceName:name }))}
               />
             )}
+            {activeSection === "security" && <SecuritySection showToast={showToast} />}
           </div>
         </main>
       </div>

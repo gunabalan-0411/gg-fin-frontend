@@ -33,6 +33,8 @@ export const authApi = {
     form.append("password", password);
     return api.post<{ access_token: string }>("/auth/login", form);
   },
+  changePassword: (current_password: string, new_password: string) =>
+    api.post<{ ok: boolean }>("/auth/change-password", { current_password, new_password }),
 };
 
 // ── Customers ─────────────────────────────────────────────────────────────
