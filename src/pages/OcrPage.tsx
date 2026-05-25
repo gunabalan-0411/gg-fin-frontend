@@ -1325,7 +1325,7 @@ export default function OcrPage() {
                       <option value="gemini-2.5-flash">2.5 Flash ⚡</option>
                       <option value="gemini-2.5-pro">2.5 Pro ★</option>
                       <option value="gemini-3-flash-preview">3 Flash</option>
-                      <option value="gemini-3-pro-preview">3 Pro</option>
+                      <option value="gemini-3.1-pro-preview">3 Pro</option>
                     </select>
                     <button onClick={handleExtract} disabled={extracting}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-card text-[12px] font-medium text-foreground hover:bg-secondary disabled:opacity-50 transition-colors">
