@@ -24,7 +24,7 @@ const NAV_ITEMS: { id: NavSection; label: string; icon: ElementType; desc: strin
   { id: "upi",      label: "UPI Import",    icon: Mail,        desc: "Gmail & XLS import" },
   { id: "drive",    label: "Google Drive",  icon: FolderSync,  desc: "Cloud backup & restore" },
   { id: "device",   label: "Inference",     icon: Cpu,         desc: "CPU / GPU device" },
-  { id: "security", label: "Security",      icon: ShieldCheck, desc: "Change password" },
+  { id: "security", label: "Security",      icon: Key,         desc: "Change password" },
 ];
 
 const monoFont = '"Geist Mono", ui-monospace, monospace';
