@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import { ocrApi, upiApi, expensesApi, customersApi } from "@/services/api";
+import { CustomerStepOverlay } from "@/components/CustomerStepOverlay";
 import toast from "react-hot-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -902,257 +903,6 @@ function ExpenseStepPanel({
   );
 }
 
-// ── AddCustomerStepModal ──────────────────────────────────────────────────────
-function AddCustomerStepModal({
-  onDone,
-  onSkip,
-  onSkipAll,
-}: {
-  onDone: () => void;
-  onSkip: () => void;
-  onSkipAll: () => void;
-}) {
-  const [productType, setProductType] = useState<"edi" | "iop">("edi");
-  const [form, setForm] = useState<Record<string, string>>({});
-  const [segments, setSegments] = useState<{ id: number; name: string }[]>([]);
-  const [nextId, setNextId] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [savedCount, setSavedCount] = useState(0);
-  const [transliterating, setTransliterating] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [idRes, segRes] = await Promise.all([
-          productType === "edi" ? customersApi.nextEdiId() : customersApi.nextIopId(),
-          productType === "edi" ? customersApi.ediSegments() : customersApi.iopSegments(),
-        ]);
-        if (!cancelled) {
-          setNextId((idRes.data as any).next_id);
-          setSegments((segRes.data as any).data ?? []);
-        }
-      } catch {}
-    };
-    load();
-    setForm({});
-    return () => { cancelled = true; };
-  }, [productType]);
-
-  const setField = (key: string, val: string) => setForm((prev) => ({ ...prev, [key]: val }));
-
-  const handleTransliterate = async (name: string) => {
-    if (!name.trim()) return;
-    setTransliterating(true);
-    try {
-      const { data } = await customersApi.transliterate(name);
-      setField("customer_name_ta", data.tamil);
-    } catch {} finally {
-      setTransliterating(false);
-    }
-  };
-
-  const REQUIRED_FIELDS = [
-    ["customer_name", "Name (English)"],
-    ["customer_name_ta", "Name (Tamil)"],
-    ["customer_segment_id", "Segment"],
-    ["loan_amount", "Loan Amount"],
-    ["disbursed_amount", "Disbursed"],
-    ["interest", "Interest"],
-    ["loan_start_date", "Start Date"],
-    ...(productType === "edi"
-      ? [["outstanding_balance", "Outstanding"]]
-      : [["interest_payment_frequency", "Interest Freq."], ["loan_closure", "Loan Closure"]]),
-  ] as [string, string][];
-
-  const handleAdd = async () => {
-    const missing = REQUIRED_FIELDS.filter(([k]) => !form[k]?.trim());
-    if (missing.length > 0) {
-      toast.error(`Fill required: ${missing.map(([, l]) => l).join(", ")}`);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const base: Record<string, unknown> = {
-        customer_name: form.customer_name.trim(),
-        customer_name_ta: form.customer_name_ta || null,
-        contact_number: form.contact_number || null,
-        customer_segment_id: form.customer_segment_id ? Number(form.customer_segment_id) : null,
-        loan_amount: form.loan_amount ? Number(form.loan_amount) : null,
-        disbursed_amount: form.disbursed_amount ? Number(form.disbursed_amount) : null,
-        interest: form.interest ? Number(form.interest) : null,
-        loan_start_date: form.loan_start_date || null,
-        customer_address: form.customer_address || null,
-        proof_aadhaar: form.proof_aadhaar || null,
-        remarks: form.remarks || null,
-      };
-      if (productType === "edi") {
-        base.outstanding_balance = form.outstanding_balance ? Number(form.outstanding_balance) : null;
-        await customersApi.createEdi(base);
-      } else {
-        base.interest_payment_frequency = form.interest_payment_frequency ? Number(form.interest_payment_frequency) : null;
-        base.loan_closure = form.loan_closure ? Number(form.loan_closure) : null;
-        await customersApi.createIop(base);
-      }
-      toast.success(`"${form.customer_name}" added`);
-      setSavedCount((c) => c + 1);
-      setForm({});
-      const res = await (productType === "edi" ? customersApi.nextEdiId() : customersApi.nextIopId());
-      setNextId((res.data as any).next_id);
-    } catch {
-      toast.error("Failed to add customer");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const inputCls = "w-full text-sm rounded-lg border border-border px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20";
-  const amountInput = (key: string) => (
-    <div className="flex items-center border border-border rounded-lg px-3 py-2 bg-background focus-within:ring-1 focus-within:ring-foreground/20">
-      <span className="text-sm text-muted-foreground mr-1">₹</span>
-      <input type="number" value={form[key] ?? ""} onChange={(e) => setField(key, e.target.value)}
-        placeholder="0" className="flex-1 text-sm font-mono bg-transparent focus:outline-none" />
-    </div>
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onSkip(); }}>
-      <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" />
-      <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3.5 bg-secondary border-b border-border flex-shrink-0">
-          <div className="w-7 h-7 rounded-full bg-foreground flex items-center justify-center flex-shrink-0">
-            <span className="text-[11px] font-bold text-background">6</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">Add New Customer</p>
-            <p className="text-[11px] text-muted-foreground">
-              {savedCount > 0 ? `${savedCount} customer${savedCount !== 1 ? "s" : ""} added this session` : "Add customers identified in the extracted records"}
-            </p>
-          </div>
-          <div className="flex rounded-lg border border-border overflow-hidden flex-shrink-0">
-            {(["edi", "iop"] as const).map((p) => (
-              <button key={p} onClick={() => setProductType(p)}
-                className={`px-3 py-1.5 text-xs font-bold uppercase transition-colors ${
-                  productType === p
-                    ? p === "iop" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
-                                  : "bg-blue-500/15 text-blue-700 dark:text-blue-400"
-                    : "text-muted-foreground hover:bg-muted/40"
-                }`}>{p}</button>
-            ))}
-          </div>
-        </div>
-        {/* Form */}
-        <div className="flex-1 overflow-y-auto p-5">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Customer ID</label>
-              <input type="text" value={nextId ?? "…"} readOnly className={`${inputCls} bg-muted/30 text-muted-foreground cursor-not-allowed`} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Segment<span className="text-red-500">*</span></label>
-              <select value={form.customer_segment_id ?? ""} onChange={(e) => setField("customer_segment_id", e.target.value)} className={inputCls}>
-                <option value="">— None —</option>
-                {segments.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Name (English)<span className="text-red-500">*</span></label>
-              <input type="text" value={form.customer_name ?? ""} placeholder="Enter name…"
-                onChange={(e) => setField("customer_name", e.target.value)}
-                onBlur={(e) => handleTransliterate(e.target.value)}
-                className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">
-                Name (Tamil)<span className="text-red-500">*</span>
-                {transliterating && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-1" />}
-              </label>
-              <input type="text" value={form.customer_name_ta ?? ""} placeholder="தமிழ் பெயர்…"
-                onChange={(e) => setField("customer_name_ta", e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Contact <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
-              <input type="text" value={form.contact_number ?? ""} placeholder="Phone…"
-                onChange={(e) => setField("contact_number", e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Start Date<span className="text-red-500">*</span></label>
-              <input type="date" value={form.loan_start_date ?? ""}
-                onChange={(e) => setField("loan_start_date", e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Loan Amount<span className="text-red-500">*</span></label>
-              {amountInput("loan_amount")}
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Disbursed<span className="text-red-500">*</span></label>
-              {amountInput("disbursed_amount")}
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Interest<span className="text-red-500">*</span></label>
-              {amountInput("interest")}
-            </div>
-            {productType === "edi" && (
-              <div className="space-y-1">
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Outstanding<span className="text-red-500">*</span></label>
-                {amountInput("outstanding_balance")}
-              </div>
-            )}
-            {productType === "iop" && (
-              <div className="space-y-1">
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Interest Freq.<span className="text-red-500">*</span></label>
-                <input type="number" value={form.interest_payment_frequency ?? ""} placeholder="0"
-                  onChange={(e) => setField("interest_payment_frequency", e.target.value)} className={inputCls} />
-              </div>
-            )}
-            {productType === "iop" && (
-              <div className="space-y-1">
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Loan Closure<span className="text-red-500">*</span></label>
-                <input type="number" value={form.loan_closure ?? ""} placeholder="0"
-                  onChange={(e) => setField("loan_closure", e.target.value)} className={inputCls} />
-              </div>
-            )}
-            <div className="col-span-2 space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Address <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
-              <input type="text" value={form.customer_address ?? ""} placeholder="Address…"
-                onChange={(e) => setField("customer_address", e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Aadhaar <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
-              <input type="text" value={form.proof_aadhaar ?? ""} placeholder="Aadhaar…"
-                onChange={(e) => setField("proof_aadhaar", e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Remarks <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
-              <input type="text" value={form.remarks ?? ""} placeholder="Remarks…"
-                onChange={(e) => setField("remarks", e.target.value)} className={inputCls} />
-            </div>
-          </div>
-        </div>
-        {/* Footer */}
-        <div className="flex items-center gap-3 px-5 py-3.5 bg-secondary border-t border-border flex-shrink-0">
-          <button onClick={onSkipAll} className="text-[11.5px] text-muted-foreground hover:text-foreground transition-colors">
-            Skip All
-          </button>
-          <div className="flex-1" />
-          <button onClick={onSkip} className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
-            Done
-          </button>
-          <button
-            onClick={handleAdd}
-            disabled={submitting || REQUIRED_FIELDS.some(([k]) => !form[k]?.trim())}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 disabled:opacity-40 transition-colors">
-            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Add Customer
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── FinalSummaryModal ─────────────────────────────────────────────────────────
 function FinalSummaryModal({
   rows,
@@ -1825,15 +1575,15 @@ export default function OcrPage() {
                               )}
                               <RecordCard row={row} onUpdate={updateRow} onDelete={deleteRow} fetchSuggestions={fetchCustomerSuggestions} />
                               {showSummary && (
-                                <div className="flex items-center justify-end gap-2 px-3 py-2 bg-muted/40 rounded-xl border border-border/50 text-[10.5px] font-mono">
-                                  <span className="text-muted-foreground/50 mr-auto text-[9.5px] uppercase tracking-wide font-semibold">subtotal</span>
+                                <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 rounded-xl border border-border/50 text-[10.5px] font-mono">
+                                  <span className="text-muted-foreground/50 text-[9.5px] uppercase tracking-wide font-semibold">subtotal</span>
+                                  <span className="font-semibold text-foreground/80">₹{dt.total.toLocaleString("en-IN")}</span>
+                                  <span className="flex-1" />
                                   <span className="text-muted-foreground/60">Cash</span>
                                   <span className="font-semibold text-foreground/70">₹{dt.cash.toLocaleString("en-IN")}</span>
                                   <span className="text-border">·</span>
                                   <span className="text-muted-foreground/60">GPay</span>
                                   <span className="font-semibold text-sky-600 dark:text-sky-400">₹{dt.online.toLocaleString("en-IN")}</span>
-                                  <span className="text-border">·</span>
-                                  <span className="font-semibold text-foreground/80">₹{dt.total.toLocaleString("en-IN")}</span>
                                 </div>
                               )}
                             </React.Fragment>
@@ -1864,7 +1614,7 @@ export default function OcrPage() {
           />
         )}
         {wfStep === 6 && (
-          <AddCustomerStepModal
+          <CustomerStepOverlay
             onDone={() => wfComplete(6, 7)}
             onSkip={() => wfSkipStep(6, 7)}
             onSkipAll={() => wfSkipAll(6)}
@@ -2346,14 +2096,18 @@ export default function OcrPage() {
                                 />
                                 {showSummary && (
                                   <tr className="bg-muted/20 border-b-2 border-primary/15">
-                                    <td colSpan={4} />
+                                    <td colSpan={2} className="pl-3 pr-1 py-1.5">
+                                      <span className="inline-flex items-center gap-1.5 text-[10px] font-mono">
+                                        <span className="text-muted-foreground/50 text-[9px] uppercase tracking-wide font-semibold">subtotal</span>
+                                        <span className="font-semibold text-foreground/80">₹{dt.total.toLocaleString("en-IN")}</span>
+                                      </span>
+                                    </td>
+                                    <td colSpan={2} />
                                     <td colSpan={3} className="px-2 py-1.5 text-right">
                                       <span className="inline-flex items-center gap-2 text-[10px] font-mono">
                                         <span className="text-muted-foreground/50">Cash <span className="text-foreground/70 font-semibold">₹{dt.cash.toLocaleString("en-IN")}</span></span>
                                         <span className="text-border/60">·</span>
                                         <span className="text-muted-foreground/50">GPay <span className="text-sky-600 dark:text-sky-400 font-semibold">₹{dt.online.toLocaleString("en-IN")}</span></span>
-                                        <span className="text-border/60">·</span>
-                                        <span className="font-semibold text-foreground/80">₹{dt.total.toLocaleString("en-IN")}</span>
                                       </span>
                                     </td>
                                     <td />
@@ -2604,7 +2358,7 @@ export default function OcrPage() {
         />
       )}
       {wfStep === 6 && (
-        <AddCustomerStepModal
+        <CustomerStepOverlay
           onDone={() => wfComplete(6, 7)}
           onSkip={() => wfSkipStep(6, 7)}
           onSkipAll={() => wfSkipAll(6)}

@@ -19,15 +19,15 @@ import toast from "react-hot-toast";
 import { formatCurrency } from "@/utils";
 import type { ProductType, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction } from "@/types";
 
-const PAGE_SIZE = 20;
-type SortDir = "asc" | "desc";
+export const PAGE_SIZE = 20;
+export type SortDir = "asc" | "desc";
 
 type HistoryEntry =
   | { type: "create"; formData: object; customerId: number; product: ProductType }
   | { type: "update"; id: number; before: object; after: object; product: ProductType }
   | { type: "delete"; customer: EdiCustomer | IopCustomer; resequence: boolean; product: ProductType };
 
-function deriveMonth(dateStr: string): string {
+export function deriveMonth(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
@@ -363,7 +363,7 @@ export default function CustomersPage() {
 }
 
 // ── Mobile Card ───────────────────────────────────────────────────────────────
-function CustomerCardMobile({ customer: c, product, onNameClick, onEdit, onDuplicate, onDelete }: {
+export function CustomerCardMobile({ customer: c, product, onNameClick, onEdit, onDuplicate, onDelete }: {
   customer: EdiCustomer | IopCustomer;
   product: ProductType;
   onNameClick: () => void;
@@ -422,7 +422,7 @@ function CustomerCardMobile({ customer: c, product, onNameClick, onEdit, onDupli
 }
 
 // ── Row ───────────────────────────────────────────────────────────────────────
-function CustomerRow({ customer: c, product, onNameClick, onEdit, onDuplicate, onDelete }: {
+export function CustomerRow({ customer: c, product, onNameClick, onEdit, onDuplicate, onDelete }: {
   customer: EdiCustomer | IopCustomer;
   product: ProductType;
   onNameClick: () => void;
@@ -494,7 +494,7 @@ function CustomerRow({ customer: c, product, onNameClick, onEdit, onDuplicate, o
 }
 
 // ── Customer Detail Modal ─────────────────────────────────────────────────────
-function CustomerDetailModal({ customer, product, onClose }: {
+export function CustomerDetailModal({ customer, product, onClose }: {
   customer: EdiCustomer | IopCustomer;
   product: ProductType;
   onClose: () => void;
@@ -714,7 +714,7 @@ function CustomerDetailModal({ customer, product, onClose }: {
 }
 
 // ── Delete Confirm Modal ──────────────────────────────────────────────────────
-function DeleteConfirmModal({ name, onSimpleDelete, onResequenceDelete, onCancel }: {
+export function DeleteConfirmModal({ name, onSimpleDelete, onResequenceDelete, onCancel }: {
   name: string;
   onSimpleDelete: () => void;
   onResequenceDelete: () => void;
@@ -758,7 +758,7 @@ function DeleteConfirmModal({ name, onSimpleDelete, onResequenceDelete, onCancel
 }
 
 // ── Add/Edit Modal ────────────────────────────────────────────────────────────
-function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onSave }: {
+export function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onSave }: {
   open: boolean;
   onClose: () => void;
   product: ProductType;
