@@ -63,6 +63,8 @@ export interface MonthlyProfit {
   iop_profit: number;
   edi_profit: number;
   expense: number;
+  unclaimed: number;
+  defaulted: number;
   net_profit: number;
 }
 
@@ -70,6 +72,8 @@ export interface DashboardSummary {
   current_month_iop_profit: number;
   current_month_edi_profit: number;
   current_month_expense: number;
+  current_month_unclaimed: number;
+  current_month_defaulted: number;
   current_month_net_profit: number;
   monthly_trends: MonthlyProfit[];
 }

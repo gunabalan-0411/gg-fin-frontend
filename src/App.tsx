@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Layout from "@/components/layout/Layout";
+import { SessionGuard } from "@/components/SessionGuard";
 import LoginPage from "@/pages/LoginPage";
 import SetupPage from "@/pages/SetupPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -21,7 +22,7 @@ import { setupApi } from "@/services/api";
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   if (!token) return <Navigate to="/login" replace />;
-  return <>{children}</>;
+  return <SessionGuard>{children}</SessionGuard>;
 }
 
 export default function App() {

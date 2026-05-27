@@ -385,8 +385,8 @@ function RecordCard({
 }
 
 // ── DateConfirmModal ─────────────────────────────────────────────────────────
-// Always mounted via conditional rendering (no `open` prop) so the lazy
-// useState initializer runs immediately when the component mounts.
+// Right-side slide panel (mirrors ExpenseStepPanel) so the PDF stays visible
+// while the user corrects extracted dates.
 function DateConfirmModal({
   pendingRows,
   onConfirm,
@@ -396,6 +396,7 @@ function DateConfirmModal({
   onConfirm: (dateMap: Record<string, string>) => void;
   onCancel: () => void;
 }) {
+  const isMobile = useIsMobile();
   const uniqueDates = [...new Set(pendingRows.map((r) => r.collection_date).filter(Boolean))].sort();
 
   const [dateMap, setDateMap] = useState<Record<string, string>>(() => {
@@ -410,69 +411,77 @@ function DateConfirmModal({
     return () => document.removeEventListener("keydown", handler);
   }, [onCancel]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-5 space-y-4">
-        {/* Header */}
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Confirm extracted dates</h3>
-            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              {uniqueDates.length === 1
-                ? "The AI extracted this date. Correct it if it looks wrong."
-                : `The AI found ${uniqueDates.length} dates. Correct any that look wrong.`}
-            </p>
-          </div>
+  const body = (
+    <>
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-4 py-3 bg-secondary border-b border-border flex-shrink-0">
+        <div className="w-6 h-6 rounded-full bg-foreground flex items-center justify-center flex-shrink-0">
+          <span className="text-[10px] font-bold text-background">2</span>
         </div>
-
-        {/* Date list */}
-        <div className="space-y-2">
-          {uniqueDates.map((origDate) => {
-            const count = pendingRows.filter((r) => r.collection_date === origDate).length;
-            const changed = dateMap[origDate] && dateMap[origDate] !== origDate;
-            return (
-              <div key={origDate} className={`rounded-xl border p-3 transition-colors ${
-                changed ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-secondary/40"
-              }`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted-foreground/60">
-                    {count} record{count !== 1 ? "s" : ""}
-                  </span>
-                  {changed && (
-                    <span className="text-[10px] text-amber-500 font-medium">edited</span>
-                  )}
-                </div>
-                <input
-                  type="date"
-                  value={ddmmyyyyToInput(dateMap[origDate] ?? origDate)}
-                  onChange={(e) =>
-                    setDateMap((prev) => ({ ...prev, [origDate]: inputToDdmmyyyy(e.target.value) }))
-                  }
-                  className="w-full text-sm font-mono rounded-lg border border-border px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/15"
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-1">
-          <button onClick={onCancel}
-            className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40 transition-colors">
-            Cancel
-          </button>
-          <button
-            onClick={() => onConfirm(dateMap)}
-            className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors">
-            Confirm
-          </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold">Confirm Dates</p>
+          <p className="text-[11px] text-muted-foreground">
+            {uniqueDates.length === 1
+              ? "Correct the date if the AI got it wrong."
+              : `AI found ${uniqueDates.length} dates — correct any that look wrong.`}
+          </p>
         </div>
       </div>
+
+      {/* Date list */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {uniqueDates.map((origDate) => {
+          const count = pendingRows.filter((r) => r.collection_date === origDate).length;
+          const changed = dateMap[origDate] && dateMap[origDate] !== origDate;
+          return (
+            <div key={origDate} className={`rounded-xl border p-3 transition-colors ${
+              changed ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-background"
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted-foreground/60">
+                  {count} record{count !== 1 ? "s" : ""}
+                </span>
+                {changed && (
+                  <span className="text-[10px] text-amber-500 font-medium">edited</span>
+                )}
+              </div>
+              <input
+                type="date"
+                value={ddmmyyyyToInput(dateMap[origDate] ?? origDate)}
+                onChange={(e) =>
+                  setDateMap((prev) => ({ ...prev, [origDate]: inputToDdmmyyyy(e.target.value) }))
+                }
+                className="w-full text-sm font-mono rounded-lg border border-border px-3 py-2 bg-card focus:outline-none focus:ring-2 focus:ring-foreground/15"
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-col gap-2 p-4 border-t border-border bg-secondary flex-shrink-0">
+        <button
+          onClick={() => onConfirm(dateMap)}
+          className="w-full py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors"
+        >
+          Confirm Dates
+        </button>
+        <button
+          onClick={onCancel}
+          className="w-full py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </>
+  );
+
+  if (isMobile) {
+    return <div className="fixed inset-0 z-50 flex flex-col bg-card">{body}</div>;
+  }
+  return (
+    <div className="fixed right-0 top-0 bottom-0 z-40 flex flex-col bg-card border-l border-border shadow-2xl" style={{ width: 360 }}>
+      {body}
     </div>
   );
 }

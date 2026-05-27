@@ -43,8 +43,8 @@ export interface UnclaimedBalance {
   id: number;
   date: string;
   product: string;
-  customer_id: number;
-  customer_name: string;
+  customer_id: number | null;
+  customer_name: string | null;
   amount: number;
   notes?: string | null;
 }

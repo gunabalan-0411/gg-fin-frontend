@@ -279,7 +279,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Loan Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
-                    {product === "edi" ? "Outstanding" : "Loan Closure"}
+                    {product === "edi" ? "Outstanding" : ""}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("loan_start_date")}>
                     <span className="flex items-center gap-1">Start Date <SortIcon col="loan_start_date" /></span>
@@ -372,10 +372,9 @@ export function CustomerCardMobile({ customer: c, product, onNameClick, onEdit, 
   onDelete: () => void;
 }) {
   const ediC = c as EdiCustomer;
-  const iopC = c as IopCustomer;
   const balanceValue = product === "edi"
     ? (ediC.outstanding_balance ? formatCurrency(Number(ediC.outstanding_balance)) : "—")
-    : (iopC.loan_closure != null ? String(iopC.loan_closure) : "—");
+    : null;
 
   return (
     <div className="px-4 py-3 border-b border-border/50 active:bg-secondary/30 transition-colors">
@@ -402,7 +401,7 @@ export function CustomerCardMobile({ customer: c, product, onNameClick, onEdit, 
         {c.contact_number && <span>📞 {c.contact_number}</span>}
         <span>{c.loan_start_date ?? "—"}</span>
         <span>Loan: {c.loan_amount ? formatCurrency(Number(c.loan_amount)) : "—"}</span>
-        <span>{product === "edi" ? "Bal" : "Closure"}: {balanceValue}</span>
+        {balanceValue !== null && <span>Bal: {balanceValue}</span>}
       </div>
 
       {/* Action buttons */}
@@ -458,7 +457,7 @@ export function CustomerRow({ customer: c, product, onNameClick, onEdit, onDupli
       <td className="px-4 py-3">
         {product === "edi"
           ? (ediC.outstanding_balance ? formatCurrency(Number(ediC.outstanding_balance)) : "—")
-          : (iopC.loan_closure != null ? iopC.loan_closure : "—")}
+          : ""}
       </td>
       <td className="px-4 py-3 text-muted-foreground">{c.loan_start_date ?? "—"}</td>
       <td className="px-4 py-3">
@@ -501,6 +500,8 @@ export function CustomerDetailModal({ customer, product, onClose }: {
 }) {
   const [txnFilter, setTxnFilter] = useState<"all" | "paid">("all");
   const [sharing, setSharing] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ step: string; pct: number } | null>(null);
+  const [pdfLang, setPdfLang] = useState<"ta" | "en">("ta");
 
   const { data: _txnsRaw, isLoading } = useQuery({
     queryKey: ["customer-txns", product, customer.customer_id],
@@ -515,9 +516,8 @@ export function CustomerDetailModal({ customer, product, onClose }: {
 
   const totalPaid = txns.filter((t) => t.payment_status === "PAID").reduce((s, t) => s + Number(t.amount), 0);
   const loanAmount = Number(customer.loan_amount || 0);
-  const balance = product === "edi"
-    ? Number((customer as EdiCustomer).outstanding_balance || 0)
-    : Number((customer as IopCustomer).loan_closure || 0);
+  // EDI outstanding = loan_amount minus total paid (computed from actual txns)
+  const ediOutstanding = loanAmount - totalPaid;
 
   const fmtDate = (d?: string) => {
     if (!d) return "—";
@@ -526,48 +526,71 @@ export function CustomerDetailModal({ customer, product, onClose }: {
   };
   const fmtAmt = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
+  const englishName = customer.customer_name ?? "Customer";
   const tamilName = customer.tamil_name;
-  const modalTitle = tamilName
+  const hasTamil = Boolean(tamilName);
+
+  const modalTitle = hasTamil
     ? `#${customer.customer_id} — ${tamilName}`
-    : `#${customer.customer_id} — ${customer.customer_name ?? "Customer"}`;
-  const subTitle = tamilName ? customer.customer_name : undefined;
+    : `#${customer.customer_id} — ${englishName}`;
+  const subTitle = hasTamil ? englishName : undefined;
+
+  // EDI: 4 cards (Loan Start, Loan Amount, Total Paid, Outstanding)
+  // IOP: 3 cards (no loan_closure)
+  const statsCards = [
+    { label: "Loan Start",   value: fmtDate(customer.loan_start_date) },
+    { label: "Loan Amount",  value: fmtAmt(loanAmount) },
+    { label: "Total Paid",   value: fmtAmt(totalPaid) },
+    ...(product === "edi" ? [{ label: "Outstanding", value: fmtAmt(ediOutstanding) }] : []),
+  ];
 
   const handleShare = async () => {
     setSharing(true);
+    setExportProgress({ step: "Loading libraries…", pct: 10 });
+    // Yield to browser so the progress overlay paints before heavy work starts
+    await new Promise((r) => setTimeout(r, 60));
+
     try {
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import("jspdf"),
         import("html2canvas"),
       ]);
 
-      // Build a light-themed off-screen div so html2canvas renders with the
-      // browser's own font stack — Tamil script and ₹ render correctly this way.
-      const container = document.createElement("div");
-      container.style.cssText = [
-        "position:fixed", "top:-9999px", "left:-9999px",
-        "width:760px", "background:#ffffff", "padding:28px 32px",
-        "font-family:system-ui,-apple-system,sans-serif",
-        "color:#111827", "line-height:1.5",
-      ].join(";");
+      setExportProgress({ step: "Building document…", pct: 35 });
+      await new Promise((r) => setTimeout(r, 16));
 
-      const balLabel = product === "edi" ? "Outstanding" : "Loan Closure";
+      // Choose name based on language preference
+      const pdfTitle = (pdfLang === "ta" && tamilName) ? tamilName : englishName;
+      const pdfSub   = (pdfLang === "ta" && tamilName) ? englishName : undefined;
+
+      const summaryCards: [string, string][] = [
+        ["Loan Start",  fmtDate(customer.loan_start_date)],
+        ["Loan Amount", fmtAmt(loanAmount)],
+        ["Total Paid",  fmtAmt(totalPaid)],
+        ...(product === "edi" ? [["Outstanding", fmtAmt(ediOutstanding)] as [string, string]] : []),
+      ];
+
       const rowsHtml = filteredTxns.map((t, i) => `
         <tr style="background:${i % 2 === 0 ? "#ffffff" : "#f9fafb"}">
-          <td style="padding:7px 14px;border-bottom:1px solid #e5e7eb">${fmtDate(t.collection_date)}</td>
-          <td style="padding:7px 14px;border-bottom:1px solid #e5e7eb">${fmtAmt(Number(t.amount))}</td>
-          <td style="padding:7px 14px;border-bottom:1px solid #e5e7eb;text-transform:capitalize">${(t.payment_mode ?? "").toLowerCase()}</td>
+          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb">${fmtDate(t.collection_date)}</td>
+          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb">${fmtAmt(Number(t.amount))}</td>
+          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb;text-transform:capitalize">${(t.payment_mode ?? "").toLowerCase()}</td>
+          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb;color:${t.payment_status === "PAID" ? "#059669" : "#d97706"};font-weight:600">${t.payment_status}</td>
         </tr>`).join("");
 
+      const container = document.createElement("div");
+      container.style.cssText = [
+        "position:fixed","top:-9999px","left:-9999px",
+        "width:760px","background:#ffffff","padding:28px 32px",
+        "font-family:system-ui,-apple-system,sans-serif",
+        "color:#111827","line-height:1.5",
+      ].join(";");
+
       container.innerHTML = `
-        <h2 style="margin:0 0 2px;font-size:20px;font-weight:700">${modalTitle}</h2>
-        ${subTitle ? `<p style="margin:0 0 18px;font-size:13px;color:#6b7280">${subTitle}</p>` : `<div style="margin-bottom:18px"></div>`}
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px">
-          ${[
-            ["Loan Start", fmtDate(customer.loan_start_date)],
-            ["Loan Amount", fmtAmt(loanAmount)],
-            ["Total Paid", fmtAmt(totalPaid)],
-            [balLabel, fmtAmt(balance)],
-          ].map(([label, val]) => `
+        <h2 style="margin:0 0 2px;font-size:20px;font-weight:700">${pdfTitle}</h2>
+        ${pdfSub ? `<p style="margin:0 0 18px;font-size:13px;color:#6b7280">${pdfSub}</p>` : `<div style="margin-bottom:18px"></div>`}
+        <div style="display:grid;grid-template-columns:repeat(${summaryCards.length},1fr);gap:12px;margin-bottom:22px">
+          ${summaryCards.map(([label, val]) => `
             <div style="background:#f3f4f6;border-radius:8px;padding:12px">
               <p style="margin:0 0 3px;font-size:11px;color:#6b7280">${label}</p>
               <p style="margin:0;font-size:14px;font-weight:600">${val}</p>
@@ -576,24 +599,36 @@ export function CustomerDetailModal({ customer, product, onClose }: {
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead>
             <tr style="background:#02B15A;color:#fff">
-              <th style="padding:9px 14px;text-align:left;font-weight:600">Date</th>
-              <th style="padding:9px 14px;text-align:left;font-weight:600">Amount</th>
-              <th style="padding:9px 14px;text-align:left;font-weight:600">Mode</th>
+              <th style="padding:9px 12px;text-align:left;font-weight:600">Date</th>
+              <th style="padding:9px 12px;text-align:left;font-weight:600">Amount</th>
+              <th style="padding:9px 12px;text-align:left;font-weight:600">Mode</th>
+              <th style="padding:9px 12px;text-align:left;font-weight:600">Status</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
         </table>
         <p style="margin:12px 0 0;font-size:11px;color:#9ca3af">
-          ${filteredTxns.length} transaction${filteredTxns.length !== 1 ? "s" : ""}${txnFilter === "paid" ? " (paid only)" : ""}
+          ${filteredTxns.length} transaction${filteredTxns.length !== 1 ? "s" : ""}${txnFilter === "paid" ? " (paid only)" : ""} · ${product.toUpperCase()}
         </p>`;
 
       document.body.appendChild(container);
 
-      // Render HTML → canvas (browser handles Tamil + ₹ natively)
-      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: "#ffffff" });
+      setExportProgress({ step: "Rendering page…", pct: 58 });
+      await new Promise((r) => setTimeout(r, 16));
+
+      // scale:1.5 + JPEG is ~3× faster than scale:2 + PNG with no visible quality loss
+      const canvas = await html2canvas(container, {
+        scale: 1.5,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
       document.body.removeChild(container);
 
-      const imgData = canvas.toDataURL("image/png");
+      setExportProgress({ step: "Generating PDF…", pct: 88 });
+      await new Promise((r) => setTimeout(r, 16));
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.90);
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
@@ -601,115 +636,160 @@ export function CustomerDetailModal({ customer, product, onClose }: {
       const imgW = pageW - margin * 2;
       const imgH = (canvas.height * imgW) / canvas.width;
 
-      // Slice across pages if content is long
       let yOffset = 0;
       let firstPage = true;
       while (yOffset < imgH) {
         if (!firstPage) doc.addPage();
         firstPage = false;
-        doc.addImage(imgData, "PNG", margin, margin - yOffset, imgW, imgH);
+        doc.addImage(imgData, "JPEG", margin, margin - yOffset, imgW, imgH);
         yOffset += pageH - margin * 2;
       }
 
-      const fname = `${customer.customer_name ?? "customer"}_transactions.pdf`;
-      doc.save(fname);
-      window.open("https://web.whatsapp.com/", "_blank");
+      const safeName = pdfTitle.replace(/\s+/g, "_").replace(/[^\w஀-௿-]/g, "");
+      doc.save(`${safeName}_transactions.pdf`);
+      toast.success("PDF exported");
     } catch (e) {
-      console.error("Share failed:", e);
+      console.error("Export failed:", e);
+      toast.error("PDF export failed");
     } finally {
       setSharing(false);
+      setExportProgress(null);
     }
   };
 
   return (
-    <Modal open onClose={onClose} title={modalTitle} className="max-w-2xl">
-      <div className="space-y-4">
-        {subTitle && (
-          <p className="text-sm text-muted-foreground -mt-1">{subTitle}</p>
-        )}
+    <>
+      <Modal open onClose={onClose} title={modalTitle} className="max-w-2xl">
+        <div className="space-y-4">
+          {subTitle && <p className="text-sm text-muted-foreground -mt-1">{subTitle}</p>}
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: "Loan Start", value: fmtDate(customer.loan_start_date) },
-            { label: "Loan Amount", value: fmtAmt(loanAmount) },
-            { label: "Total Paid", value: fmtAmt(totalPaid) },
-            { label: product === "edi" ? "Outstanding" : "Loan Closure", value: fmtAmt(balance) },
-          ].map(({ label, value }) => (
-            <div key={label} className="rounded-lg bg-secondary p-3">
-              <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
-              <p className="text-sm font-semibold text-foreground">{value}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Filter + Share */}
-        <div className="flex items-center justify-between">
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            {(["all", "paid"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setTxnFilter(f)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  txnFilter === f ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f === "all" ? "All" : "Paid Only"}
-              </button>
+          {/* Stats */}
+          <div className={`grid gap-3 ${statsCards.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+            {statsCards.map(({ label, value }) => (
+              <div key={label} className="rounded-lg bg-secondary p-3">
+                <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
+                <p className="text-sm font-semibold text-foreground">{value}</p>
+              </div>
             ))}
           </div>
-          <button
-            onClick={handleShare}
-            disabled={sharing || isLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/15 text-green-400 text-xs font-medium hover:bg-green-500/25 disabled:opacity-50 transition-colors"
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            {sharing ? "Preparing…" : "Share PDF"}
-          </button>
-        </div>
 
-        {/* Table */}
-        <div className="rounded-lg border border-border overflow-hidden max-h-72 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-card">
-              <tr className="border-b border-border">
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Date</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Amount</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Mode</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                [...Array(4)].map((_, i) => (
-                  <tr key={i} className="border-b border-border/50">
-                    {[...Array(3)].map((_, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>
-                    ))}
-                  </tr>
-                ))
-              ) : filteredTxns.length === 0 ? (
-                <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground text-xs">No transactions found</td></tr>
-              ) : (
-                filteredTxns.map((t) => (
-                  <tr key={t.transaction_id} className="border-b border-border/50 hover:bg-secondary/30">
-                    <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(t.collection_date)}</td>
-                    <td className="px-4 py-2.5 font-medium text-foreground">{fmtAmt(Number(t.amount))}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground capitalize">{(t.payment_mode ?? "").toLowerCase()}</td>
-                  </tr>
-                ))
+          {/* Controls row */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex rounded-lg border border-border overflow-hidden">
+              {(["all", "paid"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setTxnFilter(f)}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    txnFilter === f ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {f === "all" ? "All" : "Paid Only"}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Language selector — only shown when customer has a Tamil name */}
+              {hasTamil && (
+                <div className="flex rounded-lg border border-border overflow-hidden" title="PDF language">
+                  {(["ta", "en"] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      onClick={() => setPdfLang(lang)}
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                        pdfLang === lang ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {lang === "ta" ? "தமிழ்" : "EN"}
+                    </button>
+                  ))}
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+              <button
+                onClick={handleShare}
+                disabled={sharing || isLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/15 text-green-400 text-xs font-medium hover:bg-green-500/25 disabled:opacity-50 transition-colors"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+                {sharing ? "Exporting…" : "Export PDF"}
+              </button>
+            </div>
+          </div>
 
-        {filteredTxns.length > 0 && (
-          <p className="text-xs text-muted-foreground text-right">
-            {filteredTxns.length} transaction{filteredTxns.length !== 1 ? "s" : ""}
-            {txnFilter === "paid" ? " (paid only)" : ""}
-          </p>
-        )}
-      </div>
-    </Modal>
+          {/* Transaction table */}
+          <div className="rounded-lg border border-border overflow-hidden max-h-72 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-card">
+                <tr className="border-b border-border">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Date</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Amount</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Mode</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  [...Array(4)].map((_, i) => (
+                    <tr key={i} className="border-b border-border/50">
+                      {[...Array(4)].map((_, j) => (
+                        <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>
+                      ))}
+                    </tr>
+                  ))
+                ) : filteredTxns.length === 0 ? (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-xs">No transactions found</td></tr>
+                ) : (
+                  filteredTxns.map((t) => (
+                    <tr key={t.transaction_id} className="border-b border-border/50 hover:bg-secondary/30">
+                      <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(t.collection_date)}</td>
+                      <td className="px-4 py-2.5 font-medium text-foreground">{fmtAmt(Number(t.amount))}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground capitalize">{(t.payment_mode ?? "").toLowerCase()}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`text-xs font-semibold ${t.payment_status === "PAID" ? "text-green-500" : "text-amber-500"}`}>
+                          {t.payment_status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredTxns.length > 0 && (
+            <p className="text-xs text-muted-foreground text-right">
+              {filteredTxns.length} transaction{filteredTxns.length !== 1 ? "s" : ""}
+              {txnFilter === "paid" ? " (paid only)" : ""}
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      {/* PDF export progress overlay — rendered outside modal so it sits above everything */}
+      {exportProgress && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl p-6 w-80 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                <Share2 className="h-4 w-4 text-green-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Exporting PDF</p>
+                <p className="text-xs text-muted-foreground">{exportProgress.step}</p>
+              </div>
+            </div>
+            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+              <div
+                className="h-full rounded-full bg-green-500 transition-all duration-300 ease-out"
+                style={{ width: `${exportProgress.pct}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1.5 text-right tabular-nums">{exportProgress.pct}%</p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

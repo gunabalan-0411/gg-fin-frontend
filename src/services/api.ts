@@ -16,10 +16,11 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     const url: string = error.config?.url ?? "";
+    const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/refresh");
     const isStatusPoll = url.includes("/import/status/");
-    if (error.response?.status === 401 && !isStatusPoll) {
-      localStorage.removeItem("gg_fin_token");
-      window.location.href = "/login";
+    if (error.response?.status === 401 && !isStatusPoll && !isAuthEndpoint) {
+      // Fire an event — SessionGuard handles the dialog so the user isn't hard-redirected
+      window.dispatchEvent(new CustomEvent("gg_fin_401"));
     }
     return Promise.reject(error);
   }
@@ -33,6 +34,7 @@ export const authApi = {
     form.append("password", password);
     return api.post<{ access_token: string }>("/auth/login", form);
   },
+  refresh: () => api.post<{ access_token: string }>("/auth/refresh"),
   changePassword: (current_password: string, new_password: string) =>
     api.post<{ ok: boolean }>("/auth/change-password", { current_password, new_password }),
 };

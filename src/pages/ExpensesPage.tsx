@@ -70,10 +70,10 @@ export default function AccountAdjustmentsPage() {
           <Receipt className="h-4 w-4" /> Add Expense
         </NavItem>
         <NavItem active={section === "unclaimed"} onClick={() => setSection("unclaimed")}>
-          <AlertCircle className="h-4 w-4" /> Unclaimed Balances
+          <AlertCircle className="h-4 w-4" /> Unclaimed Amount
         </NavItem>
         <NavItem active={section === "defaulted"} onClick={() => setSection("defaulted")}>
-          <ShieldAlert className="h-4 w-4" /> Defaulted Balances
+          <ShieldAlert className="h-4 w-4" /> Defaulted Amount
         </NavItem>
       </aside>
       <div className="flex-1 overflow-y-auto p-6">
@@ -299,7 +299,7 @@ function UnclaimedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={cn("font-bold text-foreground", isMobile ? "text-lg" : "text-xl")}>Unclaimed Balances</h1>
+          <h1 className={cn("font-bold text-foreground", isMobile ? "text-lg" : "text-xl")}>Unclaimed Amount</h1>
           <p className="text-sm text-muted-foreground">
             Total: <span className="text-amber-400 font-semibold">{formatCurrency(total)}</span>
             {" · "}{records.length} records
@@ -316,7 +316,7 @@ function UnclaimedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
         isLoading ? (
           <BalanceCardSkeleton />
         ) : records.length === 0 ? (
-          <EmptyState icon={AlertCircle} label="No unclaimed balances" />
+          <EmptyState icon={AlertCircle} label="No unclaimed amounts" />
         ) : (
           <div className="space-y-2">
             {records.map((r) => (
@@ -354,7 +354,7 @@ function UnclaimedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
                     </tr>
                   ))
                 ) : records.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No unclaimed balances recorded</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No unclaimed amounts recorded</td></tr>
                 ) : records.map((r) => (
                   <tr key={r.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{r.id}</td>
@@ -362,8 +362,8 @@ function UnclaimedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
                     <td className="px-4 py-3">
                       <ProductBadge product={r.product} />
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{r.customer_id}</td>
-                    <td className="px-4 py-3 text-foreground font-medium">{r.customer_name}</td>
+                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{r.customer_id ?? "—"}</td>
+                    <td className="px-4 py-3 text-foreground font-medium">{r.customer_name ?? <span className="text-muted-foreground italic">Unknown</span>}</td>
                     <td className="px-4 py-3 font-semibold text-amber-400">{formatCurrency(Number(r.amount))}</td>
                     <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{r.notes ?? "—"}</td>
                     <td className="px-4 py-3">
@@ -400,8 +400,8 @@ function UnclaimedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
       <DeleteConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        title="Delete Unclaimed Balance"
-        description={confirmDelete ? `Remove unclaimed balance for ${confirmDelete.customer_name} — ${formatCurrency(Number(confirmDelete.amount))}?` : ""}
+        title="Delete Unclaimed Amount"
+        description={confirmDelete ? `Remove unclaimed amount${confirmDelete.customer_name ? ` for ${confirmDelete.customer_name}` : ""} — ${formatCurrency(Number(confirmDelete.amount))}?` : ""}
         onConfirm={() => { if (confirmDelete) { deleteMutation.mutate(confirmDelete.id); setConfirmDelete(null); } }}
       />
     </div>
@@ -424,7 +424,7 @@ function DefaultedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className={cn("font-bold text-foreground", isMobile ? "text-lg" : "text-xl")}>Defaulted Balances</h1>
+          <h1 className={cn("font-bold text-foreground", isMobile ? "text-lg" : "text-xl")}>Defaulted Amount</h1>
           <p className="text-sm text-muted-foreground">
             Total: <span className="text-red-400 font-semibold">{formatCurrency(total)}</span>
             {" · "}{records.length} records
@@ -441,7 +441,7 @@ function DefaultedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
         isLoading ? (
           <BalanceCardSkeleton />
         ) : records.length === 0 ? (
-          <EmptyState icon={ShieldAlert} label="No defaulted balances" />
+          <EmptyState icon={ShieldAlert} label="No defaulted amounts" />
         ) : (
           <div className="space-y-2">
             {records.map((r) => (
@@ -479,14 +479,14 @@ function DefaultedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
                     </tr>
                   ))
                 ) : records.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No defaulted balances recorded</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No defaulted amounts recorded</td></tr>
                 ) : records.map((r) => (
                   <tr key={r.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{r.id}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(r.date)}</td>
                     <td className="px-4 py-3"><ProductBadge product={r.product} /></td>
-                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{r.customer_id}</td>
-                    <td className="px-4 py-3 text-foreground font-medium">{r.customer_name}</td>
+                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{r.customer_id ?? "—"}</td>
+                    <td className="px-4 py-3 text-foreground font-medium">{r.customer_name ?? <span className="text-muted-foreground italic">Unknown</span>}</td>
                     <td className="px-4 py-3 font-semibold text-red-400">{formatCurrency(Number(r.amount))}</td>
                     <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{r.notes ?? "—"}</td>
                     <td className="px-4 py-3">
@@ -523,8 +523,8 @@ function DefaultedBalancesSection({ isMobile = false }: { isMobile?: boolean }) 
       <DeleteConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        title="Delete Defaulted Balance"
-        description={confirmDelete ? `Remove defaulted balance for ${confirmDelete.customer_name} — ${formatCurrency(Number(confirmDelete.amount))}?` : ""}
+        title="Delete Defaulted Amount"
+        description={confirmDelete ? `Remove defaulted amount${confirmDelete.customer_name ? ` for ${confirmDelete.customer_name}` : ""} — ${formatCurrency(Number(confirmDelete.amount))}?` : ""}
         onConfirm={() => { if (confirmDelete) { deleteMutation.mutate(confirmDelete.id); setConfirmDelete(null); } }}
       />
     </div>
@@ -548,8 +548,8 @@ function BalanceCard({
   id, customerName, customerId, product, amount, date, notes, amountColor, onDelete,
 }: {
   id: number;
-  customerName: string;
-  customerId: number;
+  customerName: string | null;
+  customerId: number | null;
   product: string;
   amount: number;
   date: string;
@@ -562,12 +562,11 @@ function BalanceCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <p className="text-sm font-semibold text-foreground truncate">{customerName}</p>
+            <p className="text-sm font-semibold text-foreground truncate">{customerName ?? <span className="italic text-muted-foreground font-normal">Unknown</span>}</p>
             <ProductBadge product={product} />
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-            <span>#{customerId}</span>
-            <span>·</span>
+            {customerId != null && <><span>#{customerId}</span><span>·</span></>}
             <span>{formatDate(date)}</span>
           </div>
           <p className={cn("text-xl font-bold", amountColor)}>{formatCurrency(amount)}</p>
@@ -700,8 +699,17 @@ function UnclaimedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
   };
 
   return (
-    <Modal open onClose={onClose} title="Add Unclaimed Balance">
-      <form onSubmit={(e) => { e.preventDefault(); if (!customerName) return; onSave({ date, product, customer_id: parseInt(customerId, 10), amount: Number(amount), notes: notes || null }); }} className="space-y-4">
+    <Modal open onClose={onClose} title="Add Unclaimed Amount">
+      <form onSubmit={(e) => {
+        e.preventDefault();
+        onSave({
+          date, product,
+          customer_id: customerId ? parseInt(customerId, 10) : null,
+          customer_name: customerName || null,
+          amount: Number(amount),
+          notes: notes || null,
+        });
+      }} className="space-y-4">
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
           <DatePicker value={date} onChange={setDate} />
@@ -719,15 +727,17 @@ function UnclaimedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer ID</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer ID <span className="text-muted-foreground/50">(optional)</span></label>
           <Input type="number" value={customerId}
             onChange={(e) => { setCustomerId(e.target.value); setCustomerName(""); setLookupError(""); }}
-            onBlur={lookup} placeholder="Enter ID — name auto-fetches" required />
+            onBlur={lookup} placeholder="Enter ID to auto-fetch name" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer Name</label>
-          <Input value={lookingUp ? "Looking up…" : customerName} readOnly placeholder="Auto-fetched"
-            className={cn(lookupError ? "border-red-500" : "", "bg-secondary/50 cursor-not-allowed")} />
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer Name <span className="text-muted-foreground/50">(optional)</span></label>
+          <Input value={lookingUp ? "Looking up…" : customerName}
+            onChange={(e) => !lookingUp && setCustomerName(e.target.value)}
+            placeholder="Auto-fetched or type manually"
+            className={cn(lookupError ? "border-red-500" : "")} />
           {lookupError && <p className="text-xs text-red-400 mt-1">{lookupError}</p>}
         </div>
         <div>
@@ -740,7 +750,7 @@ function UnclaimedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
         </div>
         <div className="flex gap-2 pt-1">
           <Button type="button" variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button type="submit" className="flex-1" disabled={!customerName || lookingUp}>Save</Button>
+          <Button type="submit" className="flex-1" disabled={lookingUp}>Save</Button>
         </div>
       </form>
     </Modal>
@@ -772,8 +782,17 @@ function DefaultedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
   };
 
   return (
-    <Modal open onClose={onClose} title="Add Defaulted Balance">
-      <form onSubmit={(e) => { e.preventDefault(); if (!customerName) return; onSave({ date, product, customer_id: parseInt(customerId, 10), amount: Number(amount), notes: notes || null }); }} className="space-y-4">
+    <Modal open onClose={onClose} title="Add Defaulted Amount">
+      <form onSubmit={(e) => {
+        e.preventDefault();
+        onSave({
+          date, product,
+          customer_id: customerId ? parseInt(customerId, 10) : null,
+          customer_name: customerName || null,
+          amount: Number(amount),
+          notes: notes || null,
+        });
+      }} className="space-y-4">
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
           <DatePicker value={date} onChange={setDate} />
@@ -791,15 +810,17 @@ function DefaultedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer ID</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer ID <span className="text-muted-foreground/50">(optional)</span></label>
           <Input type="number" value={customerId}
             onChange={(e) => { setCustomerId(e.target.value); setCustomerName(""); setLookupError(""); }}
-            onBlur={lookup} placeholder="Enter ID — name auto-fetches" required />
+            onBlur={lookup} placeholder="Enter ID to auto-fetch name" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer Name</label>
-          <Input value={lookingUp ? "Looking up…" : customerName} readOnly placeholder="Auto-fetched"
-            className={cn(lookupError ? "border-red-500" : "", "bg-secondary/50 cursor-not-allowed")} />
+          <label className="block text-xs font-medium text-muted-foreground mb-1">Customer Name <span className="text-muted-foreground/50">(optional)</span></label>
+          <Input value={lookingUp ? "Looking up…" : customerName}
+            onChange={(e) => !lookingUp && setCustomerName(e.target.value)}
+            placeholder="Auto-fetched or type manually"
+            className={cn(lookupError ? "border-red-500" : "")} />
           {lookupError && <p className="text-xs text-red-400 mt-1">{lookupError}</p>}
         </div>
         <div>
@@ -812,7 +833,7 @@ function DefaultedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
         </div>
         <div className="flex gap-2 pt-1">
           <Button type="button" variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button type="submit" className="flex-1" disabled={!customerName || lookingUp}>Save</Button>
+          <Button type="submit" className="flex-1" disabled={lookingUp}>Save</Button>
         </div>
       </form>
     </Modal>
