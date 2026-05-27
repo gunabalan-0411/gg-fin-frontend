@@ -952,8 +952,25 @@ function AddCustomerStepModal({
     }
   };
 
+  const REQUIRED_FIELDS = [
+    ["customer_name", "Name (English)"],
+    ["customer_name_ta", "Name (Tamil)"],
+    ["customer_segment_id", "Segment"],
+    ["loan_amount", "Loan Amount"],
+    ["disbursed_amount", "Disbursed"],
+    ["interest", "Interest"],
+    ["loan_start_date", "Start Date"],
+    ...(productType === "edi"
+      ? [["outstanding_balance", "Outstanding"]]
+      : [["interest_payment_frequency", "Interest Freq."], ["loan_closure", "Loan Closure"]]),
+  ] as [string, string][];
+
   const handleAdd = async () => {
-    if (!form.customer_name?.trim()) return;
+    const missing = REQUIRED_FIELDS.filter(([k]) => !form[k]?.trim());
+    if (missing.length > 0) {
+      toast.error(`Fill required: ${missing.map(([, l]) => l).join(", ")}`);
+      return;
+    }
     setSubmitting(true);
     try {
       const base: Record<string, unknown> = {
@@ -1034,80 +1051,81 @@ function AddCustomerStepModal({
               <input type="text" value={nextId ?? "…"} readOnly className={`${inputCls} bg-muted/30 text-muted-foreground cursor-not-allowed`} />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Segment</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Segment<span className="text-red-500">*</span></label>
               <select value={form.customer_segment_id ?? ""} onChange={(e) => setField("customer_segment_id", e.target.value)} className={inputCls}>
                 <option value="">— None —</option>
                 {segments.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Name (English) *</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Name (English)<span className="text-red-500">*</span></label>
               <input type="text" value={form.customer_name ?? ""} placeholder="Enter name…"
                 onChange={(e) => setField("customer_name", e.target.value)}
                 onBlur={(e) => handleTransliterate(e.target.value)}
                 className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                Name (Tamil){transliterating && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">
+                Name (Tamil)<span className="text-red-500">*</span>
+                {transliterating && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-1" />}
               </label>
               <input type="text" value={form.customer_name_ta ?? ""} placeholder="தமிழ் பெயர்…"
                 onChange={(e) => setField("customer_name_ta", e.target.value)} className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Contact</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Contact <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
               <input type="text" value={form.contact_number ?? ""} placeholder="Phone…"
                 onChange={(e) => setField("contact_number", e.target.value)} className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Start Date</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Start Date<span className="text-red-500">*</span></label>
               <input type="date" value={form.loan_start_date ?? ""}
                 onChange={(e) => setField("loan_start_date", e.target.value)} className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Loan Amount</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Loan Amount<span className="text-red-500">*</span></label>
               {amountInput("loan_amount")}
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Disbursed</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Disbursed<span className="text-red-500">*</span></label>
               {amountInput("disbursed_amount")}
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Interest</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Interest<span className="text-red-500">*</span></label>
               {amountInput("interest")}
             </div>
             {productType === "edi" && (
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Outstanding</label>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Outstanding<span className="text-red-500">*</span></label>
                 {amountInput("outstanding_balance")}
               </div>
             )}
             {productType === "iop" && (
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Interest Freq.</label>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Interest Freq.<span className="text-red-500">*</span></label>
                 <input type="number" value={form.interest_payment_frequency ?? ""} placeholder="0"
                   onChange={(e) => setField("interest_payment_frequency", e.target.value)} className={inputCls} />
               </div>
             )}
             {productType === "iop" && (
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Loan Closure</label>
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-0.5">Loan Closure<span className="text-red-500">*</span></label>
                 <input type="number" value={form.loan_closure ?? ""} placeholder="0"
                   onChange={(e) => setField("loan_closure", e.target.value)} className={inputCls} />
               </div>
             )}
             <div className="col-span-2 space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Address</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Address <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
               <input type="text" value={form.customer_address ?? ""} placeholder="Address…"
                 onChange={(e) => setField("customer_address", e.target.value)} className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Aadhaar</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Aadhaar <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
               <input type="text" value={form.proof_aadhaar ?? ""} placeholder="Aadhaar…"
                 onChange={(e) => setField("proof_aadhaar", e.target.value)} className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Remarks</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Remarks <span className="normal-case text-[9px] text-muted-foreground/50">(optional)</span></label>
               <input type="text" value={form.remarks ?? ""} placeholder="Remarks…"
                 onChange={(e) => setField("remarks", e.target.value)} className={inputCls} />
             </div>
@@ -1122,7 +1140,9 @@ function AddCustomerStepModal({
           <button onClick={onSkip} className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
             Done
           </button>
-          <button onClick={handleAdd} disabled={submitting || !form.customer_name?.trim()}
+          <button
+            onClick={handleAdd}
+            disabled={submitting || REQUIRED_FIELDS.some(([k]) => !form[k]?.trim())}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 disabled:opacity-40 transition-colors">
             {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Add Customer

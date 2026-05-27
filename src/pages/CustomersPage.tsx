@@ -835,7 +835,33 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const data: Record<string, unknown> = { ...initial, ...form };
+    const merged: Record<string, unknown> = { ...initial, ...form };
+
+    const REQUIRED: [string, string][] = [
+      ["customer_name", "Name (English)"],
+      ["customer_name_ta", "Name (Tamil)"],
+      ["customer_segment_id", "Segment"],
+      ["loan_amount", "Loan Amount"],
+      ["disbursed_amount", "Disbursed Amount"],
+      ["interest", "Interest"],
+      ["loan_start_date", "Start Date"],
+    ];
+    if (product === "edi") REQUIRED.push(["outstanding_balance", "Outstanding Balance"]);
+    else {
+      REQUIRED.push(["interest_payment_frequency", "Interest Freq."]);
+      REQUIRED.push(["loan_closure", "Loan Closure"]);
+    }
+
+    const missing = REQUIRED.filter(([k]) => {
+      const v = merged[k];
+      return v === null || v === undefined || String(v).trim() === "";
+    });
+    if (missing.length > 0) {
+      toast.error(`Fill required: ${missing.map(([, l]) => l).join(", ")}`);
+      return;
+    }
+
+    const data: Record<string, unknown> = { ...merged };
     ["customer_id", "customer_segment_id", "loan_amount", "disbursed_amount",
      "interest", "outstanding_balance", "interest_payment_frequency", "loan_closure"].forEach((k) => {
       if (data[k]) data[k] = Number(data[k]);
@@ -849,9 +875,12 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
     return "";
   };
 
-  const field = (key: string, label: string) => (
+  const field = (key: string, label: string, opt?: boolean) => (
     <div>
-      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
+      <label className="block text-xs font-medium text-muted-foreground mb-1">
+        {label}{!opt && <span className="text-red-500 ml-0.5">*</span>}
+        {opt && <span className="text-muted-foreground/50 ml-1 text-[10px] font-normal">(optional)</span>}
+      </label>
       <Input
         key={`${key}-${initial?.customer_id ?? "new"}-${nextId}-${(duplicateFrom as EdiCustomer | null)?.customer_id ?? ""}`}
         defaultValue={key === "customer_id" && !initial && nextId !== null ? String(nextId) : getVal(key)}
@@ -862,7 +891,9 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
 
   const numField = (key: string, label: string) => (
     <div>
-      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
+      <label className="block text-xs font-medium text-muted-foreground mb-1">
+        {label}<span className="text-red-500 ml-0.5">*</span>
+      </label>
       <Input
         type="number"
         key={`${key}-${initial?.customer_id ?? "new"}-${(duplicateFrom as EdiCustomer | null)?.customer_id ?? ""}`}
@@ -883,7 +914,8 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
           {field("customer_name", "Name (English)")}
           <div className="col-span-2">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Name (Tamil) {tamilLoading && <span className="text-muted-foreground animate-pulse">transliterating…</span>}
+              Name (Tamil)<span className="text-red-500 ml-0.5">*</span>
+              {tamilLoading && <span className="text-muted-foreground animate-pulse ml-1">transliterating…</span>}
             </label>
             <Input
               key={`customer_name_ta-${initial?.customer_id ?? "new"}-${(duplicateFrom as EdiCustomer | null)?.customer_id ?? ""}`}
@@ -892,10 +924,12 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
               placeholder="Auto-filled from English name"
             />
           </div>
-          {field("contact_number", "Contact")}
+          {field("contact_number", "Contact", true)}
 
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Segment</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Segment<span className="text-red-500 ml-0.5">*</span>
+            </label>
             <div className="relative">
               <select
                 key={`customer_segment_id-${initial?.customer_id ?? "new"}-${(duplicateFrom as EdiCustomer | null)?.customer_id ?? ""}`}
@@ -922,7 +956,9 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
           {numField("interest", "Interest")}
 
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Start Date</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Start Date<span className="text-red-500 ml-0.5">*</span>
+            </label>
             <DatePicker value={currentDate || undefined} onChange={handleDateChange} />
           </div>
 
@@ -935,9 +971,9 @@ function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onS
           {product === "iop" && numField("interest_payment_frequency", "Interest Freq.")}
           {product === "iop" && numField("loan_closure", "Loan Closure")}
         </div>
-        {field("customer_address", "Address")}
-        {field("proof_aadhaar", "Aadhaar")}
-        {field("remarks", "Remarks")}
+        {field("customer_address", "Address", true)}
+        {field("proof_aadhaar", "Aadhaar", true)}
+        {field("remarks", "Remarks", true)}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit">Save</Button>
