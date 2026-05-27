@@ -343,7 +343,9 @@ function RecordCard({
           className="text-xs rounded-lg border border-border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20" />
         <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", customer_name: "", customer_id: null, customer_suggestions: [] })}
           className={`text-xs px-2 py-1 rounded-lg font-bold transition-colors ${
-            row.product_type === "IOP" ? "bg-accent/60 text-foreground/70" : "bg-primary/25 text-foreground/70"
+            row.product_type === "IOP"
+              ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
+              : "bg-blue-500/15 text-blue-700 dark:text-blue-400"
           }`}>{row.product_type}</button>
         <button onClick={() => {
           const next = row.payment_mode === "CASH" ? "ONLINE" : "CASH";
@@ -377,6 +379,104 @@ function RecordCard({
         </div>
       </div>
       {row.notes && <p className="text-xs text-muted-foreground italic pl-4">{row.notes}</p>}
+    </div>
+  );
+}
+
+// ── DateConfirmModal ─────────────────────────────────────────────────────────
+function DateConfirmModal({
+  open,
+  pendingRows,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  pendingRows: Row[];
+  onConfirm: (dateMap: Record<string, string>) => void;
+  onCancel: () => void;
+}) {
+  const uniqueDates = [...new Set(pendingRows.map((r) => r.collection_date).filter(Boolean))].sort();
+  const [dateMap, setDateMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (open) {
+      const init: Record<string, string> = {};
+      uniqueDates.forEach((d) => { init[d] = d; });
+      setDateMap(init);
+    }
+  }, [open, pendingRows.length]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    if (open) document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" />
+      <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Confirm extracted dates</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              {uniqueDates.length === 1
+                ? "The AI extracted this date. Correct it if it looks wrong."
+                : `The AI found ${uniqueDates.length} dates. Correct any that look wrong.`}
+            </p>
+          </div>
+        </div>
+
+        {/* Date list */}
+        <div className="space-y-2">
+          {uniqueDates.map((origDate) => {
+            const count = pendingRows.filter((r) => r.collection_date === origDate).length;
+            const changed = dateMap[origDate] && dateMap[origDate] !== origDate;
+            return (
+              <div key={origDate} className={`rounded-xl border p-3 transition-colors ${
+                changed ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-secondary/40"
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted-foreground/60">
+                    {count} record{count !== 1 ? "s" : ""}
+                  </span>
+                  {changed && (
+                    <span className="text-[10px] text-amber-500 font-medium">edited</span>
+                  )}
+                </div>
+                <input
+                  type="date"
+                  value={ddmmyyyyToInput(dateMap[origDate] ?? origDate)}
+                  onChange={(e) =>
+                    setDateMap((prev) => ({ ...prev, [origDate]: inputToDdmmyyyy(e.target.value) }))
+                  }
+                  className="w-full text-sm font-mono rounded-lg border border-border px-3 py-2 bg-background focus:outline-none focus:ring-2 focus:ring-foreground/15"
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <button onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/40 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(dateMap)}
+            className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors">
+            Confirm
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -489,7 +589,7 @@ function AddRowModal({
                 <button key={p} onClick={() => setProductType(p)}
                   className={`px-3 py-2 text-xs font-bold transition-colors ${
                     productType === p
-                      ? p === "IOP" ? "bg-accent/60 text-foreground/70" : "bg-primary/25 text-foreground/70"
+                      ? p === "IOP" ? "bg-orange-500/15 text-orange-700 dark:text-orange-400" : "bg-blue-500/15 text-blue-700 dark:text-blue-400"
                       : "text-muted-foreground hover:bg-muted/40"
                   }`}>{p}</button>
               ))}
@@ -595,7 +695,9 @@ function OcrTableRow({
         <button
           onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", customer_name: "", customer_id: null, customer_suggestions: [] })}
           className={`text-[10.5px] px-2 py-0.5 rounded-md font-bold transition-colors ${
-            row.product_type === "IOP" ? "bg-accent/60 text-foreground/70" : "bg-primary/25 text-foreground/70"
+            row.product_type === "IOP"
+              ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
+              : "bg-blue-500/15 text-blue-700 dark:text-blue-400"
           }`}
         >
           {row.product_type}
@@ -713,6 +815,8 @@ export default function OcrPage() {
   const [appliedUpiTxns, setAppliedUpiTxns] = useState<Map<number, { payment_mode: "CASH" | "ONLINE"; is_paid: boolean; amount: number }>>(new Map());
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showDateConfirm, setShowDateConfirm] = useState(false);
+  const [pendingExtracted, setPendingExtracted] = useState<Row[]>([]);
 
   const hasSession = Boolean(sessionId) && !uploadStage;
   const unassigned = rows.filter((r) => !r.customer_id).length;
@@ -830,17 +934,28 @@ export default function OcrPage() {
         const mode = ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE";
         return { ...r, uid: mkUid(), product_type: ((r.product_type as string) || "EDI").toUpperCase() as "EDI" | "IOP", payment_mode: mode, is_paid: mode === "CASH" };
       });
-      setRows(extracted);
-      toast.success(`${data.records.length} records extracted`);
-      if (isMobile) setMobileTab("records");
-      const uniqueDates = [...new Set(extracted.map((r) => r.collection_date as string))];
-      fetchUpiForDates(uniqueDates, pageIndex);
+      setPendingExtracted(extracted);
+      setShowDateConfirm(true);
     } catch (err: any) {
       setExtractError(httpError(err));
     } finally {
       if (extractTimerRef.current) { clearInterval(extractTimerRef.current); extractTimerRef.current = null; }
       setExtracting(false);
     }
+  };
+
+  const handleDateConfirmed = (dateMap: Record<string, string>) => {
+    const updated = pendingExtracted.map((r: Row) => ({
+      ...r,
+      collection_date: dateMap[r.collection_date] ?? r.collection_date,
+    }));
+    setRows(updated);
+    toast.success(`${updated.length} records extracted`);
+    if (isMobile) setMobileTab("records");
+    const confirmedDates = [...new Set(updated.map((r: Row) => r.collection_date))];
+    fetchUpiForDates(confirmedDates, pageIndex);
+    setShowDateConfirm(false);
+    setPendingExtracted([]);
   };
 
   const goPage = (dir: -1 | 1) => {
@@ -1174,6 +1289,8 @@ export default function OcrPage() {
         </div>
         <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
           onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
+        <DateConfirmModal open={showDateConfirm} pendingRows={pendingExtracted}
+          onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
       </>
     );
   }
@@ -1740,7 +1857,7 @@ export default function OcrPage() {
                                   {txn.mapped_customer_name}
                                   {txn.mapped_customer_type && (
                                     <span className={`ml-1 text-[8.5px] font-bold px-1 py-px rounded uppercase ${
-                                      txn.mapped_customer_type === "edi" ? "bg-primary/25 text-foreground/65" : "bg-accent/60 text-foreground/65"
+                                      txn.mapped_customer_type === "edi" ? "bg-blue-500/15 text-blue-700 dark:text-blue-400" : "bg-orange-500/15 text-orange-700 dark:text-orange-400"
                                     }`}>{txn.mapped_customer_type}</span>
                                   )}
                                 </p>
@@ -1836,6 +1953,8 @@ export default function OcrPage() {
 
       <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
         onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
+      <DateConfirmModal open={showDateConfirm} pendingRows={pendingExtracted}
+        onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
     </>
   );
 }
