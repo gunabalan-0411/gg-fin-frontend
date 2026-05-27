@@ -384,35 +384,30 @@ function RecordCard({
 }
 
 // ── DateConfirmModal ─────────────────────────────────────────────────────────
+// Always mounted via conditional rendering (no `open` prop) so the lazy
+// useState initializer runs immediately when the component mounts.
 function DateConfirmModal({
-  open,
   pendingRows,
   onConfirm,
   onCancel,
 }: {
-  open: boolean;
   pendingRows: Row[];
   onConfirm: (dateMap: Record<string, string>) => void;
   onCancel: () => void;
 }) {
   const uniqueDates = [...new Set(pendingRows.map((r) => r.collection_date).filter(Boolean))].sort();
-  const [dateMap, setDateMap] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (open) {
-      const init: Record<string, string> = {};
-      uniqueDates.forEach((d) => { init[d] = d; });
-      setDateMap(init);
-    }
-  }, [open, pendingRows.length]);
+  const [dateMap, setDateMap] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    uniqueDates.forEach((d) => { init[d] = d; });
+    return init;
+  });
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
-    if (open) document.addEventListener("keydown", handler);
+    document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onCancel]);
-
-  if (!open) return null;
+  }, [onCancel]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -1289,8 +1284,10 @@ export default function OcrPage() {
         </div>
         <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
           onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
-        <DateConfirmModal open={showDateConfirm} pendingRows={pendingExtracted}
-          onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
+        {showDateConfirm && pendingExtracted.length > 0 && (
+          <DateConfirmModal pendingRows={pendingExtracted}
+            onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
+        )}
       </>
     );
   }
@@ -1953,8 +1950,10 @@ export default function OcrPage() {
 
       <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
         onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
-      <DateConfirmModal open={showDateConfirm} pendingRows={pendingExtracted}
-        onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
+      {showDateConfirm && pendingExtracted.length > 0 && (
+        <DateConfirmModal pendingRows={pendingExtracted}
+          onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
+      )}
     </>
   );
 }
