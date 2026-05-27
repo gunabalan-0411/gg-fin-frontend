@@ -371,7 +371,7 @@ function TransactionFormModal({
               className="flex h-9 w-full rounded-lg border border-border bg-secondary px-3 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="PAID">PAID</option>
-              <option value="PENDING">PENDING</option>
+              <option value="UNPAID">UNPAID</option>
             </select>
           </div>
         </div>
