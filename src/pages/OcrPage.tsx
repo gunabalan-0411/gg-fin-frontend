@@ -1031,7 +1031,7 @@ export default function OcrPage() {
   const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState("gemini-3.1-pro-preview");
   const [uploadStage, setUploadStage] = useState<"uploading" | "processing" | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -1132,7 +1132,7 @@ export default function OcrPage() {
       if (wfStep === 4) wfComplete(4, 5);
       return;
     }
-    const handled = struckUpiIds.size + appliedUpiTxns.size;
+    const handled = upiTxns.filter((t: UpiTxn) => struckUpiIds.has(t.id) || appliedUpiTxns.has(t.id)).length;
     if (handled >= upiTxns.length) {
       const t = setTimeout(() => {
         setWfDone((prev) => new Set([...prev, 3, 4]));
@@ -1140,7 +1140,7 @@ export default function OcrPage() {
       }, 500);
       return () => clearTimeout(t);
     }
-  }, [wfStep, loadingUpi, upiTxns.length, struckUpiIds.size, appliedUpiTxns.size, wfComplete]);
+  }, [wfStep, loadingUpi, upiTxns.length, struckUpiIds.size, appliedUpiTxns.size, pageIndex, wfComplete]);
 
   const processFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -1165,6 +1165,8 @@ export default function OcrPage() {
       setPageImageB64(null);
       setPageRows({});
       setPageUpiTxns({});
+      setStruckUpiIds(new Set());
+      setAppliedUpiTxns(new Map());
       setWfStep(1);
       setWfDone(new Set());
       setWfSkipped(new Set());
@@ -1257,6 +1259,8 @@ export default function OcrPage() {
     const next = pageIndex + dir;
     if (next < 0 || next >= totalPages) return;
     setPageIndex(next);
+    setStruckUpiIds(new Set());
+    setAppliedUpiTxns(new Map());
     setExtractError(null);
   };
 
@@ -1281,7 +1285,18 @@ export default function OcrPage() {
       });
       toast.success(`${data.submitted} records saved`, { id: tid });
       setRows([]);
-      setWfStep(null);
+      const nextPage = pageIndex + 1;
+      if (nextPage < totalPages) {
+        setPageIndex(nextPage);
+        setStruckUpiIds(new Set());
+        setAppliedUpiTxns(new Map());
+        setWfStep(1);
+        setWfDone(new Set());
+        setWfSkipped(new Set());
+        toast(`Page ${nextPage + 1} of ${totalPages} — extract to continue`, { icon: "📄" });
+      } else {
+        setWfStep(null);
+      }
     } catch { toast.error("Submit failed", { id: tid }); }
     finally { setSubmitting(false); }
   };
@@ -1292,6 +1307,7 @@ export default function OcrPage() {
   const reset = () => {
     setSessionId(null); setPageImageB64(null); setPageRows({}); setPageUpiTxns({});
     setTotalPages(0); setPageIndex(0); setUploadError(null); setExtractError(null);
+    setStruckUpiIds(new Set()); setAppliedUpiTxns(new Map());
     setWfStep(1); setWfDone(new Set()); setWfSkipped(new Set());
   };
 
