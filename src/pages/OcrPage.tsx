@@ -1353,17 +1353,21 @@ export default function OcrPage() {
     return () => { if (extractTimerRef.current) clearInterval(extractTimerRef.current); };
   }, []);
 
-  // Auto-trigger Step 5 when all UPI transactions are handled (struck or applied)
+  // Auto-trigger Step 5 when all UPI transactions are handled (struck or applied).
+  // Fires on step 3 OR 4 because users often strike UPI without clicking the manual → button.
   useEffect(() => {
-    if (wfStep !== 4) return;
+    if (wfStep === null || wfStep > 4) return;
     if (loadingUpi) return;
     if (upiTxns.length === 0) {
-      wfComplete(4, 5);
+      if (wfStep === 4) wfComplete(4, 5);
       return;
     }
     const handled = struckUpiIds.size + appliedUpiTxns.size;
     if (handled >= upiTxns.length) {
-      const t = setTimeout(() => wfComplete(4, 5), 500);
+      const t = setTimeout(() => {
+        setWfDone((prev) => new Set([...prev, 3, 4]));
+        setWfStep(5);
+      }, 500);
       return () => clearTimeout(t);
     }
   }, [wfStep, loadingUpi, upiTxns.length, struckUpiIds.size, appliedUpiTxns.size, wfComplete]);
