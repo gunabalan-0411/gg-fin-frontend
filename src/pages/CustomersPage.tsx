@@ -500,7 +500,6 @@ export function CustomerDetailModal({ customer, product, onClose }: {
 }) {
   const [txnFilter, setTxnFilter] = useState<"all" | "paid">("all");
   const [sharing, setSharing] = useState(false);
-  const [exportProgress, setExportProgress] = useState<{ step: string; pct: number } | null>(null);
   const [pdfLang, setPdfLang] = useState<"ta" | "en">("ta");
 
   const { data: _txnsRaw, isLoading } = useQuery({
@@ -546,114 +545,28 @@ export function CustomerDetailModal({ customer, product, onClose }: {
 
   const handleShare = async () => {
     setSharing(true);
-    setExportProgress({ step: "Loading libraries…", pct: 10 });
-    // Yield to browser so the progress overlay paints before heavy work starts
-    await new Promise((r) => setTimeout(r, 60));
-
     try {
-      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import("jspdf"),
-        import("html2canvas"),
-      ]);
-
-      setExportProgress({ step: "Building document…", pct: 35 });
-      await new Promise((r) => setTimeout(r, 16));
-
-      // Choose name based on language preference
-      const pdfTitle = (pdfLang === "ta" && tamilName) ? tamilName : englishName;
-      const pdfSub   = (pdfLang === "ta" && tamilName) ? englishName : undefined;
-
-      const summaryCards: [string, string][] = [
-        ["Loan Start",  fmtDate(customer.loan_start_date)],
-        ["Loan Amount", fmtAmt(loanAmount)],
-        ["Total Paid",  fmtAmt(totalPaid)],
-        ...(product === "edi" ? [["Outstanding", fmtAmt(ediOutstanding)] as [string, string]] : []),
-      ];
-
-      const rowsHtml = filteredTxns.map((t, i) => `
-        <tr style="background:${i % 2 === 0 ? "#ffffff" : "#f9fafb"}">
-          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb">${fmtDate(t.collection_date)}</td>
-          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb">${fmtAmt(Number(t.amount))}</td>
-          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb;text-transform:capitalize">${(t.payment_mode ?? "").toLowerCase()}</td>
-          <td style="padding:7px 12px;border-bottom:1px solid #e5e7eb;color:${t.payment_status === "PAID" ? "#059669" : "#d97706"};font-weight:600">${t.payment_status}</td>
-        </tr>`).join("");
-
-      const container = document.createElement("div");
-      container.style.cssText = [
-        "position:fixed","top:-9999px","left:-9999px",
-        "width:760px","background:#ffffff","padding:28px 32px",
-        "font-family:system-ui,-apple-system,sans-serif",
-        "color:#111827","line-height:1.5",
-      ].join(";");
-
-      container.innerHTML = `
-        <h2 style="margin:0 0 2px;font-size:20px;font-weight:700">${pdfTitle}</h2>
-        ${pdfSub ? `<p style="margin:0 0 18px;font-size:13px;color:#6b7280">${pdfSub}</p>` : `<div style="margin-bottom:18px"></div>`}
-        <div style="display:grid;grid-template-columns:repeat(${summaryCards.length},1fr);gap:12px;margin-bottom:22px">
-          ${summaryCards.map(([label, val]) => `
-            <div style="background:#f3f4f6;border-radius:8px;padding:12px">
-              <p style="margin:0 0 3px;font-size:11px;color:#6b7280">${label}</p>
-              <p style="margin:0;font-size:14px;font-weight:600">${val}</p>
-            </div>`).join("")}
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead>
-            <tr style="background:#02B15A;color:#fff">
-              <th style="padding:9px 12px;text-align:left;font-weight:600">Date</th>
-              <th style="padding:9px 12px;text-align:left;font-weight:600">Amount</th>
-              <th style="padding:9px 12px;text-align:left;font-weight:600">Mode</th>
-              <th style="padding:9px 12px;text-align:left;font-weight:600">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-        <p style="margin:12px 0 0;font-size:11px;color:#9ca3af">
-          ${filteredTxns.length} transaction${filteredTxns.length !== 1 ? "s" : ""}${txnFilter === "paid" ? " (paid only)" : ""} · ${product.toUpperCase()}
-        </p>`;
-
-      document.body.appendChild(container);
-
-      setExportProgress({ step: "Rendering page…", pct: 58 });
-      await new Promise((r) => setTimeout(r, 16));
-
-      // scale:1.5 + JPEG is ~3× faster than scale:2 + PNG with no visible quality loss
-      const canvas = await html2canvas(container, {
-        scale: 1.5,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-      });
-      document.body.removeChild(container);
-
-      setExportProgress({ step: "Generating PDF…", pct: 88 });
-      await new Promise((r) => setTimeout(r, 16));
-
-      const imgData = canvas.toDataURL("image/jpeg", 0.90);
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageW = doc.internal.pageSize.getWidth();
-      const pageH = doc.internal.pageSize.getHeight();
-      const margin = 10;
-      const imgW = pageW - margin * 2;
-      const imgH = (canvas.height * imgW) / canvas.width;
-
-      let yOffset = 0;
-      let firstPage = true;
-      while (yOffset < imgH) {
-        if (!firstPage) doc.addPage();
-        firstPage = false;
-        doc.addImage(imgData, "JPEG", margin, margin - yOffset, imgW, imgH);
-        yOffset += pageH - margin * 2;
-      }
-
-      const safeName = pdfTitle.replace(/\s+/g, "_").replace(/[^\w஀-௿-]/g, "");
-      doc.save(`${safeName}_transactions.pdf`);
-      toast.success("PDF exported");
-    } catch (e) {
-      console.error("Export failed:", e);
-      toast.error("PDF export failed");
+      const token = localStorage.getItem("gg_fin_token") ?? "";
+      const res = await fetch(
+        `/api/customers/${product}/${customer.customer_id}/export.pdf?lang=${pdfLang}&filter=${txnFilter}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName = (englishName || "customer").replace(/\s+/g, "_");
+      a.download = `${safeName}_transactions.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("PDF downloaded");
+    } catch {
+      toast.error("Export failed");
     } finally {
       setSharing(false);
-      setExportProgress(null);
     }
   };
 
@@ -766,29 +679,6 @@ export function CustomerDetailModal({ customer, product, onClose }: {
         </div>
       </Modal>
 
-      {/* PDF export progress overlay — rendered outside modal so it sits above everything */}
-      {exportProgress && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-80 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                <Share2 className="h-4 w-4 text-green-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">Exporting PDF</p>
-                <p className="text-xs text-muted-foreground">{exportProgress.step}</p>
-              </div>
-            </div>
-            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-              <div
-                className="h-full rounded-full bg-green-500 transition-all duration-300 ease-out"
-                style={{ width: `${exportProgress.pct}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5 text-right tabular-nums">{exportProgress.pct}%</p>
-          </div>
-        </div>
-      )}
     </>
   );
 }

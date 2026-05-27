@@ -124,6 +124,12 @@ export const defaultedBalancesApi = {
 export const dashboardApi = {
   summary: () => api.get("/dashboard/summary"),
   dailyActivity: (days?: number) => api.get("/dashboard/daily-activity", { params: { days } }),
+  loanSummary: () => api.get("/dashboard/loan-summary"),
+  iopReminders: () => api.get("/dashboard/iop-reminders"),
+  iopCalendar: (year: number, month: number) => api.get("/dashboard/iop-calendar", { params: { year, month } }),
+  ediInactive: () => api.get("/dashboard/edi-inactive"),
+  ediDefaulters: () => api.get("/dashboard/edi-defaulters"),
+  iopMonthlyDues: () => api.get("/dashboard/iop-monthly-dues"),
 };
 
 // ── Voice ─────────────────────────────────────────────────────────────────
