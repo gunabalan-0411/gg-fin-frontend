@@ -332,16 +332,17 @@ function TrendCard({ data }: { data: MonthlyProfit[] }) {
 // ── Loan Summary Cards ─────────────────────────────────────────────────────────
 
 function LoanSummaryCards({ data }: { data: LoanSummary }) {
-  const totalReceivable = data.edi_total_receivable + data.iop_total_receivable;
+  const overallReceivable = data.edi_total_receivable + data.iop_total_loan;
   const cards = [
-    { label: "EDI — Total Loan Portfolio", value: data.edi_total_loan, color: "hsl(var(--primary))", tag: "EDI" },
-    { label: "IOP — Total Loan Portfolio", value: data.iop_total_loan, color: "hsl(var(--primary))", tag: "IOP" },
-    { label: "Overall Outstanding Receivable", value: totalReceivable, color: "hsl(var(--accent))", tag: "EDI + IOP" },
+    { label: "EDI — Overall Portfolio",            value: data.edi_total_loan,        color: "hsl(var(--primary))", tag: "EDI" },
+    { label: "IOP — Overall Portfolio",            value: data.iop_total_loan,        color: "hsl(var(--primary))", tag: "IOP" },
+    { label: "EDI — Outstanding Receivable",       value: data.edi_total_receivable,  color: "hsl(var(--accent))",  tag: "EDI" },
+    { label: "Overall Outstanding Receivable",     value: overallReceivable,          color: "hsl(var(--accent))",  tag: "EDI + IOP" },
   ];
   return (
     <>
       {cards.map((c) => (
-        <div key={c.label} className="col-span-12 xl:col-span-4 rounded-xl border border-border bg-card p-[16px_18px]">
+        <div key={c.label} className="col-span-12 xl:col-span-3 rounded-xl border border-border bg-card p-[16px_18px]">
           <div className="flex items-center justify-between mb-2">
             <span className="text-muted-foreground font-medium uppercase" style={{ fontSize: 10.5, letterSpacing: ".08em" }}>{c.label}</span>
             <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{c.tag}</span>
@@ -801,7 +802,7 @@ export default function DashboardPage() {
               <TrendCard data={monthlyTrends} />
               {/* Loan Summary */}
               {loanLoading || !loanSummary ? (
-                [...Array(3)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-4 h-28 bg-muted rounded-xl animate-pulse" />)
+                [...Array(4)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-3 h-28 bg-muted rounded-xl animate-pulse" />)
               ) : (
                 <LoanSummaryCards data={loanSummary} />
               )}
