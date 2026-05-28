@@ -551,7 +551,17 @@ export function CustomerDetailModal({ customer, product, onClose }: {
         `/api/customers/${product}/${customer.customer_id}/export.pdf?lang=${pdfLang}&filter=${txnFilter}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      if (!res.ok) throw new Error("Export failed");
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          detail = body.detail ?? JSON.stringify(body);
+        } catch {
+          detail = await res.text().catch(() => `HTTP ${res.status}`);
+        }
+        alert(`PDF export failed:\n\n${detail}`);
+        throw new Error(detail);
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -563,8 +573,8 @@ export function CustomerDetailModal({ customer, product, onClose }: {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast.success("PDF downloaded");
-    } catch {
-      toast.error("Export failed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
     } finally {
       setSharing(false);
     }
