@@ -258,69 +258,109 @@ function CompositionCard({ trend }: { trend: MonthlyProfit }) {
 function TrendCard({ data }: { data: MonthlyProfit[] }) {
   if (data.length < 2) return (
     <div className="col-span-12 rounded-xl border border-border bg-card p-[18px_20px]">
-      <h3 className="text-foreground/70 font-medium" style={{ fontSize: 13 }}>6-month trend</h3>
+      <h3 className="text-foreground/70 font-medium" style={{ fontSize: 13 }}>Monthly trend</h3>
       <p className="text-muted-foreground mt-1" style={{ fontSize: 12 }}>Not enough data yet.</p>
     </div>
   );
-  const W = 720, H = 220, PL = 48, PR = 16, PT = 14, PB = 28;
+
+  const W = 800, H = 240, PL = 56, PR = 20, PT = 16, PB = 32;
   const w = W - PL - PR, h = H - PT - PB;
-  const maxY = Math.max(...data.flatMap((m) => [m.iop_profit, m.edi_profit, m.net_profit]));
-  const sy = (v: number) => PT + h - (v / (maxY * 1.08)) * h;
-  const sx = (i: number) => PL + (i / (data.length - 1)) * w;
+  const maxY = Math.max(...data.flatMap((m) => [m.iop_profit, m.edi_profit, m.net_profit]), 1);
+  const sy = (v: number) => PT + h - (Math.max(0, v) / (maxY * 1.1)) * h;
+  const sx = (i: number) => PL + (i / Math.max(data.length - 1, 1)) * w;
+
+  const smoothPath = (pts: [number, number][]) => {
+    if (pts.length === 0) return "";
+    if (pts.length === 1) return `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1];
+      const [x1, y1] = pts[i];
+      const mx = ((x0 + x1) / 2).toFixed(1);
+      d += ` C ${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+    }
+    return d;
+  };
+
   const ticks = 4;
   const gridY = Array.from({ length: ticks + 1 }, (_, i) => Math.round((maxY * i) / ticks));
-  const pathOf = (vals: number[]) => "M " + vals.map((v, i) => sx(i).toFixed(1) + " " + sy(v).toFixed(1)).join(" L ");
-  const iopVals = data.map((m) => m.iop_profit);
-  const ediVals = data.map((m) => m.edi_profit);
-  const netVals = data.map((m) => m.net_profit);
-  const bot = (PT + h).toFixed(1), x0 = sx(0).toFixed(1), xN = sx(data.length - 1).toFixed(1);
-  const iopPath = pathOf(iopVals), ediPath = pathOf(ediVals), netPath = pathOf(netVals);
-  const legend = [
-    { key: "net", label: "Net profit", color: "hsl(var(--pos))", isLine: true },
-    { key: "iop", label: "IOP", color: "hsl(var(--primary))" },
-    { key: "edi", label: "EDI", color: "hsl(var(--accent))" },
+  const bot = (PT + h).toFixed(1);
+
+  const series = [
+    { key: "iop", vals: data.map((m, i) => [sx(i), sy(m.iop_profit)] as [number, number]), color: "hsl(var(--primary))", gradId: "dashIopG", gradOp: ".28", sw: 1.8 },
+    { key: "edi", vals: data.map((m, i) => [sx(i), sy(m.edi_profit)] as [number, number]), color: "hsl(var(--accent))", gradId: "dashEdiG", gradOp: ".32", sw: 1.8 },
+    { key: "net", vals: data.map((m, i) => [sx(i), sy(m.net_profit)] as [number, number]), color: "hsl(var(--pos))", gradId: null, gradOp: "0", sw: 2.5 },
   ];
+
+  const legend = [
+    { key: "net", label: "Net profit", color: "hsl(var(--pos))", dash: true },
+    { key: "iop", label: "IOP",        color: "hsl(var(--primary))", dash: false },
+    { key: "edi", label: "EDI",        color: "hsl(var(--accent))",  dash: false },
+  ];
+
   return (
     <div className="col-span-12 rounded-xl border border-border bg-card p-[18px_20px]">
       <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
         <div>
-          <h3 className="text-foreground/70 font-medium" style={{ fontSize: 13, margin: 0 }}>6-month trend</h3>
-          <div className="text-muted-foreground mt-0.5" style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 11 }}>profit lines — Net vs IOP vs EDI</div>
+          <h3 className="text-foreground/70 font-medium" style={{ fontSize: 13, margin: 0 }}>Monthly trend</h3>
+          <div className="text-muted-foreground mt-0.5" style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 11 }}>Net · IOP · EDI profit over time</div>
         </div>
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-4 items-center">
           {legend.map((s) => (
             <span key={s.key} className="flex items-center gap-1.5 text-muted-foreground" style={{ fontSize: 11.5 }}>
-              <span style={{ display: "inline-block", width: 10, height: s.isLine ? 2 : 10, background: s.color, borderRadius: s.isLine ? 0 : 2, flexShrink: 0 }} />
+              <span style={{ display: "inline-block", width: 16, height: 2.5, background: s.color, borderRadius: 2, flexShrink: 0,
+                boxShadow: s.dash ? `0 0 4px ${s.color}` : "none" }} />
               {s.label}
             </span>
           ))}
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 240, display: "block" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", display: "block" }}>
         <defs>
-          <linearGradient id="dashIopG" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity=".35" />
-            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="dashEdiG" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity=".4" />
-            <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity="0" />
-          </linearGradient>
+          {series.filter((s) => s.gradId).map((s) => (
+            <linearGradient key={s.gradId!} id={s.gradId!} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={s.color} stopOpacity={s.gradOp} />
+              <stop offset="100%" stopColor={s.color} stopOpacity="0" />
+            </linearGradient>
+          ))}
         </defs>
+
+        {/* Grid lines + Y labels */}
         {gridY.map((v, i) => (
           <g key={i}>
-            <line x1={PL} x2={W - PR} y1={sy(v)} y2={sy(v)} stroke="hsl(var(--border))" strokeWidth={i === 0 ? 1 : 0.7} />
-            <text x={PL - 8} y={sy(v) + 3} textAnchor="end" fontSize="10" fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)">{fmtAxis(v)}</text>
+            <line x1={PL} x2={W - PR} y1={sy(v)} y2={sy(v)}
+              stroke="hsl(var(--border))" strokeWidth={i === 0 ? 1 : 0.6} strokeDasharray={i === 0 ? "none" : "4 4"} />
+            <text x={PL - 8} y={sy(v) + 4} textAnchor="end" fontSize="10.5"
+              fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)">{fmtAxis(v)}</text>
           </g>
         ))}
-        <path d={iopPath + ` L ${xN} ${bot} L ${x0} ${bot} Z`} fill="url(#dashIopG)" />
-        <path d={ediPath + ` L ${xN} ${bot} L ${x0} ${bot} Z`} fill="url(#dashEdiG)" />
-        <path d={iopPath} stroke="hsl(var(--primary))" strokeWidth="1.6" fill="none" />
-        <path d={ediPath} stroke="hsl(var(--accent))" strokeWidth="1.6" fill="none" />
-        <path d={netPath} stroke="hsl(var(--pos))" strokeWidth="2.5" fill="none" />
-        {netVals.map((v, i) => <circle key={i} cx={sx(i)} cy={sy(v)} r="3.5" fill="hsl(var(--card))" stroke="hsl(var(--pos))" strokeWidth="2" />)}
+
+        {/* Area fills (IOP + EDI only) */}
+        {series.filter((s) => s.gradId).map((s) => {
+          const path = smoothPath(s.vals);
+          const x0 = s.vals[0][0].toFixed(1), xN = s.vals[s.vals.length - 1][0].toFixed(1);
+          return <path key={s.key + "-area"} d={`${path} L ${xN} ${bot} L ${x0} ${bot} Z`} fill={`url(#${s.gradId})`} />;
+        })}
+
+        {/* Smooth lines */}
+        {series.map((s) => (
+          <path key={s.key + "-line"} d={smoothPath(s.vals)}
+            stroke={s.color} strokeWidth={s.sw} fill="none"
+            strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+
+        {/* Dots on every series */}
+        {series.map((s) =>
+          s.vals.map(([cx, cy], i) => (
+            <circle key={s.key + i} cx={cx} cy={cy} r={s.key === "net" ? 3.5 : 2.8}
+              fill="hsl(var(--card))" stroke={s.color} strokeWidth={s.key === "net" ? 2 : 1.6} />
+          ))
+        )}
+
+        {/* X axis month labels */}
         {data.map((m, i) => (
-          <text key={i} x={sx(i)} y={H - 6} textAnchor="middle" fontSize="10" fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)">
+          <text key={i} x={sx(i)} y={H - 8} textAnchor="middle" fontSize="10.5"
+            fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)">
             {m.month.split(" ")[0].slice(0, 3).toUpperCase()}
           </text>
         ))}
@@ -333,16 +373,32 @@ function TrendCard({ data }: { data: MonthlyProfit[] }) {
 
 function LoanSummaryCards({ data }: { data: LoanSummary }) {
   const overallReceivable = data.edi_total_receivable + data.iop_total_loan;
-  const cards = [
-    { label: "EDI — Overall Portfolio",            value: data.edi_total_loan,        color: "hsl(var(--primary))", tag: "EDI" },
-    { label: "IOP — Overall Portfolio",            value: data.iop_total_loan,        color: "hsl(var(--primary))", tag: "IOP" },
-    { label: "EDI — Outstanding Receivable",       value: data.edi_total_receivable,  color: "hsl(var(--accent))",  tag: "EDI" },
-    { label: "Overall Outstanding Receivable",     value: overallReceivable,          color: "hsl(var(--accent))",  tag: "EDI + IOP" },
+  const simpleCards = [
+    { label: "IOP — Overall Portfolio",        value: data.iop_total_loan,       color: "hsl(var(--primary))", tag: "IOP" },
+    { label: "Overall Outstanding Receivable", value: overallReceivable,         color: "hsl(var(--accent))",  tag: "EDI + IOP" },
   ];
   return (
     <>
-      {cards.map((c) => (
-        <div key={c.label} className="col-span-12 xl:col-span-3 rounded-xl border border-border bg-card p-[16px_18px]">
+      {/* EDI Outstanding Receivable with portfolio caption */}
+      <div className="col-span-12 xl:col-span-4 rounded-xl border border-border bg-card p-[16px_18px]">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-muted-foreground font-medium uppercase" style={{ fontSize: 10.5, letterSpacing: ".08em" }}>EDI — Outstanding Receivable</span>
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>EDI</span>
+        </div>
+        <div className="text-foreground leading-none" style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 26, fontWeight: 500, letterSpacing: "-.02em" }}>
+          <span className="text-muted-foreground font-normal mr-0.5" style={{ fontSize: 16 }}>₹</span>
+          {Math.round(data.edi_total_receivable).toLocaleString("en-IN")}
+        </div>
+        <div className="mt-2 h-1 rounded-full" style={{ background: "hsl(var(--accent))", opacity: 0.35 }} />
+        <div className="mt-2 flex items-center gap-1.5">
+          <span className="text-muted-foreground" style={{ fontSize: 10.5 }}>Portfolio:</span>
+          <span className="font-medium" style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 11 }}>
+            ₹{Math.round(data.edi_total_loan).toLocaleString("en-IN")}
+          </span>
+        </div>
+      </div>
+      {simpleCards.map((c) => (
+        <div key={c.label} className="col-span-12 xl:col-span-4 rounded-xl border border-border bg-card p-[16px_18px]">
           <div className="flex items-center justify-between mb-2">
             <span className="text-muted-foreground font-medium uppercase" style={{ fontSize: 10.5, letterSpacing: ".08em" }}>{c.label}</span>
             <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))" }}>{c.tag}</span>
@@ -691,8 +747,6 @@ export default function DashboardPage() {
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
   const { data: loanSummary, isLoading: loanLoading } = useLoanSummary();
   const [selectedMonth, setSelectedMonth] = useState<string>("");
-  const [period, setPeriod] = useState("6M");
-
   const monthlyTrends = summary?.monthly_trends ?? [];
   const months = monthlyTrends.map((t) => t.month);
   const latestMonth = months[months.length - 1] ?? "";
@@ -701,8 +755,6 @@ export default function DashboardPage() {
   const canPrev = activeIdx > 0, canNext = activeIdx < months.length - 1;
   const trend = monthlyTrends[activeIdx];
   const prev = activeIdx > 0 ? monthlyTrends[activeIdx - 1] : null;
-
-  const periodOptions = ["1M", "3M", "6M", "12M", "YTD"];
 
   const kpis = trend ? [
     { lbl: "IOP profit", value: trend.iop_profit, pts: monthlyTrends.map((m) => m.iop_profit), color: "hsl(var(--primary))",
@@ -766,18 +818,6 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Period segment — main tab only */}
-          {activeTab === "main" && (
-            <div className="inline-flex items-center bg-muted rounded-lg" style={{ padding: 3, gap: 2 }}>
-              {periodOptions.map((p) => (
-                <button key={p} onClick={() => setPeriod(p)}
-                  className={`rounded-md font-medium transition-colors ${period === p ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                  style={{ padding: "4px 12px", fontSize: 12 }}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
@@ -802,7 +842,7 @@ export default function DashboardPage() {
               <TrendCard data={monthlyTrends} />
               {/* Loan Summary */}
               {loanLoading || !loanSummary ? (
-                [...Array(4)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-3 h-28 bg-muted rounded-xl animate-pulse" />)
+                [...Array(3)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-4 h-28 bg-muted rounded-xl animate-pulse" />)
               ) : (
                 <LoanSummaryCards data={loanSummary} />
               )}

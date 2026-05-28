@@ -13,6 +13,7 @@ export interface EdiCustomer {
   outstanding_balance?: number;
   remarks?: string;
   tamil_name?: string;
+  ignore?: boolean;
 }
 
 export interface IopCustomer {
@@ -31,6 +32,7 @@ export interface IopCustomer {
   loan_closure?: number;
   remarks?: string;
   tamil_name?: string;
+  ignore?: boolean;
 }
 
 export interface EdiTransaction {
