@@ -263,7 +263,7 @@ function TrendCard({ data }: { data: MonthlyProfit[] }) {
     </div>
   );
 
-  const W = 800, H = 240, PL = 56, PR = 20, PT = 16, PB = 32;
+  const W = 800, H = 250, PL = 56, PR = 20, PT = 16, PB = 42;
   const w = W - PL - PR, h = H - PT - PB;
   const maxY = Math.max(...data.flatMap((m) => [m.iop_profit, m.edi_profit, m.net_profit]), 1);
   const sy = (v: number) => PT + h - (Math.max(0, v) / (maxY * 1.1)) * h;
@@ -357,13 +357,20 @@ function TrendCard({ data }: { data: MonthlyProfit[] }) {
           ))
         )}
 
-        {/* X axis month labels */}
-        {data.map((m, i) => (
-          <text key={i} x={sx(i)} y={H - 8} textAnchor="middle" fontSize="10.5"
-            fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)">
-            {m.month.split(" ")[0].slice(0, 3).toUpperCase()}
-          </text>
-        ))}
+        {/* X axis month labels — format YYYY-MM → "Jan 26", rotated -30° */}
+        {data.map((m, i) => {
+          const [yyyy, mm] = m.month.split("-");
+          const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          const label = `${MON[(parseInt(mm, 10) - 1) % 12]} ${yyyy.slice(-2)}`;
+          const cx = sx(i), cy = H - 10;
+          return (
+            <text key={i} x={cx} y={cy} textAnchor="end" fontSize="10.5"
+              fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)"
+              transform={`rotate(-30, ${cx}, ${cy})`}>
+              {label}
+            </text>
+          );
+        })}
       </svg>
     </div>
   );
@@ -546,14 +553,23 @@ function CustomerChip({ c }: { c: CustomerBrief }) {
   );
 }
 
+function fmtShortDate(d: Date): string {
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${d.getDate()} ${MON[d.getMonth()]}`;
+}
+
 function ReminderReport() {
   const { data: reminders, isLoading: rLoading } = useIopReminders();
   const { data: inactive, isLoading: iLoading } = useEdiInactive();
 
+  const today = new Date();
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
+
   const sections = [
-    { key: "yesterday" as const, label: "Yesterday", color: "text-muted-foreground" },
-    { key: "today" as const, label: "Today", color: "text-green-500" },
-    { key: "tomorrow" as const, label: "Tomorrow", color: "text-primary" },
+    { key: "yesterday" as const, label: "Yesterday", date: fmtShortDate(yesterday), color: "text-muted-foreground" },
+    { key: "today"     as const, label: "Today",     date: fmtShortDate(today),     color: "text-green-500" },
+    { key: "tomorrow"  as const, label: "Tomorrow",  date: fmtShortDate(tomorrow),  color: "text-primary" },
   ];
 
   return (
@@ -568,12 +584,15 @@ function ReminderReport() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {sections.map(({ key, label, color }) => {
+            {sections.map(({ key, label, date: dateStr, color }) => {
               const list = reminders?.[key] ?? [];
               return (
                 <div key={key} className="rounded-xl border border-border bg-card p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className={`font-semibold ${color}`} style={{ fontSize: 13 }}>{label}</span>
+                    <div className="flex items-baseline gap-2">
+                      <span className={`font-semibold ${color}`} style={{ fontSize: 13 }}>{label}</span>
+                      <span className="text-muted-foreground" style={{ fontSize: 11 }}>{dateStr}</span>
+                    </div>
                     <span className="text-xs text-muted-foreground">{list.length} due</span>
                   </div>
                   {list.length === 0 ? (
