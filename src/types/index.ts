@@ -101,6 +101,8 @@ export interface CustomerBrief {
   tamil_name: string;
   loan_amount: number;
   frequency: number;
+  monthly_interest?: number;
+  ignore?: boolean;
 }
 
 export interface IopRemindersResponse {
@@ -122,6 +124,7 @@ export interface EdiInactiveCustomer {
   outstanding_balance: number;
   last_payment_date: string | null;
   days_since_payment: number;
+  ignore?: boolean;
 }
 
 export interface EdiDefaulter {
@@ -132,6 +135,7 @@ export interface EdiDefaulter {
   outstanding_balance: number;
   last_payment_date: string | null;
   days_overdue: number;
+  ignore?: boolean;
 }
 
 export interface IopMonthlyDue {

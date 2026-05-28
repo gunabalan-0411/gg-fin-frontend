@@ -7,7 +7,7 @@ import {
 } from "@/hooks/useDashboard";
 import type {
   MonthlyProfit, LoanSummary,
-  CustomerBrief, IopCalendarDay,
+  CustomerBrief, IopCalendarDay, IopRemindersResponse,
   EdiInactiveCustomer, EdiDefaulter, IopMonthlyDue,
 } from "@/types";
 
@@ -538,123 +538,282 @@ function IopCalendar() {
 
 // ── Reminder Report ───────────────────────────────────────────────────────────
 
-function CustomerChip({ c }: { c: CustomerBrief }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 gap-3">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{c.customer_name}</p>
-        {c.tamil_name && <p className="text-xs text-muted-foreground truncate">{c.tamil_name}</p>}
-      </div>
-      <div className="text-right flex-shrink-0">
-        <p className="text-xs text-muted-foreground">#{c.customer_id}</p>
-        <p className="text-xs font-semibold text-foreground">{fmt(c.loan_amount)}</p>
-      </div>
-    </div>
-  );
-}
 
 function fmtShortDate(d: Date): string {
   const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${d.getDate()} ${MON[d.getMonth()]}`;
 }
 
+function fmtLongDate(d: Date): string {
+  const MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// ── DueQueue — single card with Yesterday/Today/Tomorrow inner tabs ───────────
+
+function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | undefined; loading: boolean }) {
+  const [dueTab, setDueTab] = useState<"yesterday" | "today" | "tomorrow">("today");
+  const [showIgnored, setShowIgnored] = useState(false);
+
+  const todayD     = new Date();
+  const yesterdayD = new Date(todayD); yesterdayD.setDate(todayD.getDate() - 1);
+  const tomorrowD  = new Date(todayD); tomorrowD.setDate(todayD.getDate() + 1);
+
+  const tabs = [
+    { key: "yesterday" as const, label: "Yesterday", dateStr: fmtShortDate(yesterdayD) },
+    { key: "today"     as const, label: "Today",     dateStr: fmtShortDate(todayD) },
+    { key: "tomorrow"  as const, label: "Tomorrow",  dateStr: fmtShortDate(tomorrowD) },
+  ];
+
+  const rawList = reminders?.[dueTab] ?? [];
+  const list    = showIgnored ? rawList : rawList.filter((c) => !c.ignore);
+
+  const totalAmt     = list.reduce((s, c) => s + (c.monthly_interest || 0), 0);
+  const collectedAmt = 0; // paid tracking not in current model — placeholder
+  const pct          = totalAmt > 0 ? Math.round((collectedAmt / totalAmt) * 100) : 0;
+
+  if (loading) return <div className="rounded-xl border border-border bg-card h-64 animate-pulse" />;
+
+  return (
+    <div className="rounded-xl border border-border bg-card flex flex-col">
+      {/* Header */}
+      <div style={{ padding: "16px 18px", borderBottom: "1px solid hsl(var(--border))" }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+          <div>
+            <h3 className="text-foreground font-medium" style={{ fontSize: 14, letterSpacing: "-0.01em" }}>IOP Interest Due</h3>
+            <p className="text-muted-foreground" style={{ fontSize: 11.5, marginTop: 2 }}>Customers due for interest collection</p>
+          </div>
+          <button
+            onClick={() => setShowIgnored((v) => !v)}
+            className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+            style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}
+          >
+            {showIgnored ? "Hide ignored" : "Show ignored"}
+          </button>
+        </div>
+
+        {/* Inner tabs */}
+        <div className="inline-flex items-center rounded-lg" style={{ background: "hsl(var(--muted))", padding: 3, gap: 2 }}>
+          {tabs.map((t) => (
+            <button key={t.key} onClick={() => setDueTab(t.key)}
+              className="rounded-md font-medium transition-colors flex items-center gap-2"
+              style={{
+                padding: "5px 12px", fontSize: 12.5,
+                background: dueTab === t.key ? "hsl(var(--card))" : "transparent",
+                color: dueTab === t.key ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                boxShadow: dueTab === t.key ? "0 1px 2px hsl(var(--foreground)/.06)" : "none",
+              }}>
+              {t.label}
+              <span style={{
+                fontFamily: "var(--font-mono, ui-monospace)", fontSize: 10.5,
+                background: dueTab === t.key ? "hsl(var(--muted))" : "transparent",
+                padding: "1px 6px", borderRadius: 4, fontWeight: 500,
+              }}>
+                {(showIgnored ? reminders?.[t.key] ?? [] : (reminders?.[t.key] ?? []).filter(c => !c.ignore)).length}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Date label */}
+        <div className="text-muted-foreground" style={{ fontSize: 11, marginTop: 8 }}>
+          {fmtLongDate(dueTab === "yesterday" ? yesterdayD : dueTab === "today" ? todayD : tomorrowD)}
+        </div>
+
+        {/* Summary stats */}
+        {totalAmt > 0 && (
+          <>
+            <div className="flex items-center gap-3 flex-wrap" style={{ marginTop: 12, fontSize: 12 }}>
+              <div className="flex items-baseline gap-1">
+                <span className="text-muted-foreground">Expected</span>
+                <span className="font-medium text-foreground" style={{ fontFamily: "var(--font-mono, ui-monospace)" }}>{fmt(totalAmt)}</span>
+              </div>
+              <span style={{ width: 1, height: 12, background: "hsl(var(--border))", display: "inline-block" }} />
+              <div className="flex items-baseline gap-1">
+                <span className="text-muted-foreground">Collected</span>
+                <span className="font-medium" style={{ fontFamily: "var(--font-mono, ui-monospace)", color: "hsl(var(--pos))" }}>{fmt(collectedAmt)}</span>
+              </div>
+              <span style={{ width: 1, height: 12, background: "hsl(var(--border))", display: "inline-block" }} />
+              <div className="flex items-baseline gap-1">
+                <span className="text-muted-foreground">Outstanding</span>
+                <span className="font-medium" style={{ fontFamily: "var(--font-mono, ui-monospace)", color: "hsl(var(--neg))" }}>{fmt(totalAmt - collectedAmt)}</span>
+              </div>
+            </div>
+            <div style={{ height: 4, background: "hsl(var(--muted))", borderRadius: 999, marginTop: 10, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: "hsl(var(--pos))", borderRadius: 999 }} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* List */}
+      <div style={{ padding: "8px 8px", overflowY: "auto", maxHeight: 420 }}>
+        {list.length === 0 ? (
+          <div className="flex items-center justify-center text-muted-foreground" style={{ height: 120, fontSize: 13 }}>
+            No customers due.
+          </div>
+        ) : (
+          list.map((c) => (
+            <div key={c.customer_id}
+              className="flex items-center gap-3 rounded-lg transition-colors"
+              style={{ padding: "10px 12px", cursor: "default" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "hsl(var(--muted) / .5)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              {/* Avatar */}
+              <div className="flex items-center justify-center rounded-full flex-shrink-0 font-semibold"
+                style={{ width: 36, height: 36, fontSize: 13,
+                  background: `hsl(${(c.customer_id * 47) % 360} 45% 88%)`,
+                  color: `hsl(${(c.customer_id * 47) % 360} 40% 35%)` }}>
+                {(c.customer_name || "?")[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="font-medium text-foreground truncate" style={{ fontSize: 13.5 }}>{c.customer_name}</p>
+                  {c.ignore && (
+                    <span className="rounded-full px-2 py-0.5 text-muted-foreground flex-shrink-0" style={{ fontSize: 10, background: "hsl(var(--muted))" }}>ignored</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground" style={{ fontSize: 11.5, marginTop: 1 }}>
+                  <span style={{ fontFamily: "var(--font-mono, ui-monospace)" }}>#{c.customer_id}</span>
+                  {c.tamil_name && <><span style={{ opacity: 0.4 }}>·</span><span>{c.tamil_name}</span></>}
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span>{c.frequency}×/mo</span>
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 13.5, fontWeight: 500 }}>
+                  {fmt(c.loan_amount)}
+                </div>
+                {(c.monthly_interest ?? 0) > 0 && (
+                  <div className="text-muted-foreground" style={{ fontSize: 11, fontFamily: "var(--font-mono, ui-monospace)" }}>
+                    {fmt(c.monthly_interest ?? 0)} interest
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── EDI Inactive table ────────────────────────────────────────────────────────
+
+function EdiInactiveTable({ data, loading }: { data: EdiInactiveCustomer[] | undefined; loading: boolean }) {
+  const [showIgnored, setShowIgnored] = useState(false);
+
+  const rows = showIgnored ? (data ?? []) : (data ?? []).filter((c) => !c.ignore);
+
+  return (
+    <div className="rounded-xl border border-border overflow-hidden">
+      <div className="flex items-center justify-between" style={{ padding: "14px 18px", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-foreground font-medium" style={{ fontSize: 14, letterSpacing: "-0.01em" }}>EDI — No Payment in 7+ Days</h3>
+            <span className="rounded-full px-2 py-0.5 font-semibold" style={{ fontSize: 10.5, background: "color-mix(in oklab, hsl(var(--warn)) 18%, transparent)", color: "hsl(var(--warn))" }}>
+              {rows.length} customers
+            </span>
+          </div>
+          <p className="text-muted-foreground" style={{ fontSize: 11.5, marginTop: 2 }}>Active EDI customers who haven't paid in the last week</p>
+        </div>
+        <button
+          onClick={() => setShowIgnored((v) => !v)}
+          className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+          style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}
+        >
+          {showIgnored ? "Hide ignored" : "Show ignored"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="h-40 bg-muted animate-pulse" />
+      ) : rows.length === 0 ? (
+        <div className="flex items-center justify-center text-muted-foreground" style={{ height: 80, fontSize: 13 }}>
+          All EDI customers are up to date.
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", background: "hsl(var(--card))" }}>
+            <thead>
+              <tr style={{ background: "hsl(var(--muted) / .5)", borderBottom: "1px solid hsl(var(--border))" }}>
+                {["Customer", "Loan", "Outstanding", "Last Payment", "Days idle"].map((h) => (
+                  <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 10.5, fontWeight: 500, letterSpacing: ".08em", textTransform: "uppercase", color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => (
+                <tr key={c.customer_id} style={{ borderBottom: "1px solid hsl(var(--border) / .6)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "hsl(var(--muted) / .4)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                  <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center justify-center rounded-full flex-shrink-0 font-semibold"
+                        style={{ width: 32, height: 32, fontSize: 12,
+                          background: `hsl(${(c.customer_id * 47) % 360} 45% 88%)`,
+                          color: `hsl(${(c.customer_id * 47) % 360} 40% 35%)` }}>
+                        {(c.customer_name || "?")[0].toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-foreground" style={{ fontSize: 13 }}>{c.customer_name}</p>
+                          {c.ignore && <span className="rounded-full px-1.5 py-0.5 text-muted-foreground" style={{ fontSize: 9.5, background: "hsl(var(--muted))" }}>ignored</span>}
+                        </div>
+                        <p className="text-muted-foreground" style={{ fontSize: 11 }}>
+                          {c.tamil_name && <>{c.tamil_name} · </>}
+                          <span style={{ fontFamily: "var(--font-mono, ui-monospace)" }}>#{c.customer_id}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: "11px 14px", verticalAlign: "middle", fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12.5 }}>{fmt(c.loan_amount)}</td>
+                  <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
+                    <div style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 12.5 }}>{fmt(c.outstanding_balance)}</div>
+                    <div style={{ width: 72, height: 3, background: "hsl(var(--muted))", borderRadius: 999, marginTop: 4, overflow: "hidden" }}>
+                      <div style={{ height: "100%", borderRadius: 999, background: "hsl(var(--pos))",
+                        width: `${Math.round(((c.loan_amount - c.outstanding_balance) / Math.max(c.loan_amount, 1)) * 100)}%` }} />
+                    </div>
+                  </td>
+                  <td style={{ padding: "11px 14px", verticalAlign: "middle", color: "hsl(var(--muted-foreground))", fontSize: 12.5 }}>{fmtDate(c.last_payment_date)}</td>
+                  <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
+                    <span className="rounded-full px-2.5 py-1 font-semibold" style={{ fontSize: 11.5,
+                      background: c.days_since_payment >= 14 ? "color-mix(in oklab, hsl(var(--warn)) 18%, transparent)" : "color-mix(in oklab, hsl(var(--muted-foreground)) 14%, transparent)",
+                      color: c.days_since_payment >= 14 ? "hsl(var(--warn))" : "hsl(var(--muted-foreground))" }}>
+                      {c.days_since_payment}d
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ReminderReport ────────────────────────────────────────────────────────────
+
 function ReminderReport() {
   const { data: reminders, isLoading: rLoading } = useIopReminders();
   const { data: inactive, isLoading: iLoading } = useEdiInactive();
 
-  const today = new Date();
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
-
-  const sections = [
-    { key: "yesterday" as const, label: "Yesterday", date: fmtShortDate(yesterday), color: "text-muted-foreground" },
-    { key: "today"     as const, label: "Today",     date: fmtShortDate(today),     color: "text-green-500" },
-    { key: "tomorrow"  as const, label: "Tomorrow",  date: fmtShortDate(tomorrow),  color: "text-primary" },
-  ];
-
   return (
-    <div className="space-y-6">
-      {/* IOP Due section */}
-      <div>
-        <h2 className="text-foreground font-medium mb-1" style={{ fontSize: 15 }}>IOP Interest Due</h2>
-        <p className="text-muted-foreground mb-4" style={{ fontSize: 12 }}>Customers whose interest payment falls on yesterday, today, or tomorrow</p>
-        {rLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-muted rounded-xl animate-pulse" />)}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {sections.map(({ key, label, date: dateStr, color }) => {
-              const list = reminders?.[key] ?? [];
-              return (
-                <div key={key} className="rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-baseline gap-2">
-                      <span className={`font-semibold ${color}`} style={{ fontSize: 13 }}>{label}</span>
-                      <span className="text-muted-foreground" style={{ fontSize: 11 }}>{dateStr}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{list.length} due</span>
-                  </div>
-                  {list.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4 text-center">No payments due</p>
-                  ) : (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {list.map((c) => <CustomerChip key={c.customer_id} c={c} />)}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+    <div className="space-y-5">
+      {/* Top row: DueQueue + Calendar side by side */}
+      <div className="grid grid-cols-12" style={{ gap: 16 }}>
+        <div className="col-span-12 xl:col-span-5">
+          <DueQueue reminders={reminders} loading={rLoading} />
+        </div>
+        <div className="col-span-12 xl:col-span-7">
+          <IopCalendar />
+        </div>
       </div>
 
-      {/* Calendar */}
-      <div>
-        <h2 className="text-foreground font-medium mb-1" style={{ fontSize: 15 }}>IOP Payment Calendar</h2>
-        <p className="text-muted-foreground mb-4" style={{ fontSize: 12 }}>Full monthly view of all scheduled IOP interest collection dates</p>
-        <IopCalendar />
-      </div>
-
-      {/* EDI Inactive (7 days) */}
-      <div>
-        <h2 className="text-foreground font-medium mb-1" style={{ fontSize: 15 }}>EDI — No Payment in 7+ Days</h2>
-        <p className="text-muted-foreground mb-4" style={{ fontSize: 12 }}>Active EDI customers who haven't paid anything in the last week</p>
-        {iLoading ? (
-          <div className="h-40 bg-muted rounded-xl animate-pulse" />
-        ) : !inactive || inactive.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-6 text-center text-muted-foreground" style={{ fontSize: 13 }}>All EDI customers are up to date</div>
-        ) : (
-          <div className="rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-card border-b border-border">
-                <tr>
-                  {["#", "Customer", "Loan Amount", "Outstanding", "Last Payment", "Days"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {inactive.map((c: EdiInactiveCustomer) => (
-                  <tr key={c.customer_id} className="border-b border-border/50 hover:bg-muted/30">
-                    <td className="px-4 py-2.5 text-muted-foreground text-xs">{c.customer_id}</td>
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-foreground">{c.customer_name}</p>
-                      {c.tamil_name && <p className="text-xs text-muted-foreground">{c.tamil_name}</p>}
-                    </td>
-                    <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.loan_amount)}</td>
-                    <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.outstanding_balance)}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(c.last_payment_date)}</td>
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs font-semibold text-amber-500">{c.days_since_payment}d</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* EDI inactive table */}
+      <EdiInactiveTable data={inactive} loading={iLoading} />
     </div>
   );
 }
@@ -841,40 +1000,41 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Main Dashboard tab ── */}
-      {activeTab === "main" && (
-        <>
-          {summaryLoading || !trend ? (
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-12 xl:col-span-8 h-56 bg-muted rounded-xl animate-pulse" />
-              <div className="col-span-12 xl:col-span-4 h-56 bg-muted rounded-xl animate-pulse" />
-              {[...Array(6)].map((_, i) => <div key={i} className="col-span-6 xl:col-span-2 h-32 bg-muted rounded-xl animate-pulse" />)}
-              <div className="col-span-12 h-72 bg-muted rounded-xl animate-pulse" />
-              {[...Array(4)].map((_, i) => <div key={i} className="col-span-6 xl:col-span-3 h-28 bg-muted rounded-xl animate-pulse" />)}
-            </div>
-          ) : (
-            <div className="grid grid-cols-12" style={{ gap: 16 }}>
-              <HeroCard trend={trend} prev={prev} />
-              <CompositionCard trend={trend} />
-              {kpis.map((kpi, i) => (
-                <div key={i} className="col-span-6 xl:col-span-2"><KpiTile {...kpi} /></div>
-              ))}
-              <TrendCard data={monthlyTrends} />
-              {/* Loan Summary */}
-              {loanLoading || !loanSummary ? (
-                [...Array(3)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-4 h-28 bg-muted rounded-xl animate-pulse" />)
-              ) : (
-                <LoanSummaryCards data={loanSummary} />
-              )}
-            </div>
-          )}
-        </>
-      )}
+      <div style={{ display: activeTab === "main" ? undefined : "none" }}>
+        {summaryLoading || !trend ? (
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12 xl:col-span-8 h-56 bg-muted rounded-xl animate-pulse" />
+            <div className="col-span-12 xl:col-span-4 h-56 bg-muted rounded-xl animate-pulse" />
+            {[...Array(6)].map((_, i) => <div key={i} className="col-span-6 xl:col-span-2 h-32 bg-muted rounded-xl animate-pulse" />)}
+            <div className="col-span-12 h-72 bg-muted rounded-xl animate-pulse" />
+            {[...Array(3)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-4 h-28 bg-muted rounded-xl animate-pulse" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-12" style={{ gap: 16 }}>
+            <HeroCard trend={trend} prev={prev} />
+            <CompositionCard trend={trend} />
+            {kpis.map((kpi, i) => (
+              <div key={i} className="col-span-6 xl:col-span-2"><KpiTile {...kpi} /></div>
+            ))}
+            <TrendCard data={monthlyTrends} />
+            {loanLoading || !loanSummary ? (
+              [...Array(3)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-4 h-28 bg-muted rounded-xl animate-pulse" />)
+            ) : (
+              <LoanSummaryCards data={loanSummary} />
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Reminder Report tab ── */}
-      {activeTab === "reminders" && <ReminderReport />}
+      <div style={{ display: activeTab === "reminders" ? undefined : "none" }}>
+        <ReminderReport />
+      </div>
 
       {/* ── Defaulters Report tab ── */}
-      {activeTab === "defaulters" && <DefaultersReport />}
+      <div style={{ display: activeTab === "defaulters" ? undefined : "none" }}>
+        <DefaultersReport />
+      </div>
     </div>
   );
 }

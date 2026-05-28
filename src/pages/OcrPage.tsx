@@ -1416,7 +1416,24 @@ export default function OcrPage() {
 
   // ── Mobile layout ──────────────────────────────────────────────────────────
   if (isMobile) {
-    const mobileUpiSection = (upiTxns.length > 0 || loadingUpi) ? (
+    const noUpiForDay = !loadingUpi && allExtractedDates.length > 0 && upiTxns.length === 0 && rows.length > 0 && wfStep !== null && wfStep <= 4;
+    const skipToExpenses = () => { setWfDone((prev) => new Set([...prev, 3, 4])); setWfStep(5); };
+
+    const mobileUpiSection = noUpiForDay ? (
+      <div className="flex-shrink-0 mt-3 px-0">
+        <div className="rounded-xl border border-border bg-muted/40 p-3 text-center space-y-2">
+          <p className="text-[11.5px] text-muted-foreground">
+            No UPI credits for {allExtractedDates.length > 1 ? "these dates" : allExtractedDates[0]}.
+          </p>
+          <button
+            onClick={skipToExpenses}
+            className="w-full py-2 rounded-lg bg-foreground text-background text-[12.5px] font-semibold hover:bg-foreground/85 transition-colors"
+          >
+            Skip to Expenses →
+          </button>
+        </div>
+      </div>
+    ) : (upiTxns.length > 0 || loadingUpi) ? (
       <div className="flex-shrink-0 mt-3">
         <button onClick={() => setUpiExpanded((v) => !v)}
           className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-colors">
@@ -2318,6 +2335,21 @@ export default function OcrPage() {
                 </div>
               )}
             </div>
+
+            {/* No-UPI skip card */}
+            {hasSession && !loadingUpi && allExtractedDates.length > 0 && upiTxns.length === 0 && rows.length > 0 && wfStep !== null && wfStep <= 4 && (
+              <div className="p-3 border-t border-border bg-background flex-shrink-0">
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  No UPI credits for {allExtractedDates.length > 1 ? "these dates" : extractedDate}.
+                </p>
+                <button
+                  onClick={() => { setWfDone((prev) => new Set([...prev, 3, 4])); setWfStep(5); }}
+                  className="w-full py-1.5 rounded-lg bg-foreground text-background text-[11.5px] font-semibold hover:bg-foreground/85 transition-colors"
+                >
+                  Skip to Expenses →
+                </button>
+              </div>
+            )}
 
             {/* Suggested action card (when there are unmapped txns) */}
             {hasSession && upiTxns.length > 0 && !loadingUpi && (
