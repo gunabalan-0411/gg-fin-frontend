@@ -1155,18 +1155,6 @@ export default function OcrPage() {
     }
   }, [wfStep, loadingUpi, upiTxns.length, struckUpiIds.size, appliedUpiTxns.size, pageIndex, wfComplete]);
 
-  // Keyboard undo/redo (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z) — skip when focused on input
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "z") { e.preventDefault(); undoRows(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) { e.preventDefault(); redoRows(); }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [undoRows, redoRows]);
-
   const processFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       setUploadError("Only PDF files are accepted. Please select a .pdf file.");
@@ -1313,6 +1301,18 @@ export default function OcrPage() {
     setRowsRedo((f) => f.slice(1));
     setRows(next);
   }, [rowsRedo, rows, setRows]);
+
+  // Keyboard undo/redo — skip when focus is in an input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "z") { e.preventDefault(); undoRows(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) { e.preventDefault(); redoRows(); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [undoRows, redoRows]);
 
   const updateRow = (uid: string, patch: Partial<Row>) => {
     pushHistory();
