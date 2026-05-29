@@ -1,10 +1,12 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Download, Loader2 as Spin, Save } from "lucide-react";
 import {
   useDashboardSummary, useLoanSummary,
   useIopReminders, useIopCalendar,
   useEdiInactive, useEdiDefaulters, useIopMonthlyDues,
 } from "@/hooks/useDashboard";
+import { customersApi } from "@/services/api";
 import type {
   MonthlyProfit, LoanSummary,
   CustomerBrief, IopCalendarDay, IopRemindersResponse,
@@ -33,6 +35,93 @@ const fmtDate = (d?: string | null) => {
   const [y, m, day] = d.split("-");
   return `${day}-${m}-${y}`;
 };
+
+// ── Export utility ────────────────────────────────────────────────────────────
+
+async function exportElement(el: HTMLElement, filename: string, rowCount: number) {
+  const h2c = (await import("html2canvas")).default;
+  const isDark = document.documentElement.classList.contains("dark");
+  const canvas = await h2c(el, {
+    scale: 2, useCORS: true, logging: false,
+    backgroundColor: isDark ? "#1c1c1e" : "#ffffff",
+  });
+  const img = canvas.toDataURL("image/jpeg", 0.95);
+  if (rowCount > 10) {
+    const { jsPDF } = await import("jspdf");
+    const pdf = new jsPDF({ unit: "px", format: "a4", orientation: "portrait" });
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+    const sh = (canvas.height * pw) / canvas.width;
+    let y = 0, pg = 0;
+    while (y < sh) {
+      if (pg > 0) pdf.addPage();
+      pdf.addImage(img, "JPEG", 0, -y, pw, sh);
+      y += ph; pg++;
+    }
+    pdf.save(`${filename}.pdf`);
+  } else {
+    const a = document.createElement("a");
+    a.download = `${filename}.jpg`;
+    a.href = img;
+    a.click();
+  }
+}
+
+// ── ExportBar ─────────────────────────────────────────────────────────────────
+
+function ExportBar({ lang, setLang, onExport, exporting }: {
+  lang: "en" | "ta"; setLang: (l: "en" | "ta") => void;
+  onExport: () => void; exporting: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-shrink-0">
+      <div className="inline-flex rounded-lg border border-border overflow-hidden" style={{ fontSize: 10.5 }}>
+        {(["en", "ta"] as const).map((l) => (
+          <button key={l} onClick={() => setLang(l)} style={{
+            padding: "3px 8px",
+            background: lang === l ? "hsl(var(--foreground))" : "transparent",
+            color: lang === l ? "hsl(var(--background))" : "hsl(var(--muted-foreground))",
+            fontWeight: lang === l ? 600 : 400,
+          }}>{l === "en" ? "EN" : "தமிழ்"}</button>
+        ))}
+      </div>
+      <button onClick={onExport} disabled={exporting}
+        className="flex items-center gap-1 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        style={{ padding: "3px 9px", fontSize: 11 }}>
+        {exporting ? <Spin className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+        {exporting ? "…" : "Export"}
+      </button>
+    </div>
+  );
+}
+
+// ── IgnoreToggle ──────────────────────────────────────────────────────────────
+
+function IgnoreToggle({ on, pending, onToggle }: { on: boolean; pending: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+      title={on ? "Ignored — click to un-ignore" : "Click to ignore"}
+      className="flex-shrink-0 relative inline-flex cursor-pointer items-center rounded-full transition-all"
+      style={{
+        width: 28, height: 16,
+        background: on
+          ? pending ? "hsl(38 92% 50% / 0.7)" : "hsl(var(--muted-foreground) / 0.35)"
+          : pending ? "hsl(38 92% 50% / 0.35)" : "hsl(var(--border))",
+        outline: pending ? "1.5px solid hsl(38 92% 50% / 0.6)" : "none",
+      }}
+    >
+      <span
+        className="inline-block rounded-full shadow-sm transition-transform"
+        style={{
+          width: 11, height: 11,
+          background: pending ? "hsl(38 92% 50%)" : "hsl(var(--background))",
+          transform: on ? "translateX(15px)" : "translateX(2px)",
+        }}
+      />
+    </button>
+  );
+}
 
 // ── Spark SVG ─────────────────────────────────────────────────────────────────
 
@@ -554,6 +643,32 @@ function fmtLongDate(d: Date): string {
 function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | undefined; loading: boolean }) {
   const [dueTab, setDueTab] = useState<"yesterday" | "today" | "tomorrow">("today");
   const [showIgnored, setShowIgnored] = useState(false);
+  const [lang, setLang] = useState<"en" | "ta">("en");
+  const [exporting, setExporting] = useState(false);
+  const [pendingIgnore, setPendingIgnore] = useState<Map<number, boolean>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const toggleCustomer = (id: number, savedVal: boolean) =>
+    setPendingIgnore((prev) => {
+      const next = new Map(prev);
+      const newVal = !(prev.has(id) ? prev.get(id)! : savedVal);
+      newVal === savedVal ? next.delete(id) : next.set(id, newVal);
+      return next;
+    });
+
+  const handleSave = async () => {
+    if (!pendingIgnore.size) return;
+    setSaving(true);
+    try {
+      await Promise.all([...pendingIgnore.entries()].map(([id, val]) =>
+        customersApi.updateIop(id, { ignore: val })
+      ));
+      await qc.invalidateQueries({ queryKey: ["dashboard", "iop-reminders"] });
+      setPendingIgnore(new Map());
+    } finally { setSaving(false); }
+  };
 
   const todayD     = new Date();
   const yesterdayD = new Date(todayD); yesterdayD.setDate(todayD.getDate() - 1);
@@ -572,10 +687,18 @@ function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | un
   const collectedAmt = 0; // paid tracking not in current model — placeholder
   const pct          = totalAmt > 0 ? Math.round((collectedAmt / totalAmt) * 100) : 0;
 
+  const handleExport = async () => {
+    if (!cardRef.current) return;
+    setExporting(true);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    try { await exportElement(cardRef.current, `iop_due_${dueTab}_${dateStr}`, list.length); }
+    finally { setExporting(false); }
+  };
+
   if (loading) return <div className="rounded-xl border border-border bg-card h-64 animate-pulse" />;
 
   return (
-    <div className="rounded-xl border border-border bg-card flex flex-col">
+    <div ref={cardRef} className="rounded-xl border border-border bg-card flex flex-col">
       {/* Header */}
       <div style={{ padding: "16px 18px", borderBottom: "1px solid hsl(var(--border))" }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
@@ -583,13 +706,24 @@ function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | un
             <h3 className="text-foreground font-medium" style={{ fontSize: 14, letterSpacing: "-0.01em" }}>IOP Interest Due</h3>
             <p className="text-muted-foreground" style={{ fontSize: 11.5, marginTop: 2 }}>Customers due for interest collection</p>
           </div>
-          <button
-            onClick={() => setShowIgnored((v) => !v)}
-            className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
-            style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}
-          >
-            {showIgnored ? "Hide ignored" : "Show ignored"}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {pendingIgnore.size > 0 && (
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg text-background font-semibold transition-colors disabled:opacity-60"
+                style={{ padding: "4px 10px", fontSize: 11.5, background: "hsl(var(--foreground))" }}>
+                {saving ? <Spin className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Save {pendingIgnore.size} change{pendingIgnore.size > 1 ? "s" : ""}
+              </button>
+            )}
+            <button
+              onClick={() => setShowIgnored((v) => !v)}
+              className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+              style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}
+            >
+              {showIgnored ? "Hide ignored" : "Show ignored"}
+            </button>
+            <ExportBar lang={lang} setLang={setLang} onExport={handleExport} exporting={exporting} />
+          </div>
         </div>
 
         {/* Inner tabs */}
@@ -653,10 +787,12 @@ function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | un
             No customers due.
           </div>
         ) : (
-          list.map((c) => (
+          list.map((c) => {
+            const effIgnore = pendingIgnore.has(c.customer_id) ? pendingIgnore.get(c.customer_id)! : (c.ignore ?? false);
+            return (
             <div key={c.customer_id}
               className="flex items-center gap-3 rounded-lg transition-colors"
-              style={{ padding: "10px 12px", cursor: "default" }}
+              style={{ padding: "10px 12px", cursor: "default", opacity: effIgnore ? 0.55 : 1 }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "hsl(var(--muted) / .5)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
@@ -669,14 +805,16 @@ function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | un
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  <p className="font-medium text-foreground truncate" style={{ fontSize: 13.5 }}>{c.customer_name}</p>
-                  {c.ignore && (
-                    <span className="rounded-full px-2 py-0.5 text-muted-foreground flex-shrink-0" style={{ fontSize: 10, background: "hsl(var(--muted))" }}>ignored</span>
-                  )}
+                  <IgnoreToggle on={effIgnore} pending={pendingIgnore.has(c.customer_id)} onToggle={() => toggleCustomer(c.customer_id, c.ignore ?? false)} />
+                  <p className="font-medium text-foreground truncate" style={{ fontSize: 13.5 }}>
+                    {lang === "ta" && c.tamil_name ? c.tamil_name : c.customer_name}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1.5 text-muted-foreground" style={{ fontSize: 11.5, marginTop: 1 }}>
                   <span style={{ fontFamily: "var(--font-mono, ui-monospace)" }}>#{c.customer_id}</span>
-                  {c.tamil_name && <><span style={{ opacity: 0.4 }}>·</span><span>{c.tamil_name}</span></>}
+                  {lang === "ta" && c.tamil_name
+                    ? <><span style={{ opacity: 0.4 }}>·</span><span>{c.customer_name}</span></>
+                    : c.tamil_name && <><span style={{ opacity: 0.4 }}>·</span><span>{c.tamil_name}</span></>}
                   <span style={{ opacity: 0.4 }}>·</span>
                   <span>{c.frequency}×/mo</span>
                 </div>
@@ -692,7 +830,8 @@ function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | un
                 )}
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
@@ -703,11 +842,45 @@ function DueQueue({ reminders, loading }: { reminders: IopRemindersResponse | un
 
 function EdiInactiveTable({ data, loading }: { data: EdiInactiveCustomer[] | undefined; loading: boolean }) {
   const [showIgnored, setShowIgnored] = useState(false);
+  const [lang, setLang] = useState<"en" | "ta">("en");
+  const [exporting, setExporting] = useState(false);
+  const [pendingIgnore, setPendingIgnore] = useState<Map<number, boolean>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const rows = showIgnored ? (data ?? []) : (data ?? []).filter((c) => !c.ignore);
 
+  const toggleCustomer = (id: number, savedVal: boolean) =>
+    setPendingIgnore((prev) => {
+      const next = new Map(prev);
+      const newVal = !(prev.has(id) ? prev.get(id)! : savedVal);
+      newVal === savedVal ? next.delete(id) : next.set(id, newVal);
+      return next;
+    });
+
+  const handleSave = async () => {
+    if (!pendingIgnore.size) return;
+    setSaving(true);
+    try {
+      await Promise.all([...pendingIgnore.entries()].map(([id, val]) =>
+        customersApi.updateEdi(id, { ignore: val })
+      ));
+      await qc.invalidateQueries({ queryKey: ["dashboard", "edi-inactive"] });
+      setPendingIgnore(new Map());
+    } finally { setSaving(false); }
+  };
+
+  const handleExport = async () => {
+    if (!tableRef.current) return;
+    setExporting(true);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    try { await exportElement(tableRef.current, `edi_inactive_${dateStr}`, rows.length); }
+    finally { setExporting(false); }
+  };
+
   return (
-    <div className="rounded-xl border border-border overflow-hidden">
+    <div ref={tableRef} className="rounded-xl border border-border overflow-hidden">
       <div className="flex items-center justify-between" style={{ padding: "14px 18px", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--card))" }}>
         <div>
           <div className="flex items-center gap-2">
@@ -718,13 +891,24 @@ function EdiInactiveTable({ data, loading }: { data: EdiInactiveCustomer[] | und
           </div>
           <p className="text-muted-foreground" style={{ fontSize: 11.5, marginTop: 2 }}>Active EDI customers who haven't paid in the last week</p>
         </div>
-        <button
-          onClick={() => setShowIgnored((v) => !v)}
-          className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-          style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}
-        >
-          {showIgnored ? "Hide ignored" : "Show ignored"}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {pendingIgnore.size > 0 && (
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg text-background font-semibold transition-colors disabled:opacity-60"
+              style={{ padding: "4px 10px", fontSize: 11.5, background: "hsl(var(--foreground))" }}>
+              {saving ? <Spin className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Save {pendingIgnore.size} change{pendingIgnore.size > 1 ? "s" : ""}
+            </button>
+          )}
+          <button
+            onClick={() => setShowIgnored((v) => !v)}
+            className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+            style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}
+          >
+            {showIgnored ? "Hide ignored" : "Show ignored"}
+          </button>
+          <ExportBar lang={lang} setLang={setLang} onExport={handleExport} exporting={exporting} />
+        </div>
       </div>
 
       {loading ? (
@@ -744,8 +928,10 @@ function EdiInactiveTable({ data, loading }: { data: EdiInactiveCustomer[] | und
               </tr>
             </thead>
             <tbody>
-              {rows.map((c) => (
-                <tr key={c.customer_id} style={{ borderBottom: "1px solid hsl(var(--border) / .6)" }}
+              {rows.map((c) => {
+                const effIgnore = pendingIgnore.has(c.customer_id) ? pendingIgnore.get(c.customer_id)! : (c.ignore ?? false);
+                return (
+                <tr key={c.customer_id} style={{ borderBottom: "1px solid hsl(var(--border) / .6)", opacity: effIgnore ? 0.55 : 1 }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "hsl(var(--muted) / .4)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
                   <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
@@ -758,11 +944,15 @@ function EdiInactiveTable({ data, loading }: { data: EdiInactiveCustomer[] | und
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="font-medium text-foreground" style={{ fontSize: 13 }}>{c.customer_name}</p>
-                          {c.ignore && <span className="rounded-full px-1.5 py-0.5 text-muted-foreground" style={{ fontSize: 9.5, background: "hsl(var(--muted))" }}>ignored</span>}
+                          <IgnoreToggle on={effIgnore} pending={pendingIgnore.has(c.customer_id)} onToggle={() => toggleCustomer(c.customer_id, c.ignore ?? false)} />
+                          <p className="font-medium text-foreground" style={{ fontSize: 13 }}>
+                            {lang === "ta" && c.tamil_name ? c.tamil_name : c.customer_name}
+                          </p>
                         </div>
                         <p className="text-muted-foreground" style={{ fontSize: 11 }}>
-                          {c.tamil_name && <>{c.tamil_name} · </>}
+                          {lang === "ta" && c.tamil_name
+                            ? <>{c.customer_name} · </>
+                            : c.tamil_name && <>{c.tamil_name} · </>}
                           <span style={{ fontFamily: "var(--font-mono, ui-monospace)" }}>#{c.customer_id}</span>
                         </p>
                       </div>
@@ -785,7 +975,8 @@ function EdiInactiveTable({ data, loading }: { data: EdiInactiveCustomer[] | und
                     </span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -818,6 +1009,226 @@ function ReminderReport() {
   );
 }
 
+// ── EdiDefaultersTable ────────────────────────────────────────────────────────
+
+function EdiDefaultersTable({ data, loading }: { data: EdiDefaulter[] | undefined; loading: boolean }) {
+  const [lang, setLang] = useState<"en" | "ta">("en");
+  const [exporting, setExporting] = useState(false);
+  const [pendingIgnore, setPendingIgnore] = useState<Map<number, boolean>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  const rows = data ?? [];
+
+  const toggleCustomer = (id: number, savedVal: boolean) =>
+    setPendingIgnore((prev) => {
+      const next = new Map(prev);
+      const newVal = !(prev.has(id) ? prev.get(id)! : savedVal);
+      newVal === savedVal ? next.delete(id) : next.set(id, newVal);
+      return next;
+    });
+
+  const handleSave = async () => {
+    if (!pendingIgnore.size) return;
+    setSaving(true);
+    try {
+      await Promise.all([...pendingIgnore.entries()].map(([id, val]) =>
+        customersApi.updateEdi(id, { ignore: val })
+      ));
+      await qc.invalidateQueries({ queryKey: ["dashboard", "edi-defaulters"] });
+      setPendingIgnore(new Map());
+    } finally { setSaving(false); }
+  };
+
+  const handleExport = async () => {
+    if (!tableRef.current) return;
+    setExporting(true);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    try { await exportElement(tableRef.current, `edi_defaulters_${dateStr}`, rows.length); }
+    finally { setExporting(false); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+        <h2 className="text-foreground font-medium" style={{ fontSize: 15 }}>EDI Defaulters — 95+ Days Overdue</h2>
+        {rows.length > 0 && (
+          <div className="flex items-center gap-2">
+            {pendingIgnore.size > 0 && (
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg text-background font-semibold transition-colors disabled:opacity-60"
+                style={{ padding: "4px 10px", fontSize: 11.5, background: "hsl(var(--foreground))" }}>
+                {saving ? <Spin className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Save {pendingIgnore.size} change{pendingIgnore.size > 1 ? "s" : ""}
+              </button>
+            )}
+            <ExportBar lang={lang} setLang={setLang} onExport={handleExport} exporting={exporting} />
+          </div>
+        )}
+      </div>
+      <p className="text-muted-foreground mb-4" style={{ fontSize: 12 }}>Active EDI customers with outstanding balance and no payment for over 95 days</p>
+      {loading ? (
+        <div className="h-40 bg-muted rounded-xl animate-pulse" />
+      ) : rows.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-6 text-center text-muted-foreground" style={{ fontSize: 13 }}>No EDI defaulters found</div>
+      ) : (
+        <div ref={tableRef} className="rounded-xl border border-border overflow-hidden bg-card">
+          <table className="w-full text-sm">
+            <thead className="bg-card border-b border-border">
+              <tr>
+                {["#", "Customer", "Loan Amount", "Outstanding", "Last Payment", "Days Overdue"].map((h) => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => {
+                const effIgnore = pendingIgnore.has(c.customer_id) ? pendingIgnore.get(c.customer_id)! : (c.ignore ?? false);
+                return (
+                <tr key={c.customer_id} className="border-b border-border/50 hover:bg-muted/30" style={{ opacity: effIgnore ? 0.55 : 1 }}>
+                  <td className="px-4 py-2.5 text-muted-foreground text-xs">{c.customer_id}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <IgnoreToggle on={effIgnore} pending={pendingIgnore.has(c.customer_id)} onToggle={() => toggleCustomer(c.customer_id, c.ignore ?? false)} />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {lang === "ta" && c.tamil_name ? c.tamil_name : c.customer_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {lang === "ta" && c.tamil_name ? c.customer_name : c.tamil_name}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.loan_amount)}</td>
+                  <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.outstanding_balance)}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(c.last_payment_date)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`text-xs font-bold ${c.days_overdue > 180 ? "text-red-500" : "text-amber-500"}`}>{c.days_overdue}d</span>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── IopDuesTable ──────────────────────────────────────────────────────────────
+
+function IopDuesTable({ data, loading }: { data: IopMonthlyDue[] | undefined; loading: boolean }) {
+  const [lang, setLang] = useState<"en" | "ta">("en");
+  const [exporting, setExporting] = useState(false);
+  const [pendingIgnore, setPendingIgnore] = useState<Map<number, boolean>>(new Map());
+  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  const rows = data ?? [];
+
+  const toggleCustomer = (id: number, savedVal: boolean) =>
+    setPendingIgnore((prev) => {
+      const next = new Map(prev);
+      const newVal = !(prev.has(id) ? prev.get(id)! : savedVal);
+      newVal === savedVal ? next.delete(id) : next.set(id, newVal);
+      return next;
+    });
+
+  const handleSave = async () => {
+    if (!pendingIgnore.size) return;
+    setSaving(true);
+    try {
+      await Promise.all([...pendingIgnore.entries()].map(([id, val]) =>
+        customersApi.updateIop(id, { ignore: val })
+      ));
+      await qc.invalidateQueries({ queryKey: ["dashboard", "iop-monthly-dues"] });
+      setPendingIgnore(new Map());
+    } finally { setSaving(false); }
+  };
+
+  const handleExport = async () => {
+    if (!tableRef.current) return;
+    setExporting(true);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    try { await exportElement(tableRef.current, `iop_dues_${dateStr}`, rows.length); }
+    finally { setExporting(false); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+        <h2 className="text-foreground font-medium" style={{ fontSize: 15 }}>IOP Monthly Dues — This Month</h2>
+        {rows.length > 0 && (
+          <div className="flex items-center gap-2">
+            {pendingIgnore.size > 0 && (
+              <button onClick={handleSave} disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg text-background font-semibold transition-colors disabled:opacity-60"
+                style={{ padding: "4px 10px", fontSize: 11.5, background: "hsl(var(--foreground))" }}>
+                {saving ? <Spin className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Save {pendingIgnore.size} change{pendingIgnore.size > 1 ? "s" : ""}
+              </button>
+            )}
+            <ExportBar lang={lang} setLang={setLang} onExport={handleExport} exporting={exporting} />
+          </div>
+        )}
+      </div>
+      <p className="text-muted-foreground mb-4" style={{ fontSize: 12 }}>Customers who have pending interest payments based on scheduled dates so far this month</p>
+      {loading ? (
+        <div className="h-40 bg-muted rounded-xl animate-pulse" />
+      ) : rows.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-6 text-center text-muted-foreground" style={{ fontSize: 13 }}>All IOP customers are paid up</div>
+      ) : (
+        <div ref={tableRef} className="rounded-xl border border-border overflow-hidden bg-card">
+          <table className="w-full text-sm">
+            <thead className="bg-card border-b border-border">
+              <tr>
+                {["#", "Customer", "Freq/mo", "Expected So Far", "Paid", "Pending"].map((h) => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => {
+                const effIgnore = pendingIgnore.has(c.customer_id) ? pendingIgnore.get(c.customer_id)! : (c.ignore ?? false);
+                return (
+                <tr key={c.customer_id} className="border-b border-border/50 hover:bg-muted/30" style={{ opacity: effIgnore ? 0.55 : 1 }}>
+                  <td className="px-4 py-2.5 text-muted-foreground text-xs">{c.customer_id}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <IgnoreToggle on={effIgnore} pending={pendingIgnore.has(c.customer_id)} onToggle={() => toggleCustomer(c.customer_id, c.ignore ?? false)} />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {lang === "ta" && c.tamil_name ? c.tamil_name : c.customer_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {lang === "ta" && c.tamil_name ? c.customer_name : c.tamil_name}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-muted-foreground text-xs">{c.frequency}×</td>
+                  <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.monthly_interest * (c.payments_due_so_far / Math.max(1, c.frequency)))}</td>
+                  <td className="px-4 py-2.5 text-green-500 tabular-nums">{fmt(c.paid_this_month)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`text-xs font-bold ${c.due_this_month > 0 ? "text-red-500" : "text-green-500"}`}>
+                      {c.due_this_month > 0 ? fmt(c.due_this_month) : "✓ Paid"}
+                    </span>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Defaulters Report ─────────────────────────────────────────────────────────
 
 function DefaultersReport() {
@@ -826,87 +1237,8 @@ function DefaultersReport() {
 
   return (
     <div className="space-y-6">
-      {/* EDI Defaulters (95+ days) */}
-      <div>
-        <h2 className="text-foreground font-medium mb-1" style={{ fontSize: 15 }}>EDI Defaulters — 95+ Days Overdue</h2>
-        <p className="text-muted-foreground mb-4" style={{ fontSize: 12 }}>Active EDI customers with outstanding balance and no payment for over 95 days</p>
-        {dLoading ? (
-          <div className="h-40 bg-muted rounded-xl animate-pulse" />
-        ) : !defaulters || defaulters.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-6 text-center text-muted-foreground" style={{ fontSize: 13 }}>No EDI defaulters found</div>
-        ) : (
-          <div className="rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-card border-b border-border">
-                <tr>
-                  {["#", "Customer", "Loan Amount", "Outstanding", "Last Payment", "Days Overdue"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {defaulters.map((c: EdiDefaulter) => (
-                  <tr key={c.customer_id} className="border-b border-border/50 hover:bg-muted/30">
-                    <td className="px-4 py-2.5 text-muted-foreground text-xs">{c.customer_id}</td>
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-foreground">{c.customer_name}</p>
-                      {c.tamil_name && <p className="text-xs text-muted-foreground">{c.tamil_name}</p>}
-                    </td>
-                    <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.loan_amount)}</td>
-                    <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.outstanding_balance)}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(c.last_payment_date)}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`text-xs font-bold ${c.days_overdue > 180 ? "text-red-500" : "text-amber-500"}`}>{c.days_overdue}d</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* IOP Monthly Dues */}
-      <div>
-        <h2 className="text-foreground font-medium mb-1" style={{ fontSize: 15 }}>IOP Monthly Dues — This Month</h2>
-        <p className="text-muted-foreground mb-4" style={{ fontSize: 12 }}>Customers who have pending interest payments based on scheduled dates so far this month</p>
-        {duLoading ? (
-          <div className="h-40 bg-muted rounded-xl animate-pulse" />
-        ) : !dues || dues.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-6 text-center text-muted-foreground" style={{ fontSize: 13 }}>All IOP customers are paid up</div>
-        ) : (
-          <div className="rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-card border-b border-border">
-                <tr>
-                  {["#", "Customer", "Freq/mo", "Expected So Far", "Paid", "Pending"].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {dues.map((c: IopMonthlyDue) => (
-                  <tr key={c.customer_id} className="border-b border-border/50 hover:bg-muted/30">
-                    <td className="px-4 py-2.5 text-muted-foreground text-xs">{c.customer_id}</td>
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-foreground">{c.customer_name}</p>
-                      {c.tamil_name && <p className="text-xs text-muted-foreground">{c.tamil_name}</p>}
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground text-xs">{c.frequency}×</td>
-                    <td className="px-4 py-2.5 text-foreground tabular-nums">{fmt(c.monthly_interest * (c.payments_due_so_far / Math.max(1, c.frequency)))}</td>
-                    <td className="px-4 py-2.5 text-green-500 tabular-nums">{fmt(c.paid_this_month)}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`text-xs font-bold ${c.due_this_month > 0 ? "text-red-500" : "text-green-500"}`}>
-                        {c.due_this_month > 0 ? fmt(c.due_this_month) : "✓ Paid"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <EdiDefaultersTable data={defaulters} loading={dLoading} />
+      <IopDuesTable data={dues} loading={duLoading} />
     </div>
   );
 }

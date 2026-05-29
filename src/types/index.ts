@@ -148,6 +148,7 @@ export interface IopMonthlyDue {
   due_this_month: number;
   payments_due_so_far: number;
   frequency: number;
+  ignore?: boolean;
 }
 
 export interface VoiceAlternative {
