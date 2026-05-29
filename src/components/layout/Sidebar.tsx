@@ -28,7 +28,7 @@ const nav: NavItem[] = [
   { to: "/transactions", icon: ArrowLeftRight,   label: "Collections" },
   null,
   { to: "/expenses",     icon: Receipt,          label: "Account Adjustments" },
-  { to: "/debts",        icon: Landmark,         label: "Debts" },
+  { to: "/debts",        icon: Landmark,         label: "Capital" },
   null,
   { to: "/upi",          icon: Wallet,           label: "UPI Transactions" },
   { to: "/namemap",      icon: BookText,         label: "Mapping Configs" },

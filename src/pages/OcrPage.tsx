@@ -23,6 +23,8 @@ import {
   Download,
   Search,
   Layers,
+  Undo2,
+  Redo2,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import { ocrApi, upiApi, expensesApi, customersApi } from "@/services/api";
@@ -1074,6 +1076,8 @@ export default function OcrPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showDateConfirm, setShowDateConfirm] = useState(false);
   const [pendingExtracted, setPendingExtracted] = useState<Row[]>([]);
+  const [rowsUndo, setRowsUndo] = useState<Row[][]>([]);
+  const [rowsRedo, setRowsRedo] = useState<Row[][]>([]);
 
   // ── Workflow ──────────────────────────────────────────────────────────────
   const [wfStep, setWfStep] = useState<WfStep | null>(1);
@@ -1150,6 +1154,18 @@ export default function OcrPage() {
       return () => clearTimeout(t);
     }
   }, [wfStep, loadingUpi, upiTxns.length, struckUpiIds.size, appliedUpiTxns.size, pageIndex, wfComplete]);
+
+  // Keyboard undo/redo (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z) — skip when focused on input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "z") { e.preventDefault(); undoRows(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) { e.preventDefault(); redoRows(); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [undoRows, redoRows]);
 
   const processFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
@@ -1254,6 +1270,7 @@ export default function OcrPage() {
       ...r,
       collection_date: dateMap[r.collection_date] ?? r.collection_date,
     }));
+    pushHistory();
     setRows(updated);
     toast.success(`${updated.length} records extracted`);
     if (isMobile) setMobileTab("records");
@@ -1271,13 +1288,41 @@ export default function OcrPage() {
     setStruckUpiIds(new Set());
     setAppliedUpiTxns(new Map());
     setExtractError(null);
+    setRowsUndo([]);
+    setRowsRedo([]);
   };
 
-  const updateRow = (uid: string, patch: Partial<Row>) =>
-    setRows((r) => r.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
+  // ── Undo / Redo ──────────────────────────────────────────────────────────
+  const pushHistory = useCallback(() => {
+    setRowsUndo((prev) => [...prev.slice(-29), rows]);
+    setRowsRedo([]);
+  }, [rows]);
 
-  const deleteRow = (uid: string) =>
+  const undoRows = useCallback(() => {
+    if (!rowsUndo.length) return;
+    const prev = rowsUndo[rowsUndo.length - 1];
+    setRowsRedo((f) => [rows, ...f.slice(0, 29)]);
+    setRowsUndo((p) => p.slice(0, -1));
+    setRows(prev);
+  }, [rowsUndo, rows, setRows]);
+
+  const redoRows = useCallback(() => {
+    if (!rowsRedo.length) return;
+    const next = rowsRedo[0];
+    setRowsUndo((p) => [...p.slice(-29), rows]);
+    setRowsRedo((f) => f.slice(1));
+    setRows(next);
+  }, [rowsRedo, rows, setRows]);
+
+  const updateRow = (uid: string, patch: Partial<Row>) => {
+    pushHistory();
+    setRows((r) => r.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
+  };
+
+  const deleteRow = (uid: string) => {
+    pushHistory();
     setRows((r) => r.filter((row) => row.uid !== uid));
+  };
 
   const handleSubmit = async () => {
     const valid = rows.filter((r) => r.customer_id && r.amount > 0);
@@ -1338,6 +1383,7 @@ export default function OcrPage() {
   };
 
   const addManualRow = (rowData: Omit<Row, "uid" | "confidence_score" | "notes" | "customer_suggestions">) => {
+    pushHistory();
     setRows((prev) => [...prev, { ...rowData, uid: mkUid(), confidence_score: 1, notes: "", customer_suggestions: [] }]);
     if (isMobile) setMobileTab("records");
   };
@@ -1574,7 +1620,21 @@ export default function OcrPage() {
                 ) : (
                   <div className="flex flex-col h-full min-h-0">
                     <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                      <p className="text-sm font-semibold">{rows.length > 0 ? `${rows.length} records` : "No records yet"}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold">{rows.length > 0 ? `${rows.length} records` : "No records yet"}</p>
+                        {rows.length > 0 && (
+                          <>
+                            <button onClick={undoRows} disabled={!rowsUndo.length} title="Undo"
+                              className="flex items-center justify-center h-7 w-7 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+                              <Undo2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={redoRows} disabled={!rowsRedo.length} title="Redo"
+                              className="flex items-center justify-center h-7 w-7 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+                              <Redo2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         {hasSession && (
                           <button onClick={() => setShowAddModal(true)}
@@ -2090,6 +2150,16 @@ export default function OcrPage() {
                         </span>
                       )}
                       <div className="flex-1" />
+                      <div className="flex items-center gap-1">
+                        <button onClick={undoRows} disabled={!rowsUndo.length} title="Undo (Ctrl+Z)"
+                          className="flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                          <Undo2 className="h-3 w-3" />
+                        </button>
+                        <button onClick={redoRows} disabled={!rowsRedo.length} title="Redo (Ctrl+Y)"
+                          className="flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                          <Redo2 className="h-3 w-3" />
+                        </button>
+                      </div>
                       <span className="text-[11px] text-muted-foreground font-mono">{rows.length} rows</span>
                     </div>
 

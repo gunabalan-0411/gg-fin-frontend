@@ -102,6 +102,14 @@ export const debtsApi = {
     api.delete(`/debts/${debtId}/repayments/${repaymentId}`),
 };
 
+// ── Investors ─────────────────────────────────────────────────────────────
+export const investorsApi = {
+  list: () => api.get("/investors"),
+  create: (data: object) => api.post("/investors", data),
+  update: (id: number, data: object) => api.patch(`/investors/${id}`, data),
+  delete: (id: number) => api.delete(`/investors/${id}`),
+};
+
 // ── Unclaimed Balances ────────────────────────────────────────────────────
 export const unclaimedBalancesApi = {
   list: () => api.get("/unclaimed-balances"),

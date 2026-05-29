@@ -1016,10 +1016,15 @@ function EdiDefaultersTable({ data, loading }: { data: EdiDefaulter[] | undefine
   const [exporting, setExporting] = useState(false);
   const [pendingIgnore, setPendingIgnore] = useState<Map<number, boolean>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [showIgnored, setShowIgnored] = useState(false);
   const qc = useQueryClient();
   const tableRef = useRef<HTMLDivElement>(null);
 
-  const rows = data ?? [];
+  const allRows = data ?? [];
+  const rows = showIgnored ? allRows : allRows.filter((c) => {
+    const eff = pendingIgnore.has(c.customer_id) ? pendingIgnore.get(c.customer_id)! : (c.ignore ?? false);
+    return !eff;
+  });
 
   const toggleCustomer = (id: number, savedVal: boolean) =>
     setPendingIgnore((prev) => {
@@ -1053,7 +1058,7 @@ function EdiDefaultersTable({ data, loading }: { data: EdiDefaulter[] | undefine
     <div>
       <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
         <h2 className="text-foreground font-medium" style={{ fontSize: 15 }}>EDI Defaulters — 95+ Days Overdue</h2>
-        {rows.length > 0 && (
+        {allRows.length > 0 && (
           <div className="flex items-center gap-2">
             {pendingIgnore.size > 0 && (
               <button onClick={handleSave} disabled={saving}
@@ -1063,6 +1068,11 @@ function EdiDefaultersTable({ data, loading }: { data: EdiDefaulter[] | undefine
                 Save {pendingIgnore.size} change{pendingIgnore.size > 1 ? "s" : ""}
               </button>
             )}
+            <button onClick={() => setShowIgnored((v) => !v)}
+              className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+              style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}>
+              {showIgnored ? "Hide ignored" : "Show ignored"}
+            </button>
             <ExportBar lang={lang} setLang={setLang} onExport={handleExport} exporting={exporting} />
           </div>
         )}
@@ -1125,10 +1135,15 @@ function IopDuesTable({ data, loading }: { data: IopMonthlyDue[] | undefined; lo
   const [exporting, setExporting] = useState(false);
   const [pendingIgnore, setPendingIgnore] = useState<Map<number, boolean>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [showIgnored, setShowIgnored] = useState(false);
   const qc = useQueryClient();
   const tableRef = useRef<HTMLDivElement>(null);
 
-  const rows = data ?? [];
+  const allRows = data ?? [];
+  const rows = showIgnored ? allRows : allRows.filter((c) => {
+    const eff = pendingIgnore.has(c.customer_id) ? pendingIgnore.get(c.customer_id)! : (c.ignore ?? false);
+    return !eff;
+  });
 
   const toggleCustomer = (id: number, savedVal: boolean) =>
     setPendingIgnore((prev) => {
@@ -1162,7 +1177,7 @@ function IopDuesTable({ data, loading }: { data: IopMonthlyDue[] | undefined; lo
     <div>
       <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
         <h2 className="text-foreground font-medium" style={{ fontSize: 15 }}>IOP Monthly Dues — This Month</h2>
-        {rows.length > 0 && (
+        {allRows.length > 0 && (
           <div className="flex items-center gap-2">
             {pendingIgnore.size > 0 && (
               <button onClick={handleSave} disabled={saving}
@@ -1172,6 +1187,11 @@ function IopDuesTable({ data, loading }: { data: IopMonthlyDue[] | undefined; lo
                 Save {pendingIgnore.size} change{pendingIgnore.size > 1 ? "s" : ""}
               </button>
             )}
+            <button onClick={() => setShowIgnored((v) => !v)}
+              className="flex items-center gap-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+              style={{ padding: "4px 10px", fontSize: 11.5, background: showIgnored ? "hsl(var(--muted))" : "transparent" }}>
+              {showIgnored ? "Hide ignored" : "Show ignored"}
+            </button>
             <ExportBar lang={lang} setLang={setLang} onExport={handleExport} exporting={exporting} />
           </div>
         )}

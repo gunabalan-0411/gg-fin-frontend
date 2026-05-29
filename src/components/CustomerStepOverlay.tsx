@@ -1,17 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Search, Plus, Filter, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
+  Undo2, Redo2,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import {
   useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer,
 } from "@/hooks/useCustomers";
+import { customersApi } from "@/services/api";
 import {
   CustomerFormModal, CustomerDetailModal, DeleteConfirmModal,
   CustomerCardMobile, CustomerRow, PAGE_SIZE, SortDir,
 } from "@/pages/CustomersPage";
 import type { EdiCustomer, IopCustomer, ProductType } from "@/types";
+import toast from "react-hot-toast";
+
+type CustAction =
+  | { type: "create"; id: number; product: ProductType; data: object }
+  | { type: "update"; id: number; product: ProductType; prev: object; next: object }
+  | { type: "delete"; customer: EdiCustomer | IopCustomer; product: ProductType };
 
 export function CustomerStepOverlay({
   onDone,
@@ -38,6 +46,8 @@ export function CustomerStepOverlay({
   const [confirmDelete, setConfirmDelete] = useState<{
     id: number; name: string; customer: EdiCustomer | IopCustomer;
   } | null>(null);
+  const [undoStack, setUndoStack] = useState<CustAction[]>([]);
+  const [redoStack, setRedoStack] = useState<CustAction[]>([]);
 
   const { data, isLoading } = useCustomers(product, {
     skip: page * PAGE_SIZE,
@@ -63,8 +73,16 @@ export function CustomerStepOverlay({
   };
 
   const handleSave = (formData: object) => {
-    if (editing) updateMutation.mutate({ id: (editing as EdiCustomer).customer_id, data: formData });
-    else createMutation.mutate(formData);
+    const id = (formData as any).customer_id ?? (editing as EdiCustomer | null)?.customer_id;
+    if (editing) {
+      setUndoStack((p) => [...p.slice(-29), { type: "update", id, product, prev: { ...editing }, next: formData }]);
+      setRedoStack([]);
+      updateMutation.mutate({ id: (editing as EdiCustomer).customer_id, data: formData });
+    } else {
+      setUndoStack((p) => [...p.slice(-29), { type: "create", id, product, data: formData }]);
+      setRedoStack([]);
+      createMutation.mutate(formData);
+    }
     setShowForm(false);
     setEditing(null);
     setDuplicateSource(null);
@@ -73,9 +91,76 @@ export function CustomerStepOverlay({
 
   const handleDeleteConfirm = (resequence: boolean) => {
     if (!confirmDelete) return;
+    setUndoStack((p) => [...p.slice(-29), { type: "delete", customer: confirmDelete.customer, product }]);
+    setRedoStack([]);
     deleteMutation.mutate({ id: confirmDelete.id, resequence });
     setConfirmDelete(null);
   };
+
+  const applyAction = useCallback(async (action: CustAction) => {
+    if (action.type === "create") {
+      await (action.product === "edi" ? customersApi.createEdi(action.data) : customersApi.createIop(action.data));
+    } else if (action.type === "update") {
+      await (action.product === "edi" ? customersApi.updateEdi(action.id, action.next) : customersApi.updateIop(action.id, action.next));
+    } else {
+      await (action.product === "edi" ? customersApi.deleteEdi(action.customer.customer_id) : customersApi.deleteIop(action.customer.customer_id));
+    }
+  }, []);
+
+  const reverseAction = useCallback(async (action: CustAction) => {
+    if (action.type === "create") {
+      await (action.product === "edi" ? customersApi.deleteEdi(action.id) : customersApi.deleteIop(action.id));
+    } else if (action.type === "update") {
+      await (action.product === "edi" ? customersApi.updateEdi(action.id, action.prev) : customersApi.updateIop(action.id, action.prev));
+    } else {
+      const c = action.customer;
+      const payload = { ...c, customer_name_ta: (c as any).tamil_name };
+      await (action.product === "edi" ? customersApi.createEdi(payload) : customersApi.createIop(payload));
+    }
+  }, []);
+
+  const handleUndo = useCallback(async () => {
+    if (!undoStack.length) return;
+    const action = undoStack[undoStack.length - 1];
+    setUndoStack((p) => p.slice(0, -1));
+    setRedoStack((p) => [action, ...p.slice(0, 29)]);
+    try {
+      await reverseAction(action);
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      toast(`Undid: ${action.type} customer`);
+    } catch {
+      toast.error("Undo failed");
+      setUndoStack((p) => [...p, action]);
+      setRedoStack((p) => p.slice(1));
+    }
+  }, [undoStack, reverseAction, qc]);
+
+  const handleRedo = useCallback(async () => {
+    if (!redoStack.length) return;
+    const action = redoStack[0];
+    setRedoStack((p) => p.slice(1));
+    setUndoStack((p) => [...p.slice(-29), action]);
+    try {
+      await applyAction(action);
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      toast(`Redid: ${action.type} customer`);
+    } catch {
+      toast.error("Redo failed");
+      setRedoStack((p) => [action, ...p]);
+      setUndoStack((p) => p.slice(0, -1));
+    }
+  }, [redoStack, applyAction, qc]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "z") { e.preventDefault(); handleUndo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z"))) { e.preventDefault(); handleRedo(); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [handleUndo, handleRedo]);
 
   const SortIcon = ({ col }: { col: string }) => {
     if (sortBy !== col) return <ChevronDown className="h-3 w-3 opacity-30" />;
@@ -116,6 +201,18 @@ export function CustomerStepOverlay({
         </div>
 
         <div className="flex-1" />
+
+        {/* Undo / Redo */}
+        <div className="flex items-center gap-1 mr-2">
+          <button onClick={handleUndo} disabled={!undoStack.length} title="Undo (Ctrl+Z)"
+            className="flex items-center justify-center h-7 w-7 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={handleRedo} disabled={!redoStack.length} title="Redo (Ctrl+Y)"
+            className="flex items-center justify-center h-7 w-7 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+            <Redo2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
 
         {/* Workflow actions */}
         <button
