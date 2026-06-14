@@ -317,8 +317,12 @@ export default function VoicePage() {
 
   const startRecording = async () => {
     try {
-      const audioConstraint: MediaTrackConstraints | boolean =
-        selectedMicId ? { deviceId: { exact: selectedMicId } } : true;
+      const audioConstraint: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        ...(selectedMicId ? { deviceId: { exact: selectedMicId } } : {}),
+      };
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
       // Re-enumerate now that permission is granted — we'll get real device labels
       navigator.mediaDevices.enumerateDevices().then(all =>
