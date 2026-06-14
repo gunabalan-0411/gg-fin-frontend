@@ -78,6 +78,36 @@ export default function VoicePage() {
   const [progressValue, setProgressValue] = useState(0);
   const qc = useQueryClient();
 
+  const { data: modelStatus, refetch: refetchModelStatus } = useQuery({
+    queryKey: ["voice-model-status"],
+    queryFn: async () => { const r = await voiceApi.modelStatus(); return r.data; },
+    refetchInterval: 10_000,
+  });
+  const [modelLoading, setModelLoading] = useState(false);
+
+  const handleLoadModel = async () => {
+    setModelLoading(true);
+    try {
+      await voiceApi.modelLoad();
+      await refetchModelStatus();
+      toast.success("Whisper model loaded — ready to transcribe");
+    } catch {
+      toast.error("Failed to load model");
+    } finally {
+      setModelLoading(false);
+    }
+  };
+
+  const handleUnloadModel = async () => {
+    try {
+      await voiceApi.modelUnload();
+      await refetchModelStatus();
+      toast("Model unloaded from RAM", { icon: "💾" });
+    } catch {
+      toast.error("Failed to unload model");
+    }
+  };
+
   const { data: txnsData = [], isLoading: txnsLoading } = useTransactions(product, date);
   const { data: ediTxnsAll = [] } = useTransactions("edi", date);
   const { data: iopTxnsAll = [] } = useTransactions("iop", date);
@@ -638,6 +668,23 @@ export default function VoicePage() {
             ))}
           </div>
 
+          {/* Model status (mobile) */}
+          <div className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border ${modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8" : "border-border bg-secondary/40"}`}>
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+            <span className={`flex-1 text-[11px] font-medium ${modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
+              {modelStatus?.loaded ? `Ready · unloads in ${modelStatus.seconds_until_unload}s` : "Model unloaded"}
+            </span>
+            {modelStatus?.loaded ? (
+              <button onClick={handleUnloadModel} className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2">Unload</button>
+            ) : (
+              <button onClick={handleLoadModel} disabled={modelLoading}
+                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-foreground text-background disabled:opacity-50">
+                {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                {modelLoading ? "Loading…" : "Load"}
+              </button>
+            )}
+          </div>
+
           {/* Mic button + pause */}
           <div className="flex items-center gap-5">
             {queue.length > 0 && queueIndex >= 0 && queueIndex < queue.length && (
@@ -1048,6 +1095,26 @@ export default function VoicePage() {
                     </span>
                   </button>
                 ))}
+              </div>
+              {/* Model status */}
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 ${modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8" : "border-border bg-secondary/40"}`}>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+                <div className="flex-1 min-w-0">
+                  <span className={`text-[11.5px] font-medium ${modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                    {modelStatus?.loaded ? `Model ready · unloads in ${modelStatus.seconds_until_unload}s` : "Model unloaded"}
+                  </span>
+                </div>
+                {modelStatus?.loaded ? (
+                  <button onClick={handleUnloadModel} className="text-[10.5px] text-muted-foreground hover:text-foreground underline underline-offset-2 flex-shrink-0 transition-colors">
+                    Unload
+                  </button>
+                ) : (
+                  <button onClick={handleLoadModel} disabled={modelLoading}
+                    className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-foreground text-background hover:bg-foreground/85 disabled:opacity-50 transition-colors flex-shrink-0">
+                    {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    {modelLoading ? "Loading…" : "Load Model"}
+                  </button>
+                )}
               </div>
               {/* Mic hero */}
               <div className="flex flex-col items-center gap-3 py-2">

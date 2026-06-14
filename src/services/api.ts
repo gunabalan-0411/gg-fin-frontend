@@ -140,6 +140,9 @@ export const dashboardApi = {
 const TRANSCRIBE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes for long audio
 
 export const voiceApi = {
+  modelStatus: () => api.get<{ loaded: boolean; idle_seconds: number; seconds_until_unload: number }>("/voice/model-status"),
+  modelLoad: () => api.post<{ loaded: boolean; idle_seconds: number; seconds_until_unload: number }>("/voice/model-load"),
+  modelUnload: () => api.post<{ loaded: boolean; idle_seconds: number; seconds_until_unload: number }>("/voice/model-unload"),
   deviceInfo: () => api.get<{ device: string; device_name: string; gpu_available: boolean }>("/voice/device-info"),
   setDevice: (device: "cpu" | "cuda") => api.post<{ device: string; device_name: string; gpu_available: boolean }>("/voice/set-device", { device }),
   transcribe: (audioBlob: Blob, product: string, signal?: AbortSignal) => {
