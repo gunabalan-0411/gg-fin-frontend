@@ -84,7 +84,7 @@ export default function VoicePage() {
   const { data: modelStatus, refetch: refetchModelStatus } = useQuery({
     queryKey: ["voice-model-status"],
     queryFn: async () => { const r = await voiceApi.modelStatus(); return r.data; },
-    refetchInterval: modelStatus?.downloading ? 3_000 : 10_000,
+    refetchInterval: (query) => query.state.data?.downloading ? 3_000 : 10_000,
   });
   const [modelLoading, setModelLoading] = useState(false);
 
