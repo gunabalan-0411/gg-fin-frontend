@@ -81,7 +81,7 @@ export default function VoicePage() {
   const { data: modelStatus, refetch: refetchModelStatus } = useQuery({
     queryKey: ["voice-model-status"],
     queryFn: async () => { const r = await voiceApi.modelStatus(); return r.data; },
-    refetchInterval: 10_000,
+    refetchInterval: modelStatus?.downloading ? 3_000 : 10_000,
   });
   const [modelLoading, setModelLoading] = useState(false);
 
@@ -669,20 +669,33 @@ export default function VoicePage() {
           </div>
 
           {/* Model status (mobile) */}
-          <div className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border ${modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8" : "border-border bg-secondary/40"}`}>
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
-            <span className={`flex-1 text-[11px] font-medium ${modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
-              {modelStatus?.loaded ? `Ready · unloads in ${modelStatus.seconds_until_unload}s` : "Model unloaded"}
+          <div className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border ${
+            modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8"
+            : modelStatus?.downloading ? "border-amber-500/30 bg-amber-500/8"
+            : "border-border bg-secondary/40"
+          }`}>
+            {modelStatus?.downloading
+              ? <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin flex-shrink-0" />
+              : <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+            }
+            <span className={`flex-1 text-[11px] font-medium ${
+              modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400"
+              : modelStatus?.downloading ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground"
+            }`}>
+              {modelStatus?.loaded ? `Ready · unloads in ${modelStatus.seconds_until_unload}s`
+               : modelStatus?.downloading ? "Downloading…"
+               : "Model unloaded"}
             </span>
             {modelStatus?.loaded ? (
               <button onClick={handleUnloadModel} className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2">Unload</button>
-            ) : (
+            ) : !modelStatus?.downloading ? (
               <button onClick={handleLoadModel} disabled={modelLoading}
                 className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-foreground text-background disabled:opacity-50">
                 {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 {modelLoading ? "Loading…" : "Load"}
               </button>
-            )}
+            ) : null}
           </div>
 
           {/* Mic button + pause */}
@@ -1097,24 +1110,39 @@ export default function VoicePage() {
                 ))}
               </div>
               {/* Model status */}
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 ${modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8" : "border-border bg-secondary/40"}`}>
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 ${
+                modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8"
+                : modelStatus?.downloading ? "border-amber-500/30 bg-amber-500/8"
+                : "border-border bg-secondary/40"
+              }`}>
+                {modelStatus?.downloading
+                  ? <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin flex-shrink-0" />
+                  : <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+                }
                 <div className="flex-1 min-w-0">
-                  <span className={`text-[11.5px] font-medium ${modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                    {modelStatus?.loaded ? `Model ready · unloads in ${modelStatus.seconds_until_unload}s` : "Model unloaded"}
+                  <span className={`text-[11.5px] font-medium ${
+                    modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400"
+                    : modelStatus?.downloading ? "text-amber-600 dark:text-amber-400"
+                    : "text-muted-foreground"
+                  }`}>
+                    {modelStatus?.loaded
+                      ? `Model ready · unloads in ${modelStatus.seconds_until_unload}s`
+                      : modelStatus?.downloading
+                      ? "Downloading model to volume…"
+                      : "Model unloaded"}
                   </span>
                 </div>
                 {modelStatus?.loaded ? (
                   <button onClick={handleUnloadModel} className="text-[10.5px] text-muted-foreground hover:text-foreground underline underline-offset-2 flex-shrink-0 transition-colors">
                     Unload
                   </button>
-                ) : (
+                ) : !modelStatus?.downloading ? (
                   <button onClick={handleLoadModel} disabled={modelLoading}
                     className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-foreground text-background hover:bg-foreground/85 disabled:opacity-50 transition-colors flex-shrink-0">
                     {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                     {modelLoading ? "Loading…" : "Load Model"}
                   </button>
-                )}
+                ) : null}
               </div>
               {/* Mic hero */}
               <div className="flex flex-col items-center gap-3 py-2">
