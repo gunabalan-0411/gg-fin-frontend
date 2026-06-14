@@ -1,15 +1,10 @@
 import axios from "axios";
 
+// withCredentials sends the httpOnly auth cookie on every request automatically.
+// The Authorization header fallback is kept for dev/API-client use only.
 const api = axios.create({
   baseURL: "/api",
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("gg_fin_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+  withCredentials: true,
 });
 
 api.interceptors.response.use(
@@ -19,7 +14,6 @@ api.interceptors.response.use(
     const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/refresh");
     const isStatusPoll = url.includes("/import/status/");
     if (error.response?.status === 401 && !isStatusPoll && !isAuthEndpoint) {
-      // Fire an event — SessionGuard handles the dialog so the user isn't hard-redirected
       window.dispatchEvent(new CustomEvent("gg_fin_401"));
     }
     return Promise.reject(error);
@@ -32,8 +26,10 @@ export const authApi = {
     const form = new FormData();
     form.append("username", username);
     form.append("password", password);
+    // Server sets httpOnly cookie in the response; token in body kept for compat.
     return api.post<{ access_token: string }>("/auth/login", form);
   },
+  logout: () => api.post<{ ok: boolean }>("/auth/logout"),
   refresh: () => api.post<{ access_token: string }>("/auth/refresh"),
   changePassword: (current_password: string, new_password: string) =>
     api.post<{ ok: boolean }>("/auth/change-password", { current_password, new_password }),

@@ -1,29 +1,28 @@
 import { authApi } from "@/services/api";
 import toast from "react-hot-toast";
 
-// Simple Zustand store for auth state
-// (We use zustand via a light implementation pattern)
+// Auth state is tracked via a non-sensitive flag in sessionStorage.
+// The actual JWT lives in an httpOnly cookie set by the server — JS cannot read it,
+// which means XSS cannot steal it.
+const AUTH_FLAG = "gg_fin_auth";   // just "1" or absent — NOT the token
+
+export function isAuthenticated(): boolean {
+  return sessionStorage.getItem(AUTH_FLAG) === "1";
+}
+
+function setAuthFlag()   { sessionStorage.setItem(AUTH_FLAG, "1"); }
+function clearAuthFlag() { sessionStorage.removeItem(AUTH_FLAG); }
+
+// Module-level listeners for cross-component reactivity
+import { useState, useEffect } from "react";
+const listeners = new Set<() => void>();
+function notify() { listeners.forEach((fn) => fn()); }
+
 type AuthState = {
-  token: string | null;
+  authenticated: boolean;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
 };
-
-// Minimal zustand-like store using localStorage + event-driven re-render
-// (avoids adding zustand as a dep; use react state + context pattern instead)
-import { useState, useEffect, useCallback } from "react";
-
-const TOKEN_KEY = "gg_fin_token";
-
-// Module-level listeners for cross-component reactivity
-const listeners = new Set<() => void>();
-function notify() {
-  listeners.forEach((fn) => fn());
-}
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
 
 export function useAuthStore<T>(selector: (state: AuthState) => T): T {
   const [, forceUpdate] = useState(0);
@@ -35,11 +34,13 @@ export function useAuthStore<T>(selector: (state: AuthState) => T): T {
   }, []);
 
   const state: AuthState = {
-    token: getToken(),
+    authenticated: isAuthenticated(),
+
     login: async (username, password) => {
       try {
-        const res = await authApi.login(username, password);
-        localStorage.setItem(TOKEN_KEY, res.data.access_token);
+        await authApi.login(username, password);
+        // Server has now set the httpOnly cookie. Mark session as active.
+        setAuthFlag();
         notify();
         return true;
       } catch {
@@ -47,11 +48,18 @@ export function useAuthStore<T>(selector: (state: AuthState) => T): T {
         return false;
       }
     },
+
     logout: () => {
-      localStorage.removeItem(TOKEN_KEY);
+      authApi.logout().catch(() => {});  // clear server-side cookie
+      clearAuthFlag();
       notify();
     },
   };
 
   return selector(state);
+}
+
+/** Kept for backward compat — returns null (token is no longer readable from JS). */
+export function getToken(): string | null {
+  return null;
 }

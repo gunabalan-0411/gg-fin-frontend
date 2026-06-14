@@ -325,8 +325,7 @@ function UpiImportSection({
     setSyncing(true);
     setSyncProgress({ stage:"listing", total:0, processed:0, imported:0, skipped:0 });
     try {
-      const token = localStorage.getItem("gg_fin_token");
-      const resp = await fetch("/api/upi/gmail/sync-stream", { headers:{ Authorization:`Bearer ${token}` } });
+      const resp = await fetch("/api/upi/gmail/sync-stream", { credentials: "include" });
       if (!resp.ok) { const err = await resp.json().catch(()=>({})); throw new Error(err.detail||`Server error ${resp.status}`); }
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();

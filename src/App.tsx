@@ -20,19 +20,19 @@ import { useAuthStore } from "@/hooks/useAuth";
 import { setupApi } from "@/services/api";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((s) => s.token);
-  if (!token) return <Navigate to="/login" replace />;
+  const authenticated = useAuthStore((s) => s.authenticated);
+  if (!authenticated) return <Navigate to="/login" replace />;
   return <SessionGuard>{children}</SessionGuard>;
 }
 
 export default function App() {
-  const token = useAuthStore((s) => s.token);
+  const authenticated = useAuthStore((s) => s.authenticated);
   const [setupChecked, setSetupChecked] = useState(false);
   const [isFresh, setIsFresh] = useState(false);
 
   useEffect(() => {
     // Only show setup page if user is NOT already logged in
-    if (token) { setSetupChecked(true); return; }
+    if (authenticated) { setSetupChecked(true); return; }
     setupApi.status()
       .then(({ data }) => { setIsFresh(data.is_fresh); })
       .catch(() => { /* backend not ready yet — proceed normally */ })

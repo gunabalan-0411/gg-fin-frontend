@@ -274,7 +274,9 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("customer_id")}>
                     <span className="flex items-center gap-1">ID <SortIcon col="customer_id" /></span>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("customer_name")}>
+                    <span className="flex items-center gap-1">Name <SortIcon col="customer_name" /></span>
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Tamil Name</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Loan Amount</th>
@@ -546,10 +548,9 @@ export function CustomerDetailModal({ customer, product, onClose }: {
   const handleShare = async () => {
     setSharing(true);
     try {
-      const token = localStorage.getItem("gg_fin_token") ?? "";
       const res = await fetch(
         `/api/customers/${product}/${customer.customer_id}/export.pdf?lang=${pdfLang}&filter=${txnFilter}`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        { credentials: "include" },
       );
       if (!res.ok) {
         let detail = `HTTP ${res.status}`;

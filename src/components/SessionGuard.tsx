@@ -1,17 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { authApi } from "@/services/api";
+import { isAuthenticated, useAuthStore } from "@/hooks/useAuth";
 
-const TOKEN_KEY = "gg_fin_token";
 const WARN_AFTER_MS  = 55 * 60 * 1000; // show warning at 55 min of inactivity
 const LOGOUT_AFTER_S = 60;              // seconds of countdown before auto-logout
 const REFRESH_EVERY_MS = 30 * 60 * 1000; // silently refresh token every 30 min if active
-
-function saveToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
 
 export function SessionGuard({ children }: { children: React.ReactNode }) {
   const [showInactive, setShowInactive]   = useState(false);
@@ -23,11 +16,12 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
   const warnShown     = useRef(false);
   const countdownTick = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const logout = useAuthStore((s) => s.logout);
+
   // ── Activity tracker ──────────────────────────────────────────────────────
   const onActivity = useCallback(() => {
     lastActivity.current = Date.now();
     if (warnShown.current) {
-      // User moved while warning was visible — dismiss it
       warnShown.current = false;
       setShowInactive(false);
       if (countdownTick.current) clearInterval(countdownTick.current);
@@ -50,20 +44,18 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
   // ── Inactivity check + auto-refresh ──────────────────────────────────────
   useEffect(() => {
     const tick = setInterval(() => {
-      if (!localStorage.getItem(TOKEN_KEY)) return;
+      if (!isAuthenticated()) return;   // session flag — no token stored in JS
 
       const now      = Date.now();
       const inactive = now - lastActivity.current;
       const sinceRef = now - lastRefresh.current;
 
-      // Auto-refresh if the user has been active in the last 5 min
       if (sinceRef >= REFRESH_EVERY_MS && inactive < 5 * 60 * 1000) {
         authApi.refresh()
-          .then((r) => { saveToken(r.data.access_token); lastRefresh.current = Date.now(); })
+          .then(() => { lastRefresh.current = Date.now(); })
           .catch(() => {});
       }
 
-      // Warn at 55 min
       if (inactive >= WARN_AFTER_MS && !warnShown.current) {
         warnShown.current = true;
         setCountdown(LOGOUT_AFTER_S);
@@ -75,7 +67,7 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
               clearInterval(countdownTick.current!);
               warnShown.current = false;
               setShowInactive(false);
-              clearToken();
+              logout();
               window.location.href = "/login";
               return 0;
             }
@@ -83,18 +75,15 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
           });
         }, 1000);
       }
-    }, 60_000); // poll every minute
+    }, 60_000);
 
     return () => clearInterval(tick);
-  }, []);
+  }, [logout]);
 
   // ── Continue session ──────────────────────────────────────────────────────
   const handleContinue = async () => {
-    try {
-      const r = await authApi.refresh();
-      saveToken(r.data.access_token);
-      lastRefresh.current = Date.now();
-    } catch { /* token refresh failed — old token still valid for now */ }
+    try { await authApi.refresh(); lastRefresh.current = Date.now(); }
+    catch { /* old cookie still valid for remaining window */ }
     lastActivity.current = Date.now();
     warnShown.current = false;
     setShowInactive(false);
@@ -105,13 +94,13 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
     if (countdownTick.current) clearInterval(countdownTick.current);
     warnShown.current = false;
     setShowInactive(false);
-    clearToken();
+    logout();
     window.location.href = "/login";
   };
 
   const handleExpiredRelogin = () => {
     setShowExpired(false);
-    clearToken();
+    logout();
     window.location.href = "/login";
   };
 
@@ -140,16 +129,12 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
               to protect your data. Any unsaved changes will be lost.
             </p>
             <div className="flex gap-2">
-              <button
-                onClick={handleLogoutNow}
-                className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted transition-colors"
-              >
+              <button onClick={handleLogoutNow}
+                className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted transition-colors">
                 Log out
               </button>
-              <button
-                onClick={handleContinue}
-                className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors"
-              >
+              <button onClick={handleContinue}
+                className="flex-1 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors">
                 Continue session
               </button>
             </div>
@@ -175,10 +160,8 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
             <p className="text-sm text-muted-foreground mb-5">
               Your session has expired. Please log in again to continue. Your previously saved data is safe.
             </p>
-            <button
-              onClick={handleExpiredRelogin}
-              className="w-full py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors"
-            >
+            <button onClick={handleExpiredRelogin}
+              className="w-full py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors">
               Log in again
             </button>
           </div>
