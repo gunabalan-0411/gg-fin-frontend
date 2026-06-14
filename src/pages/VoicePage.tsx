@@ -78,6 +78,9 @@ export default function VoicePage() {
   const [progressValue, setProgressValue] = useState(0);
   const qc = useQueryClient();
 
+  const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>("");
+
   const { data: modelStatus, refetch: refetchModelStatus } = useQuery({
     queryKey: ["voice-model-status"],
     queryFn: async () => { const r = await voiceApi.modelStatus(); return r.data; },
@@ -117,6 +120,17 @@ export default function VoicePage() {
       toast.success("Model saved to volume", { icon: "💾" });
     }
   }, [modelStatus?.downloading]);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices) return;
+    const refresh = () =>
+      navigator.mediaDevices.enumerateDevices().then(all =>
+        setMicDevices(all.filter(d => d.kind === "audioinput"))
+      ).catch(() => {});
+    refresh();
+    navigator.mediaDevices.addEventListener("devicechange", refresh);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", refresh);
+  }, []);
 
   const { data: txnsData = [], isLoading: txnsLoading } = useTransactions(product, date);
   const { data: ediTxnsAll = [] } = useTransactions("edi", date);
@@ -303,7 +317,13 @@ export default function VoicePage() {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioConstraint: MediaTrackConstraints | boolean =
+        selectedMicId ? { deviceId: { exact: selectedMicId } } : true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
+      // Re-enumerate now that permission is granted — we'll get real device labels
+      navigator.mediaDevices.enumerateDevices().then(all =>
+        setMicDevices(all.filter(d => d.kind === "audioinput"))
+      ).catch(() => {});
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -722,6 +742,28 @@ export default function VoicePage() {
               </div>
             )}
           </div>
+
+          {/* Microphone selector (mobile) */}
+          {micDevices.length > 0 && (
+            <div className="flex items-center gap-2 w-full">
+              <Mic className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <div className="relative flex-1">
+                <select
+                  value={selectedMicId}
+                  onChange={e => setSelectedMicId(e.target.value)}
+                  disabled={recording}
+                  className="w-full text-[11.5px] bg-secondary/40 border border-border rounded-md pl-2.5 pr-6 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 appearance-none cursor-pointer"
+                >
+                  {micDevices.map((device, i) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Microphone ${i + 1}`}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
+          )}
 
           {/* Mic button + pause */}
           <div className="flex items-center gap-5">
@@ -1195,6 +1237,27 @@ export default function VoicePage() {
                   </div>
                 )}
               </div>
+              {/* Microphone selector */}
+              {micDevices.length > 0 && (
+                <div className="flex items-center gap-2 mb-3">
+                  <Mic className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  <div className="relative flex-1">
+                    <select
+                      value={selectedMicId}
+                      onChange={e => setSelectedMicId(e.target.value)}
+                      disabled={recording}
+                      className="w-full text-[11.5px] bg-secondary/40 border border-border rounded-md pl-2.5 pr-6 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 appearance-none cursor-pointer"
+                    >
+                      {micDevices.map((device, i) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Microphone ${i + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+                  </div>
+                </div>
+              )}
               {/* Mic hero */}
               <div className="flex flex-col items-center gap-3 py-2">
                 <div className="relative">
