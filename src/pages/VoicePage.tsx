@@ -738,6 +738,8 @@ export default function VoicePage() {
               </div>
               <p className={`text-xs text-center mt-1.5 ${micMode === "online" ? "text-sky-600/70 dark:text-sky-400/70" : "text-muted-foreground"}`}>{countdown}s — tap to stop</p>
             </div>
+          ) : transcription && queue.length === 0 ? (
+            <p className="text-xs text-center text-foreground/60 italic px-2">"{transcription}"</p>
           ) : (
             <p className={`text-xs text-center ${micMode === "online" ? "text-sky-600/60 dark:text-sky-400/60" : "text-muted-foreground/60"}`}>
               {micMode === "transaction" ? "Say name + amount → entry" : "Say name + amount → marks online"}
@@ -1226,14 +1228,21 @@ export default function VoicePage() {
                     </div>
                   </>
                 ) : queue.length > 0 ? (
-                  queue.map((e, i) => (
-                    <React.Fragment key={i}>
-                      <span className="inline-block px-0.5 rounded-sm font-medium bg-primary/22 text-foreground">{e.spoken_name}</span>
-                      {" "}
-                      <span className="inline-block px-0.5 rounded-sm font-mono font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/12">{e.amount}</span>
-                      {i < queue.length - 1 && <span className="text-muted-foreground/40">, </span>}
-                    </React.Fragment>
-                  ))
+                  <>
+                    {queue.map((e, i) => (
+                      <React.Fragment key={i}>
+                        <span className="inline-block px-0.5 rounded-sm font-medium bg-primary/22 text-foreground">{e.spoken_name}</span>
+                        {" "}
+                        <span className="inline-block px-0.5 rounded-sm font-mono font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/12">{e.amount}</span>
+                        {i < queue.length - 1 && <span className="text-muted-foreground/40">, </span>}
+                      </React.Fragment>
+                    ))}
+                    {transcription && (
+                      <p className="mt-2 text-[11px] text-muted-foreground/50 italic border-t border-border/40 pt-1.5">"{transcription}"</p>
+                    )}
+                  </>
+                ) : transcription ? (
+                  <span className="text-foreground/70 text-[13px]">"{transcription}"</span>
                 ) : (
                   <span className="text-muted-foreground/40 italic text-[12.5px]">Your spoken words will appear here, with names and amounts highlighted.</span>
                 )}
