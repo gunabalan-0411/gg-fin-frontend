@@ -2,7 +2,7 @@ import React from "react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Download, Loader2, Wallet, Users } from "lucide-react";
+import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Download, Loader2, Wallet, Users, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { voiceApi, customersApi, datasetApi, upiApi } from "@/services/api";
 import { formatCurrency, toISODate } from "@/utils";
@@ -107,6 +107,16 @@ export default function VoicePage() {
       toast.error("Failed to unload model");
     }
   };
+
+  // Toast when download finishes
+  const prevDownloadingRef = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    const wasDownloading = prevDownloadingRef.current;
+    prevDownloadingRef.current = modelStatus?.downloading;
+    if (wasDownloading === true && modelStatus?.downloading === false && modelStatus?.on_disk) {
+      toast.success("Model saved to volume", { icon: "💾" });
+    }
+  }, [modelStatus?.downloading]);
 
   const { data: txnsData = [], isLoading: txnsLoading } = useTransactions(product, date);
   const { data: ediTxnsAll = [] } = useTransactions("edi", date);
@@ -669,33 +679,48 @@ export default function VoicePage() {
           </div>
 
           {/* Model status (mobile) */}
-          <div className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border ${
+          <div className={`w-full rounded-lg border overflow-hidden ${
             modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8"
             : modelStatus?.downloading ? "border-amber-500/30 bg-amber-500/8"
+            : modelStatus?.on_disk ? "border-sky-500/30 bg-sky-500/8"
             : "border-border bg-secondary/40"
           }`}>
-            {modelStatus?.downloading
-              ? <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin flex-shrink-0" />
-              : <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
-            }
-            <span className={`flex-1 text-[11px] font-medium ${
-              modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400"
-              : modelStatus?.downloading ? "text-amber-600 dark:text-amber-400"
-              : "text-muted-foreground"
-            }`}>
-              {modelStatus?.loaded ? `Ready · unloads in ${modelStatus.seconds_until_unload}s`
-               : modelStatus?.downloading ? "Downloading…"
-               : "Model unloaded"}
-            </span>
-            {modelStatus?.loaded ? (
-              <button onClick={handleUnloadModel} className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2">Unload</button>
-            ) : !modelStatus?.downloading ? (
-              <button onClick={handleLoadModel} disabled={modelLoading}
-                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-foreground text-background disabled:opacity-50">
-                {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                {modelLoading ? "Loading…" : "Load"}
-              </button>
-            ) : null}
+            <div className="flex items-center gap-2 px-3 py-2">
+              {modelStatus?.downloading
+                ? <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin flex-shrink-0" />
+                : modelStatus?.on_disk && !modelStatus?.loaded
+                ? <HardDrive className="h-3.5 w-3.5 text-sky-500 flex-shrink-0" />
+                : <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+              }
+              <span className={`flex-1 text-[11px] font-medium ${
+                modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400"
+                : modelStatus?.downloading ? "text-amber-600 dark:text-amber-400"
+                : modelStatus?.on_disk ? "text-sky-700 dark:text-sky-400"
+                : "text-muted-foreground"
+              }`}>
+                {modelStatus?.loaded ? `Ready · unloads in ${modelStatus.seconds_until_unload}s`
+                 : modelStatus?.downloading ? `Downloading… ${modelStatus.download_progress}%`
+                 : modelStatus?.on_disk ? "Saved to volume · not in RAM"
+                 : "Model not downloaded"}
+              </span>
+              {modelStatus?.loaded ? (
+                <button onClick={handleUnloadModel} className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2">Unload</button>
+              ) : !modelStatus?.downloading ? (
+                <button onClick={handleLoadModel} disabled={modelLoading}
+                  className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-foreground text-background disabled:opacity-50">
+                  {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  {modelLoading ? "Loading…" : modelStatus?.on_disk ? "Load" : "↓ Download"}
+                </button>
+              ) : null}
+            </div>
+            {modelStatus?.downloading && (
+              <div className="h-1 w-full bg-amber-500/15">
+                <div
+                  className="h-full bg-amber-500 transition-all duration-[800ms] ease-out"
+                  style={{ width: `${modelStatus.download_progress || 0}%` }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Mic button + pause */}
@@ -1112,39 +1137,63 @@ export default function VoicePage() {
                 ))}
               </div>
               {/* Model status */}
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border mb-3 ${
+              <div className={`rounded-lg border mb-3 overflow-hidden ${
                 modelStatus?.loaded ? "border-emerald-500/30 bg-emerald-500/8"
                 : modelStatus?.downloading ? "border-amber-500/30 bg-amber-500/8"
+                : modelStatus?.on_disk ? "border-sky-500/30 bg-sky-500/8"
                 : "border-border bg-secondary/40"
               }`}>
-                {modelStatus?.downloading
-                  ? <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin flex-shrink-0" />
-                  : <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
-                }
-                <div className="flex-1 min-w-0">
-                  <span className={`text-[11.5px] font-medium ${
-                    modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400"
-                    : modelStatus?.downloading ? "text-amber-600 dark:text-amber-400"
-                    : "text-muted-foreground"
-                  }`}>
-                    {modelStatus?.loaded
-                      ? `Model ready · unloads in ${modelStatus.seconds_until_unload}s`
-                      : modelStatus?.downloading
-                      ? "Downloading model to volume…"
-                      : "Model unloaded"}
-                  </span>
+                <div className="flex items-center gap-2 px-3 py-2">
+                  {modelStatus?.downloading
+                    ? <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin flex-shrink-0" />
+                    : modelStatus?.on_disk && !modelStatus?.loaded
+                    ? <HardDrive className="h-3.5 w-3.5 text-sky-500 flex-shrink-0" />
+                    : <span className={`w-2 h-2 rounded-full flex-shrink-0 ${modelStatus?.loaded ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"}`} />
+                  }
+                  <div className="flex-1 min-w-0">
+                    {modelStatus?.downloading ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11.5px] font-medium text-amber-600 dark:text-amber-400">
+                          Downloading model to volume…
+                        </span>
+                        <span className="text-[11px] font-mono tabular-nums text-amber-600 dark:text-amber-400 flex-shrink-0">
+                          {modelStatus.download_progress}%
+                        </span>
+                      </div>
+                    ) : (
+                      <span className={`text-[11.5px] font-medium ${
+                        modelStatus?.loaded ? "text-emerald-700 dark:text-emerald-400"
+                        : modelStatus?.on_disk ? "text-sky-700 dark:text-sky-400"
+                        : "text-muted-foreground"
+                      }`}>
+                        {modelStatus?.loaded
+                          ? `Model ready · unloads in ${modelStatus.seconds_until_unload}s`
+                          : modelStatus?.on_disk
+                          ? "Saved to volume · not in RAM"
+                          : "Model not downloaded"}
+                      </span>
+                    )}
+                  </div>
+                  {modelStatus?.loaded ? (
+                    <button onClick={handleUnloadModel} className="text-[10.5px] text-muted-foreground hover:text-foreground underline underline-offset-2 flex-shrink-0 transition-colors">
+                      Unload
+                    </button>
+                  ) : !modelStatus?.downloading ? (
+                    <button onClick={handleLoadModel} disabled={modelLoading}
+                      className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-foreground text-background hover:bg-foreground/85 disabled:opacity-50 transition-colors flex-shrink-0">
+                      {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                      {modelLoading ? "Loading…" : modelStatus?.on_disk ? "Load" : "Download & Load"}
+                    </button>
+                  ) : null}
                 </div>
-                {modelStatus?.loaded ? (
-                  <button onClick={handleUnloadModel} className="text-[10.5px] text-muted-foreground hover:text-foreground underline underline-offset-2 flex-shrink-0 transition-colors">
-                    Unload
-                  </button>
-                ) : !modelStatus?.downloading ? (
-                  <button onClick={handleLoadModel} disabled={modelLoading}
-                    className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-foreground text-background hover:bg-foreground/85 disabled:opacity-50 transition-colors flex-shrink-0">
-                    {modelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                    {modelLoading ? "Loading…" : "Load Model"}
-                  </button>
-                ) : null}
+                {modelStatus?.downloading && (
+                  <div className="h-1 w-full bg-amber-500/15">
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-[800ms] ease-out"
+                      style={{ width: `${modelStatus.download_progress || 0}%` }}
+                    />
+                  </div>
+                )}
               </div>
               {/* Mic hero */}
               <div className="flex flex-col items-center gap-3 py-2">
