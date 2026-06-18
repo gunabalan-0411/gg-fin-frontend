@@ -111,6 +111,26 @@ export default function VoicePage() {
     }
   };
 
+  const [modelResetting, setModelResetting] = useState(false);
+  const handleResetModel = async () => {
+    const ok = window.confirm(
+      "This deletes the cached model from Google Drive and this server, re-downloads a fresh copy " +
+      "from HuggingFace, and re-uploads it to Drive. Use this only if transcription is failing or the " +
+      "model won't load. Continue?"
+    );
+    if (!ok) return;
+    setModelResetting(true);
+    try {
+      await voiceApi.modelReset();
+      await refetchModelStatus();
+      toast.success("Model re-downloaded and saved to Drive");
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || "Failed to reset model");
+    } finally {
+      setModelResetting(false);
+    }
+  };
+
   // Toast when download finishes
   const prevDownloadingRef = useRef<boolean | undefined>(undefined);
   useEffect(() => {
@@ -745,6 +765,14 @@ export default function VoicePage() {
                 />
               </div>
             )}
+            {!modelStatus?.downloading && (
+              <div className="px-3 pb-1.5 -mt-0.5">
+                <button onClick={handleResetModel} disabled={modelResetting}
+                  className="text-[9.5px] text-muted-foreground/70 hover:text-muted-foreground underline underline-offset-2 disabled:opacity-50">
+                  {modelResetting ? "Re-downloading…" : "Trouble? Re-download model"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Microphone selector (mobile) */}
@@ -1238,6 +1266,14 @@ export default function VoicePage() {
                       className="h-full bg-amber-500 transition-all duration-[800ms] ease-out"
                       style={{ width: `${modelStatus.download_progress || 0}%` }}
                     />
+                  </div>
+                )}
+                {!modelStatus?.downloading && (
+                  <div className="px-3 pb-1.5 -mt-0.5">
+                    <button onClick={handleResetModel} disabled={modelResetting}
+                      className="text-[10px] text-muted-foreground/70 hover:text-muted-foreground underline underline-offset-2 disabled:opacity-50">
+                      {modelResetting ? "Re-downloading from HuggingFace…" : "Having trouble? Re-download model"}
+                    </button>
                   </div>
                 )}
               </div>

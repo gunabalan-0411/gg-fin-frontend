@@ -483,6 +483,7 @@ function GoogleDriveSection({
   const [driveRestore, setDriveRestore] = useState<RestoreState>({ phase:"idle" });
   const [refreshToken, setRefreshToken] = useState<string|null>(null);
   const [showToken, setShowToken] = useState(false);
+  const [refreshingConn, setRefreshingConn] = useState(false);
 
   useEffect(() => () => { if (driveRestorePollRef.current) clearInterval(driveRestorePollRef.current); }, []);
 
@@ -578,6 +579,19 @@ function GoogleDriveSection({
               finally { setDriveExporting(false); }
             }} disabled={driveExporting}>
               {driveExporting ? <><RefreshCw size={12} style={{ animation:"settingsSpin 1s linear infinite" }}/> Uploading…</> : <><HardDriveUpload size={12}/> Export now</>}
+            </Btn>
+            <Btn variant="ghost" onClick={async () => {
+              setRefreshingConn(true);
+              try {
+                await driveApi.refresh();
+                showToast("Drive connection refreshed");
+              } catch (e: any) {
+                showToast(e?.response?.data?.detail || "Token refresh failed — try reconnecting", "error");
+              } finally {
+                setRefreshingConn(false);
+              }
+            }} disabled={refreshingConn} title="Force-refresh the Drive access token">
+              <RefreshCw size={12} style={refreshingConn ? { animation:"settingsSpin 1s linear infinite" } : undefined}/>
             </Btn>
             <Btn variant="ghost" onClick={async () => {
               await driveApi.disconnect();

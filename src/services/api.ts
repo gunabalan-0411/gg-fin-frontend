@@ -143,6 +143,7 @@ export const voiceApi = {
   modelStatus: () => api.get<{ loaded: boolean; on_disk: boolean; downloading: boolean; download_progress: number; idle_seconds: number; seconds_until_unload: number }>("/voice/model-status"),
   modelLoad: () => api.post<{ loaded: boolean; on_disk: boolean; downloading: boolean; download_progress: number; idle_seconds: number; seconds_until_unload: number }>("/voice/model-load"),
   modelUnload: () => api.post<{ loaded: boolean; on_disk: boolean; downloading: boolean; download_progress: number; idle_seconds: number; seconds_until_unload: number }>("/voice/model-unload"),
+  modelReset: () => api.post<{ deleted_from_drive: number; loaded: boolean; on_disk: boolean; downloading: boolean; download_progress: number; idle_seconds: number; seconds_until_unload: number }>("/voice/model-reset"),
   deviceInfo: () => api.get<{ device: string; device_name: string; gpu_available: boolean }>("/voice/device-info"),
   setDevice: (device: "cpu" | "cuda") => api.post<{ device: string; device_name: string; gpu_available: boolean }>("/voice/set-device", { device }),
   transcribe: (audioBlob: Blob, product: string, signal?: AbortSignal) => {
@@ -278,6 +279,7 @@ export const driveApi = {
   import: (fileId: string) => api.post<{ job_id: string }>(`/drive/import/${fileId}`),
   importStatus: (jobId: string) => api.get<{ progress: number; status: string; message: string }>(`/drive/import/status/${jobId}`),
   refreshToken: () => api.get<{ refresh_token: string }>("/drive/refresh-token"),
+  refresh: () => api.post<{ refreshed: boolean; expiry: string | null }>("/drive/refresh"),
 };
 
 // ── SQL Console ───────────────────────────────────────────────────────────
