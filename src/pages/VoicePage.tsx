@@ -336,18 +336,34 @@ export default function VoicePage() {
   };
 
   const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("Microphone unavailable — this page must be served over HTTPS (or localhost)");
+      return;
+    }
+
+    const baseConstraint = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+
     try {
-      const audioConstraint: MediaTrackConstraints = {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        ...(selectedMicId ? { deviceId: { exact: selectedMicId } } : {}),
-      };
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: selectedMicId ? { ...baseConstraint, deviceId: { exact: selectedMicId } } : baseConstraint,
+        });
+      } catch (err: any) {
+        // Selected mic disappeared (unplugged / stale device ID) — fall back to the system default
+        if (selectedMicId && (err?.name === "OverconstrainedError" || err?.name === "NotFoundError")) {
+          setSelectedMicId("");
+          stream = await navigator.mediaDevices.getUserMedia({ audio: baseConstraint });
+        } else {
+          throw err;
+        }
+      }
+
       // Re-enumerate now that permission is granted — we'll get real device labels
       navigator.mediaDevices.enumerateDevices().then(all =>
         setMicDevices(all.filter(d => d.kind === "audioinput"))
       ).catch(() => {});
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -371,8 +387,19 @@ export default function VoicePage() {
       countdownRef.current = setInterval(() => {
         setCountdown((c) => c + 1);
       }, 1000);
-    } catch {
-      toast.error("Microphone access denied");
+    } catch (err: any) {
+      const name = err?.name;
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        toast.error("Microphone access denied — allow it in your browser's site settings");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        toast.error("No microphone found on this device");
+      } else if (name === "NotReadableError" || name === "TrackStartError") {
+        toast.error("Microphone is in use by another app or tab");
+      } else if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+        toast.error("Selected microphone is unavailable");
+      } else {
+        toast.error(err?.message || "Could not access microphone");
+      }
     }
   };
 
