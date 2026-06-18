@@ -580,19 +580,21 @@ function GoogleDriveSection({
             }} disabled={driveExporting}>
               {driveExporting ? <><RefreshCw size={12} style={{ animation:"settingsSpin 1s linear infinite" }}/> Uploading…</> : <><HardDriveUpload size={12}/> Export now</>}
             </Btn>
-            <Btn variant="ghost" onClick={async () => {
-              setRefreshingConn(true);
-              try {
-                await driveApi.refresh();
-                showToast("Drive connection refreshed");
-              } catch (e: any) {
-                showToast(e?.response?.data?.detail || "Token refresh failed — try reconnecting", "error");
-              } finally {
-                setRefreshingConn(false);
-              }
-            }} disabled={refreshingConn} title="Force-refresh the Drive access token">
-              <RefreshCw size={12} style={refreshingConn ? { animation:"settingsSpin 1s linear infinite" } : undefined}/>
-            </Btn>
+            <span title="Force-refresh the Drive access token">
+              <Btn variant="ghost" onClick={async () => {
+                setRefreshingConn(true);
+                try {
+                  await driveApi.refresh();
+                  showToast("Drive connection refreshed");
+                } catch (e: any) {
+                  showToast(e?.response?.data?.detail || "Token refresh failed — try reconnecting", "error");
+                } finally {
+                  setRefreshingConn(false);
+                }
+              }} disabled={refreshingConn}>
+                <RefreshCw size={12} style={refreshingConn ? { animation:"settingsSpin 1s linear infinite" } : undefined}/>
+              </Btn>
+            </span>
             <Btn variant="ghost" onClick={async () => {
               await driveApi.disconnect();
               setDriveStatus({ connected:false, email:null }); setDriveFilesList([]); setSelectedDriveFileId("");
