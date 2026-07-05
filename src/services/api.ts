@@ -290,4 +290,10 @@ export const sqlApi = {
     api.get<{ tables: Record<string, { name: string; type: string }[]> }>("/sql/tables"),
 };
 
+// ── Daily Print ───────────────────────────────────────────────────────────
+export const printApi = {
+  edi: () => api.get("/print/edi", { responseType: "blob" }),
+  iop: () => api.get("/print/iop", { responseType: "blob" }),
+};
+
 export default api;

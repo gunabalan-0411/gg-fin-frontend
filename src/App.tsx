@@ -16,6 +16,7 @@ import UpiPage from "@/pages/UpiPage";
 import OcrPage from "@/pages/OcrPage";
 import SqlPage from "@/pages/SqlPage";
 import OAuthCallbackPage from "@/pages/OAuthCallbackPage";
+import DailyPrintPage from "@/pages/DailyPrintPage";
 import { useAuthStore } from "@/hooks/useAuth";
 import { setupApi } from "@/services/api";
 
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="namemap" element={<NameMapPage />} />
           <Route path="upi" element={<UpiPage />} />
           <Route path="sql" element={<SqlPage />} />
+          <Route path="daily-print" element={<DailyPrintPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

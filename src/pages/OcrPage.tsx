@@ -103,8 +103,8 @@ function httpError(err: any): string {
   if (err?.code === "ERR_NETWORK" || err?.code === "ECONNABORTED")
     return "Cannot reach the server. The backend may be restarting — wait 30 seconds and try again.";
   if (status === 413)
-    return "File too large (server limit: 50 MB). Try compressing the PDF first.";
-  if (status === 400) return detail || "Invalid file. Make sure you selected a PDF.";
+    return "File too large (server limit: 50 MB). Try compressing the file first.";
+  if (status === 400) return detail || "Invalid file. Make sure you selected a PDF, JPG, or PNG.";
   if (status === 401) return "Session expired — please log in again.";
   if (status === 503)
     return detail || "Service unavailable. GEMINI_API_KEY may not be configured in Railway.";
@@ -1242,8 +1242,9 @@ export default function OcrPage() {
   }, [wfStep, loadingUpi, upiTxns.length, struckUpiIds.size, appliedUpiTxns.size, pageIndex, wfComplete]);
 
   const processFile = useCallback(async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setUploadError("Only PDF files are accepted. Please select a .pdf file.");
+    const ext = file.name.toLowerCase().split(".").pop() ?? "";
+    if (!["pdf", "jpg", "jpeg", "png"].includes(ext)) {
+      setUploadError("Only PDF, JPG, or PNG files are accepted.");
       return;
     }
     setFileName(file.name);
@@ -1499,7 +1500,7 @@ export default function OcrPage() {
           className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl text-sm font-semibold hover:bg-foreground/85 transition-colors">
           <RotateCcw className="h-3.5 w-3.5" /> Try again
         </button>
-        <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={onInput} />
+        <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={onInput} />
       </div>
     );
     if (uploadStage === "uploading") {
@@ -1539,9 +1540,9 @@ export default function OcrPage() {
         onDrop={onDrop}
       >
         <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/40" />
-        <p className="text-base font-semibold mb-1">Upload handwritten PDF</p>
-        <p className="text-sm text-muted-foreground">Drag & drop or click to browse</p>
-        <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={onInput} />
+        <p className="text-base font-semibold mb-1">Upload handwritten PDF or image</p>
+        <p className="text-sm text-muted-foreground">PDF, JPG, or PNG · Drag & drop or click to browse</p>
+        <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={onInput} />
       </div>
     );
   })();
@@ -1908,8 +1909,8 @@ export default function OcrPage() {
               <ChevronRight className="h-3 w-3 opacity-40 flex-shrink-0" />
               <span className="inline-flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-lg text-foreground font-medium max-w-[260px]">
                 <FileText className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
-                <span className="truncate text-[12.5px]">{fileName.replace(/\.pdf$/i, "")}</span>
-                <span className="text-muted-foreground text-[11px] font-mono flex-shrink-0">.pdf</span>
+                <span className="truncate text-[12.5px]">{fileName.replace(/\.[^.]+$/, "")}</span>
+                <span className="text-muted-foreground text-[11px] font-mono flex-shrink-0">{fileName.match(/\.[^.]+$/)?.[0] ?? ""}</span>
               </span>
             </div>
           )}
@@ -1938,7 +1939,7 @@ export default function OcrPage() {
             <>
               <button onClick={reset}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-[12.5px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-                <RefreshCw className="h-3.5 w-3.5" /> New PDF
+                <RefreshCw className="h-3.5 w-3.5" /> New file
               </button>
               <button
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-[12.5px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
@@ -2213,7 +2214,7 @@ export default function OcrPage() {
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
                   <ClipboardList className="h-10 w-10 opacity-20" />
                   <div className="text-center">
-                    <p className="text-sm">{hasSession ? "Click Extract to run Gemini" : "Upload a PDF first"}</p>
+                    <p className="text-sm">{hasSession ? "Click Extract to run Gemini" : "Upload a PDF or image first"}</p>
                     <p className="text-xs mt-1 opacity-60">Extracted records will appear here</p>
                   </div>
                 </div>
@@ -2550,7 +2551,7 @@ export default function OcrPage() {
               <span>p.{pageIndex + 1}</span>
             </>
           ) : (
-            <span>Upload a PDF to begin · Powered by Gemini</span>
+            <span>Upload a PDF or image to begin · Powered by Gemini</span>
           )}
         </div>
       </div>
