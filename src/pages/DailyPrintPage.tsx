@@ -204,40 +204,48 @@ export default function DailyPrintPage() {
       {/* ── Options panel ── */}
       {showOptions && (
         <div className="flex items-center gap-6 px-5 py-3 border-b border-border bg-muted/30 flex-shrink-0 flex-wrap">
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className="text-[11px] font-medium text-muted-foreground mr-2">Columns:</span>
-            {ALL_COLS.map((col) => (
-              <button
-                key={col.key}
-                onClick={() => toggleCol(col.key)}
-                className={`px-2.5 py-1 rounded-md text-[12px] border transition-colors ${
-                  enabledCols[col.key]
-                    ? "bg-foreground text-background border-foreground"
-                    : "bg-background text-muted-foreground border-border hover:border-foreground/40"
-                }`}
-              >
-                {col.label}
-              </button>
-            ))}
-          </div>
+          {product === "iop" ? (
+            <p className="text-[12px] text-muted-foreground italic">
+              IOP uses the EL calendar grid format — columns and layout are fixed.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-[11px] font-medium text-muted-foreground mr-2">Columns:</span>
+                {ALL_COLS.map((col) => (
+                  <button
+                    key={col.key}
+                    onClick={() => toggleCol(col.key)}
+                    className={`px-2.5 py-1 rounded-md text-[12px] border transition-colors ${
+                      enabledCols[col.key]
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-background text-muted-foreground border-border hover:border-foreground/40"
+                    }`}
+                  >
+                    {col.label}
+                  </button>
+                ))}
+              </div>
 
-          <div className="h-6 w-px bg-border" />
+              <div className="h-6 w-px bg-border" />
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-muted-foreground">Two-column:</span>
-            <button
-              onClick={() => setTwoCol((v) => !v)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                twoCol ? "bg-foreground" : "bg-muted-foreground/30"
-              }`}
-            >
-              <span
-                className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                  twoCol ? "translate-x-[18px]" : "translate-x-0.5"
-                }`}
-              />
-            </button>
-          </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-muted-foreground">Two-column:</span>
+                <button
+                  onClick={() => setTwoCol((v) => !v)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    twoCol ? "bg-foreground" : "bg-muted-foreground/30"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                      twoCol ? "translate-x-[18px]" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+            </>
+          )}
 
           <button
             onClick={fetchPdf}
