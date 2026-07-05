@@ -11,6 +11,7 @@ export interface EdiCustomer {
   disbursed_amount?: number;
   interest?: number;
   outstanding_balance?: number;
+  is_closed?: boolean;
   remarks?: string;
   tamil_name?: string;
   ignore?: boolean;
@@ -29,7 +30,9 @@ export interface IopCustomer {
   loan_amount?: number;
   disbursed_amount?: number;
   interest?: number;
-  loan_closure?: number;
+  principal_paid?: number;
+  outstanding_balance?: number;
+  is_closed?: boolean;
   remarks?: string;
   tamil_name?: string;
   ignore?: boolean;

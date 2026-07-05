@@ -413,7 +413,7 @@ function DebtFormModal({ initial, onClose, onSave }: { initial: Debt | null; onC
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Lender Name</label>
-          <Input value={lenderName} onChange={(e) => setLenderName(e.target.value)} required />
+          <Input value={lenderName} onChange={(e) => setLenderName(e.target.value)} required autoFocus />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Amount</label>
@@ -448,7 +448,7 @@ function RepaymentFormModal({ initial, onClose, onSave }: { initial: DebtRepayme
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Paid on this Date</label>
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
@@ -487,7 +487,7 @@ function InvestorFormModal({ initial, onClose, onSave }: { initial: Investor | n
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Investor Name</label>
-          <Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Name..." required />
+          <Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Name..." required autoFocus />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

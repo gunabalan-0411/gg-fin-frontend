@@ -655,7 +655,7 @@ function ExpenseFormModal({
       <form onSubmit={(e) => { e.preventDefault(); onSave({ amount: Number(amount), date, notes: notes || null }); }} className="space-y-4">
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Amount</label>
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
@@ -742,7 +742,7 @@ function UnclaimedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Amount</label>
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
@@ -825,7 +825,7 @@ function DefaultedBalanceFormModal({ onClose, onSave }: { onClose: () => void; o
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Amount</label>
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>

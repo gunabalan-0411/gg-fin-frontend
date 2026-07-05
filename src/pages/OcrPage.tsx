@@ -203,10 +203,13 @@ function CustomerCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [liveSuggestions, setLiveSuggestions] = useState<Suggestion[]>([]);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const handleChange = (value: string) => {
     onChange(value, null);
+    setHighlightedIndex(-1);
     if (!fetchSuggestions) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -223,6 +226,46 @@ function CustomerCombobox({
     ? liveSuggestions.length > 0 ? liveSuggestions : row.customer_suggestions
     : row.customer_suggestions;
 
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex < 0 || !listRef.current) return;
+    const buttons = listRef.current.querySelectorAll("button");
+    buttons[highlightedIndex]?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex]);
+
+  const selectSuggestion = (s: Suggestion) => {
+    onChange(s.name, s.id);
+    setLiveSuggestions([]);
+    setOpen(false);
+    setHighlightedIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open) {
+      if (e.key === "ArrowDown" && suggestions.length > 0) {
+        setOpen(true);
+        setHighlightedIndex(0);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const idx = highlightedIndex >= 0 ? highlightedIndex : 0;
+      if (suggestions[idx]) selectSuggestion(suggestions[idx]);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setHighlightedIndex(-1);
+    }
+  };
+
   if (compact) {
     return (
       <div className="relative w-full">
@@ -232,22 +275,22 @@ function CustomerCombobox({
           onChange={(e) => handleChange(e.target.value)}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 160)}
+          onKeyDown={handleKeyDown}
           placeholder="Customer…"
           className={`w-full text-[12.5px] bg-transparent border-0 outline-0 px-1.5 py-1 rounded transition-all
             hover:bg-muted focus:bg-card focus:shadow-[0_0_0_2px_hsl(var(--foreground)),0_0_0_4px_hsl(var(--primary)/0.35)]
             ${!row.customer_id ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}
         />
         {open && suggestions.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-2xl overflow-hidden min-w-[220px]">
-            {suggestions.map((s) => (
+          <div ref={listRef} className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-2xl overflow-y-auto min-w-[220px] max-h-52">
+            {suggestions.map((s, i) => (
               <button
                 key={s.id}
-                onMouseDown={() => {
-                  onChange(s.name, s.id);
-                  setLiveSuggestions([]);
-                  setOpen(false);
-                }}
-                className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary text-left gap-3 text-[12.5px]"
+                onMouseDown={() => selectSuggestion(s)}
+                onMouseEnter={() => setHighlightedIndex(i)}
+                className={`w-full flex items-center justify-between px-3 py-2 text-left gap-3 text-[12.5px] transition-colors ${
+                  i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
+                }`}
               >
                 <span className="font-medium truncate">{s.name}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-mono font-semibold ${
@@ -273,6 +316,7 @@ function CustomerCombobox({
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 160)}
+        onKeyDown={handleKeyDown}
         className={`w-full text-sm rounded-lg border px-3 py-1.5 bg-background focus:outline-none focus:ring-2 pr-7 ${
           row.customer_id
             ? "border-green-500/40 focus:ring-green-500/20"
@@ -284,16 +328,15 @@ function CustomerCombobox({
         <AlertTriangle className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-amber-400 pointer-events-none" />
       )}
       {open && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-          {suggestions.map((s) => (
+        <div ref={listRef} className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-y-auto max-h-52">
+          {suggestions.map((s, i) => (
             <button
               key={s.id}
-              onMouseDown={() => {
-                onChange(s.name, s.id);
-                setLiveSuggestions([]);
-                setOpen(false);
-              }}
-              className="w-full flex items-center justify-between px-3 py-2 hover:bg-secondary text-sm text-left gap-3"
+              onMouseDown={() => selectSuggestion(s)}
+              onMouseEnter={() => setHighlightedIndex(i)}
+              className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left gap-3 transition-colors ${
+                i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
+              }`}
             >
               <span className="font-medium truncate">{s.name}</span>
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-semibold ${
@@ -507,8 +550,10 @@ function AddRowModal({
   const [amount, setAmount] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [sugOpen, setSugOpen] = useState(false);
+  const [sugHighlight, setSugHighlight] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const amountRef = useRef<HTMLInputElement>(null);
+  const sugListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -525,13 +570,44 @@ function AddRowModal({
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
+  // Scroll highlighted suggestion into view
+  useEffect(() => {
+    if (sugHighlight < 0 || !sugListRef.current) return;
+    const buttons = sugListRef.current.querySelectorAll("button");
+    buttons[sugHighlight]?.scrollIntoView({ block: "nearest" });
+  }, [sugHighlight]);
+
   const handleNameChange = (value: string) => {
-    setCustomerName(value); setCustomerId(null);
+    setCustomerName(value); setCustomerId(null); setSugHighlight(-1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       if (value.trim().length >= 2) setSuggestions(await fetchSuggestions(value.trim(), productType));
       else setSuggestions([]);
     }, 200);
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!sugOpen || suggestions.length === 0) {
+      if (e.key === "ArrowDown" && suggestions.length > 0) {
+        setSugOpen(true); setSugHighlight(0); e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault(); setSugHighlight((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault(); setSugHighlight((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      const idx = sugHighlight >= 0 ? sugHighlight : 0;
+      if (suggestions[idx]) {
+        e.preventDefault();
+        setCustomerName(suggestions[idx].name); setCustomerId(suggestions[idx].id);
+        setSuggestions([]); setSugOpen(false); setSugHighlight(-1);
+        setTimeout(() => amountRef.current?.focus(), 50);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault(); setSugOpen(false); setSugHighlight(-1);
+    }
   };
 
   const handleAdd = () => {
@@ -561,16 +637,22 @@ function AddRowModal({
           <div className="relative">
             <input type="text" value={customerName} onChange={(e) => handleNameChange(e.target.value)}
               onFocus={() => setSugOpen(true)} onBlur={() => setTimeout(() => setSugOpen(false), 160)}
+              onKeyDown={handleNameKeyDown}
+              autoFocus
               placeholder="Type to search…"
               className={`w-full text-sm rounded-lg border px-3 py-2 bg-background focus:outline-none focus:ring-2 ${
                 customerId ? "border-emerald-500/40 focus:ring-emerald-500/20" : "border-border focus:ring-foreground/10"
               }`} />
             {customerId && <CheckCircle className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 pointer-events-none" />}
             {sugOpen && suggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-                {suggestions.map((s) => (
-                  <button key={s.id} onMouseDown={() => { setCustomerName(s.name); setCustomerId(s.id); setSuggestions([]); setSugOpen(false); setTimeout(() => amountRef.current?.focus(), 50); }}
-                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/60 text-sm text-left gap-3">
+              <div ref={sugListRef} className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-y-auto max-h-52">
+                {suggestions.map((s, i) => (
+                  <button key={s.id}
+                    onMouseDown={() => { setCustomerName(s.name); setCustomerId(s.id); setSuggestions([]); setSugOpen(false); setSugHighlight(-1); setTimeout(() => amountRef.current?.focus(), 50); }}
+                    onMouseEnter={() => setSugHighlight(i)}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left gap-3 transition-colors ${
+                      i === sugHighlight ? "bg-muted/60" : "hover:bg-muted/60"
+                    }`}>
                     <span className="font-medium truncate">{s.name}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-semibold ${
                       s.score >= 0.9 ? "bg-green-500/20 text-green-600 dark:text-green-400"
@@ -700,6 +782,7 @@ function OcrTableRow({
       {/* Product */}
       <td className="px-1 text-center">
         <button
+          tabIndex={-1}
           onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", customer_name: "", customer_id: null, customer_suggestions: [] })}
           className={`text-[10.5px] px-2 py-0.5 rounded-md font-bold transition-colors ${
             row.product_type === "IOP"
@@ -715,6 +798,7 @@ function OcrTableRow({
       <td className="px-1">
         <div className="flex items-center gap-1">
           <button
+            tabIndex={-1}
             onClick={() => {
               const next = row.payment_mode === "CASH" ? "ONLINE" : "CASH";
               onUpdate(row.uid, { payment_mode: next, is_paid: next === "CASH" });
@@ -729,6 +813,7 @@ function OcrTableRow({
           </button>
           {row.payment_mode === "ONLINE" && (
             <button
+              tabIndex={-1}
               onClick={() => onUpdate(row.uid, { is_paid: !row.is_paid })}
               title={row.is_paid ? "Paid" : "Unpaid"}
               className={`flex items-center justify-center h-4.5 w-4.5 rounded transition-all ${
@@ -775,6 +860,7 @@ function OcrTableRow({
       {/* Delete */}
       <td className="pr-2">
         <button
+          tabIndex={-1}
           onClick={() => onDelete(row.uid)}
           className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-20 group-hover:opacity-100"
         >

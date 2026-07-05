@@ -180,18 +180,15 @@ export default function VoicePage() {
 
   useEffect(() => {
     if (txnsLoading || custsLoading) return;
-    const withBalance = allCustomers.filter((c) => {
-      if ("outstanding_balance" in c) return Number((c as EdiCustomer).outstanding_balance) > 0;
-      return Number((c as IopCustomer).loan_closure) > 0;
-    });
+    const withBalance = allCustomers.filter((c) =>
+      Number((c as EdiCustomer | IopCustomer).outstanding_balance ?? 0) > 0
+    );
     const txnMap = new Map(txns.map((t) => [t.customer_id, t]));
     setRows(
       withBalance.map((c) => {
         const txn = txnMap.get(c.customer_id);
         const mode = ((txn as any)?.payment_mode ?? "CASH") as "CASH" | "ONLINE";
-        const balance = "outstanding_balance" in c
-          ? Number((c as EdiCustomer).outstanding_balance)
-          : Number((c as IopCustomer).loan_closure);
+        const balance = Number((c as EdiCustomer | IopCustomer).outstanding_balance ?? 0);
         return {
           customer_id: c.customer_id,
           customer_name: c.customer_name ?? String(c.customer_id),

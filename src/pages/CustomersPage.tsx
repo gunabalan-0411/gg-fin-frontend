@@ -459,7 +459,7 @@ export function CustomerRow({ customer: c, product, onNameClick, onEdit, onDupli
       <td className="px-4 py-3">
         {product === "edi"
           ? (ediC.outstanding_balance ? formatCurrency(Number(ediC.outstanding_balance)) : "—")
-          : ""}
+          : (iopC.outstanding_balance ? formatCurrency(Number(iopC.outstanding_balance)) : "—")}
       </td>
       <td className="px-4 py-3 text-muted-foreground">{c.loan_start_date ?? "—"}</td>
       <td className="px-4 py-3">
@@ -536,13 +536,14 @@ export function CustomerDetailModal({ customer, product, onClose }: {
     : `#${customer.customer_id} — ${englishName}`;
   const subTitle = hasTamil ? englishName : undefined;
 
-  // EDI: 4 cards (Loan Start, Loan Amount, Total Paid, Outstanding)
-  // IOP: 3 cards (no loan_closure)
+  const iopC2 = customer as IopCustomer;
+  const iopOutstanding = Number(iopC2.outstanding_balance ?? 0);
+
   const statsCards = [
     { label: "Loan Start",   value: fmtDate(customer.loan_start_date) },
     { label: "Loan Amount",  value: fmtAmt(loanAmount) },
     { label: "Total Paid",   value: fmtAmt(totalPaid) },
-    ...(product === "edi" ? [{ label: "Outstanding", value: fmtAmt(ediOutstanding) }] : []),
+    { label: "Outstanding",  value: fmtAmt(product === "edi" ? ediOutstanding : iopOutstanding) },
   ];
 
   const handleShare = async () => {
@@ -830,7 +831,6 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
     if (product === "edi") REQUIRED.push(["outstanding_balance", "Outstanding Balance"]);
     else {
       REQUIRED.push(["interest_payment_frequency", "Interest Freq."]);
-      REQUIRED.push(["loan_closure", "Loan Closure"]);
     }
 
     const missing = REQUIRED.filter(([k]) => {
@@ -844,7 +844,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
 
     const data: Record<string, unknown> = { ...merged };
     ["customer_id", "customer_segment_id", "loan_amount", "disbursed_amount",
-     "interest", "outstanding_balance", "interest_payment_frequency", "loan_closure"].forEach((k) => {
+     "interest", "outstanding_balance", "interest_payment_frequency", "principal_paid"].forEach((k) => {
       if (data[k]) data[k] = Number(data[k]);
     });
     onSave(data);
@@ -950,7 +950,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
 
           {product === "edi" && numField("outstanding_balance", "Outstanding Balance")}
           {product === "iop" && numField("interest_payment_frequency", "Interest Freq.")}
-          {product === "iop" && numField("loan_closure", "Loan Closure")}
+          {product === "iop" && numField("principal_paid", "Principal Paid")}
         </div>
         {field("customer_address", "Address", true)}
         {field("proof_aadhaar", "Aadhaar", true)}
