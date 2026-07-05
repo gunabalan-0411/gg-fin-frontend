@@ -180,9 +180,7 @@ export default function VoicePage() {
 
   useEffect(() => {
     if (txnsLoading || custsLoading) return;
-    const withBalance = allCustomers.filter((c) =>
-      Number((c as EdiCustomer | IopCustomer).outstanding_balance ?? 0) > 0
-    );
+    const withBalance = allCustomers.filter((c) => !(c as EdiCustomer | IopCustomer).is_closed);
     const txnMap = new Map(txns.map((t) => [t.customer_id, t]));
     setRows(
       withBalance.map((c) => {

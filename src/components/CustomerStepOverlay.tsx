@@ -55,7 +55,7 @@ export function CustomerStepOverlay({
     search,
     sort_by: sortBy,
     sort_dir: sortDir,
-    balance_gt_zero: balanceFilter,
+    active_only: balanceFilter,
   });
 
   const createMutation = useCreateCustomer(product);

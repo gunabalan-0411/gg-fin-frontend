@@ -12,7 +12,7 @@ export function useCustomers(
     segment_id?: number;
     sort_by?: string;
     sort_dir?: string;
-    balance_gt_zero?: boolean;
+    active_only?: boolean;
   }
 ) {
   return useQuery({
