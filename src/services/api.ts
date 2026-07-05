@@ -291,9 +291,16 @@ export const sqlApi = {
 };
 
 // ── Daily Print ───────────────────────────────────────────────────────────
+export interface PrintParams {
+  cols?: string;
+  two_col?: boolean;
+}
+
 export const printApi = {
-  edi: () => api.get("/print/edi", { responseType: "blob" }),
-  iop: () => api.get("/print/iop", { responseType: "blob" }),
+  edi: (params?: PrintParams) =>
+    api.get("/print/edi", { responseType: "blob", params }),
+  iop: (params?: PrintParams) =>
+    api.get("/print/iop", { responseType: "blob", params }),
 };
 
 export default api;
