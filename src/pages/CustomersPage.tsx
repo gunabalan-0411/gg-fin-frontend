@@ -218,7 +218,7 @@ export default function CustomersPage() {
             }`}
           >
             <Filter className="h-4 w-4" />
-            <span className="hidden sm:inline">Balance &gt; 0</span>
+            <span className="hidden sm:inline">Active Only</span>
           </button>
         </div>
         <div className="relative flex-1">
@@ -457,9 +457,18 @@ export function CustomerRow({ customer: c, product, onNameClick, onEdit, onDupli
       <td className="px-4 py-3 text-muted-foreground">{c.contact_number ?? "—"}</td>
       <td className="px-4 py-3">{c.loan_amount ? formatCurrency(Number(c.loan_amount)) : "—"}</td>
       <td className="px-4 py-3">
-        {product === "edi"
-          ? (ediC.outstanding_balance ? formatCurrency(Number(ediC.outstanding_balance)) : "—")
-          : (iopC.outstanding_balance ? formatCurrency(Number(iopC.outstanding_balance)) : "—")}
+        <div className="flex items-center gap-1.5">
+          <span>
+            {product === "edi"
+              ? (ediC.outstanding_balance ? formatCurrency(Number(ediC.outstanding_balance)) : "—")
+              : (iopC.outstanding_balance ? formatCurrency(Number(iopC.outstanding_balance)) : "—")}
+          </span>
+          {c.is_closed && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-secondary text-muted-foreground">
+              Closed
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3 text-muted-foreground">{c.loan_start_date ?? "—"}</td>
       <td className="px-4 py-3">
@@ -951,6 +960,39 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
           {product === "edi" && numField("outstanding_balance", "Outstanding Balance")}
           {product === "iop" && numField("interest_payment_frequency", "Interest Freq.")}
           {product === "iop" && numField("principal_paid", "Principal Paid")}
+
+          {(() => {
+            const isClosed = form.is_closed !== undefined
+              ? !!form.is_closed
+              : !!(initial as unknown as Record<string, unknown>)?.is_closed;
+            return (
+              <div className="col-span-2 pt-1">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isClosed}
+                  onClick={() => set("is_closed", !isClosed)}
+                  className="flex items-center gap-3 w-full text-left"
+                >
+                  <div className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${
+                    isClosed ? "bg-foreground" : "bg-border"
+                  }`}>
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-background transition-transform ${
+                      isClosed ? "translate-x-[18px]" : "translate-x-0.5"
+                    }`} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground leading-none">Account Closed</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {isClosed
+                        ? "Closed — hidden from active lists and daily print"
+                        : "Open — appears in active lists and daily print"}
+                    </p>
+                  </div>
+                </button>
+              </div>
+            );
+          })()}
         </div>
         {field("customer_address", "Address", true)}
         {field("proof_aadhaar", "Aadhaar", true)}
