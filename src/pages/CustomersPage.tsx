@@ -856,6 +856,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
      "interest", "outstanding_balance", "interest_payment_frequency", "principal_paid"].forEach((k) => {
       if (data[k]) data[k] = Number(data[k]);
     });
+    if (data.is_closed !== undefined) data.is_closed = data.is_closed === "true" || data.is_closed === true;
     onSave(data);
   };
 
@@ -963,7 +964,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
 
           {(() => {
             const isClosed = form.is_closed !== undefined
-              ? !!form.is_closed
+              ? form.is_closed === "true"
               : !!(initial as unknown as Record<string, unknown>)?.is_closed;
             return (
               <div className="col-span-2 pt-1">
@@ -971,7 +972,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
                   type="button"
                   role="switch"
                   aria-checked={isClosed}
-                  onClick={() => set("is_closed", !isClosed)}
+                  onClick={() => set("is_closed", String(!isClosed))}
                   className="flex items-center gap-3 w-full text-left"
                 >
                   <div className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${
