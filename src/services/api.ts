@@ -297,10 +297,10 @@ export interface PrintParams {
 }
 
 export const printApi = {
-  edi: (params?: PrintParams) =>
-    api.get("/print/edi", { responseType: "blob", params }),
-  iop: (params?: PrintParams) =>
-    api.get("/print/iop", { responseType: "blob", params }),
+  edi: (params?: PrintParams, signal?: AbortSignal) =>
+    api.get("/print/edi", { responseType: "blob", params, signal }),
+  iop: (params?: PrintParams, signal?: AbortSignal) =>
+    api.get("/print/iop", { responseType: "blob", params, signal }),
 };
 
 export default api;

@@ -7,23 +7,22 @@ type Product = "edi" | "iop";
 interface ColDef {
   key: string;
   label: string;
-  defaultOn: boolean;
 }
 
 const ALL_COLS: ColDef[] = [
-  { key: "id",      label: "ID",          defaultOn: true  },
-  { key: "name",    label: "பெயர்",        defaultOn: true  },
-  { key: "date",    label: "தொடக்கம்",     defaultOn: true  },
-  { key: "loan",    label: "கடன் ₹",       defaultOn: true  },
-  { key: "balance", label: "நிலுவை ₹",     defaultOn: true  },
-  { key: "days",    label: "நாட்கள்",      defaultOn: true  },
-  { key: "collect", label: "வசூல் ₹",      defaultOn: true  },
+  { key: "id",      label: "ID"        },
+  { key: "name",    label: "பெயர்"     },
+  { key: "date",    label: "தொடக்கம்"  },
+  { key: "loan",    label: "கடன் ₹"    },
+  { key: "balance", label: "நிலுவை ₹"  },
+  { key: "days",    label: "நாட்கள்"   },
+  { key: "collect", label: "வசூல் ₹"   },
 ];
 
 export default function DailyPrintPage() {
   const [product, setProduct]         = useState<Product>("edi");
   const [enabledCols, setEnabledCols] = useState<Record<string, boolean>>(
-    () => Object.fromEntries(ALL_COLS.map((c) => [c.key, c.defaultOn]))
+    () => Object.fromEntries(ALL_COLS.map((c) => [c.key, true]))
   );
   const [twoCol, setTwoCol]           = useState(false);
   const [showOptions, setShowOptions] = useState(false);
@@ -32,42 +31,65 @@ export default function DailyPrintPage() {
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
-  const iframeRef             = useRef<HTMLIFrameElement>(null);
+
+  const abortRef  = useRef<AbortController | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const today     = new Date();
   const dateLabel = today.toLocaleDateString("en-IN", {
     day: "2-digit", month: "long", year: "numeric",
   });
 
-  const activeCols = ALL_COLS.filter((c) => enabledCols[c.key]).map((c) => c.key).join(",");
+  const activeCols = ALL_COLS
+    .filter((c) => enabledCols[c.key])
+    .map((c) => c.key)
+    .join(",");
 
   function fetchPdf() {
+    // Cancel any in-flight request
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     setLoading(true);
     setError(null);
-    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-    setPdfUrl(null);
+    // Revoke old blob URL
+    setPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     setPdfBlob(null);
 
-    const params = { cols: activeCols, two_col: twoCol };
-    const req = product === "edi" ? printApi.edi(params) : printApi.iop(params);
+    const params = { cols: activeCols || "id,name,date,loan,balance,days,collect", two_col: twoCol };
+    const req = product === "edi"
+      ? printApi.edi(params, ctrl.signal)
+      : printApi.iop(params, ctrl.signal);
+
     req
       .then((res) => {
-        const blob = new Blob([res.data as BlobPart], { type: "application/pdf" });
-        const url  = URL.createObjectURL(blob);
+        if (ctrl.signal.aborted) return;
+        const blob = res.data as Blob;
         setPdfBlob(blob);
-        setPdfUrl(url);
+        setPdfUrl(URL.createObjectURL(blob));
+        setLoading(false);
       })
       .catch((err) => {
-        setError(err?.response?.data?.detail ?? err?.message ?? "Failed to generate PDF");
-      })
-      .finally(() => setLoading(false));
+        if (ctrl.signal.aborted) return; // a newer request is already running
+        const msg = err?.message ?? "Failed to generate PDF";
+        setError(msg);
+        setLoading(false);
+      });
   }
 
+  // Auto-fetch when product changes
   useEffect(() => {
     fetchPdf();
-    return () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); };
+    return () => { abortRef.current?.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleDownload() {
     if (!pdfUrl) return;
@@ -136,7 +158,6 @@ export default function DailyPrintPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowOptions((v) => !v)}
-            title="Column options"
             className={`flex items-center gap-1.5 px-3 h-8 rounded-lg border text-[13px] transition-colors ${
               showOptions
                 ? "border-foreground bg-foreground text-background"
@@ -149,7 +170,6 @@ export default function DailyPrintPage() {
           <button
             onClick={fetchPdf}
             disabled={loading}
-            title="Refresh"
             className="flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -157,7 +177,6 @@ export default function DailyPrintPage() {
           <button
             onClick={handleDownload}
             disabled={!pdfUrl || loading}
-            title="Download PDF"
             className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-border bg-background text-[13px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
           >
             <Download className="h-3.5 w-3.5" />
@@ -166,7 +185,6 @@ export default function DailyPrintPage() {
           <button
             onClick={handleShare}
             disabled={!pdfBlob || loading}
-            title="Share PDF"
             className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-border bg-background text-[13px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
           >
             <Share2 className="h-3.5 w-3.5" />
@@ -175,7 +193,6 @@ export default function DailyPrintPage() {
           <button
             onClick={handlePrint}
             disabled={!pdfUrl || loading}
-            title="Print"
             className="flex items-center gap-1.5 px-3 h-8 rounded-lg bg-foreground text-background text-[13px] font-medium hover:bg-foreground/90 transition-colors disabled:opacity-40"
           >
             <Printer className="h-3.5 w-3.5" />
@@ -187,7 +204,6 @@ export default function DailyPrintPage() {
       {/* ── Options panel ── */}
       {showOptions && (
         <div className="flex items-center gap-6 px-5 py-3 border-b border-border bg-muted/30 flex-shrink-0 flex-wrap">
-          {/* Column toggles */}
           <div className="flex items-center gap-1 flex-wrap">
             <span className="text-[11px] font-medium text-muted-foreground mr-2">Columns:</span>
             {ALL_COLS.map((col) => (
@@ -205,10 +221,8 @@ export default function DailyPrintPage() {
             ))}
           </div>
 
-          {/* Divider */}
           <div className="h-6 w-px bg-border" />
 
-          {/* Two-column layout toggle */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">Two-column:</span>
             <button
@@ -219,19 +233,18 @@ export default function DailyPrintPage() {
             >
               <span
                 className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                  twoCol ? "translate-x-4.5" : "translate-x-0.5"
+                  twoCol ? "translate-x-[18px]" : "translate-x-0.5"
                 }`}
               />
             </button>
           </div>
 
-          {/* Generate button */}
           <button
             onClick={fetchPdf}
-            disabled={loading || activeCols.length === 0}
+            disabled={loading}
             className="ml-auto px-4 py-1.5 rounded-lg bg-foreground text-background text-[13px] font-medium hover:bg-foreground/90 transition-colors disabled:opacity-40"
           >
-            Generate PDF
+            {loading ? "Generating…" : "Generate PDF"}
           </button>
         </div>
       )}
