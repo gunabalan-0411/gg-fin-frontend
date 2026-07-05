@@ -281,7 +281,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Loan Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">
-                    {product === "edi" ? "Outstanding" : ""}
+                    Outstanding
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none" onClick={() => handleSort("loan_start_date")}>
                     <span className="flex items-center gap-1">Start Date <SortIcon col="loan_start_date" /></span>
