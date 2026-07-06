@@ -29,6 +29,7 @@ import {
 import { useIsMobile } from "@/hooks/useBreakpoint";
 import { ocrApi, upiApi, expensesApi, customersApi } from "@/services/api";
 import { CustomerStepOverlay } from "@/components/CustomerStepOverlay";
+import { ImageCropModal } from "@/components/ImageCropModal";
 import toast from "react-hot-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1158,6 +1159,7 @@ export default function OcrPage() {
   const [upiExpanded, setUpiExpanded] = useState(true);
   const [struckUpiIds, setStruckUpiIds] = useState<Set<number>>(new Set());
   const [appliedUpiTxns, setAppliedUpiTxns] = useState<Map<number, { payment_mode: "CASH" | "ONLINE"; is_paid: boolean; amount: number }>>(new Map());
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showDateConfirm, setShowDateConfirm] = useState(false);
@@ -1279,9 +1281,14 @@ export default function OcrPage() {
     }
   }, []);
 
+  const isImageFile = (f: File) => /\.(jpe?g|png)$/i.test(f.name);
+
   const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) processFile(f);
+    if (f) {
+      if (isImageFile(f)) setCropFile(f);
+      else processFile(f);
+    }
     e.target.value = "";
   };
 
@@ -1289,7 +1296,9 @@ export default function OcrPage() {
     e.preventDefault();
     setIsDragging(false);
     const f = e.dataTransfer.files?.[0];
-    if (f) processFile(f);
+    if (!f) return;
+    if (isImageFile(f)) setCropFile(f);
+    else processFile(f);
   };
 
   const fetchUpiForDates = useCallback(async (dates: string[], targetPage: number) => {
@@ -2556,6 +2565,13 @@ export default function OcrPage() {
         </div>
       </div>
 
+      {cropFile && (
+        <ImageCropModal
+          file={cropFile}
+          onCrop={(croppedFile) => { setCropFile(null); processFile(croppedFile); }}
+          onCancel={() => setCropFile(null)}
+        />
+      )}
       <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
         onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
       {showDateConfirm && pendingExtracted.length > 0 && (
