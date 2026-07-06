@@ -301,6 +301,30 @@ function LocalBackupSection({ showToast }: { showToast: (m: string, t?: "success
   );
 }
 
+// ── UPI sync range helpers ─────────────────────────────────────────────────────
+const SYNC_PRESETS = [
+  { label: "1w", days: 7   },
+  { label: "2w", days: 14  },
+  { label: "1m", days: 30  },
+  { label: "3m", days: 90  },
+  { label: "6m", days: 180 },
+  { label: "1y", days: 365 },
+];
+function syncDaysToIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+function fmtSyncRange(days: number): string {
+  if (days === 7)   return "1 week";
+  if (days === 14)  return "2 weeks";
+  if (days === 30)  return "1 month";
+  if (days === 90)  return "3 months";
+  if (days === 180) return "6 months";
+  if (days === 365) return "1 year";
+  return `${days} days`;
+}
+
 // ── UPI Import ─────────────────────────────────────────────────────────────────
 function UpiImportSection({
   showToast, onGmailChange,
@@ -313,6 +337,7 @@ function UpiImportSection({
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [importing, setImporting] = useState(false);
+  const [syncDays, setSyncDays] = useState(7);
 
   useEffect(() => {
     upiApi.gmailStatus().then(({ data }) => {
@@ -325,7 +350,7 @@ function UpiImportSection({
     setSyncing(true);
     setSyncProgress({ stage:"listing", total:0, processed:0, imported:0, skipped:0 });
     try {
-      const resp = await fetch("/api/upi/gmail/sync-stream", { credentials: "include" });
+      const resp = await fetch(`/api/upi/gmail/sync-stream?days_back=${syncDays}`, { credentials: "include" });
       if (!resp.ok) { const err = await resp.json().catch(()=>({})); throw new Error(err.detail||`Server error ${resp.status}`); }
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
@@ -374,7 +399,7 @@ function UpiImportSection({
           </div>
           <div style={{ fontSize:12, color:"hsl(var(--muted-foreground))" }}>
             {g.connected
-              ? "Scans HDFC credit emails · last 12 months"
+              ? `Scans HDFC credit emails · last ${fmtSyncRange(syncDays)}`
               : "Sign in with Google to import HDFC credit transaction emails"}
           </div>
         </div>
@@ -411,6 +436,53 @@ function UpiImportSection({
           )}
         </div>
       </div>
+
+      {/* Sync range (shown only when Gmail is connected) */}
+      {g.connected && (
+        <div style={{ ...cardStyle, marginBottom: 12 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+            <span style={{ fontSize:12.5, fontWeight:500, color:"hsl(var(--foreground))" }}>Sync range</span>
+            <span style={{ fontSize:11, fontFamily:monoFont, color:"hsl(var(--muted-foreground))" }}>
+              {syncDaysToIso(syncDays)} → today
+              &nbsp;·&nbsp;
+              <strong style={{ color:"hsl(var(--foreground))", fontWeight:600 }}>{fmtSyncRange(syncDays)}</strong>
+            </span>
+          </div>
+          {/* Quick presets */}
+          <div style={{ display:"flex", gap:5, marginBottom:12 }}>
+            {SYNC_PRESETS.map(p => (
+              <button key={p.label} onClick={() => setSyncDays(p.days)}
+                style={{
+                  padding:"3px 9px", borderRadius:6, fontSize:11.5, fontWeight:500, cursor:"pointer",
+                  border:`1px solid ${syncDays===p.days ? "hsl(var(--foreground))" : "hsl(var(--border))"}`,
+                  background:syncDays===p.days ? "hsl(var(--foreground))" : "transparent",
+                  color:syncDays===p.days ? "hsl(var(--background))" : "hsl(var(--muted-foreground))",
+                  transition:"all .12s",
+                }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* Slider + date picker */}
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <input type="range" min={1} max={365} value={syncDays}
+              onChange={e => setSyncDays(Number(e.target.value))}
+              style={{ flex:1, accentColor:"hsl(var(--foreground))", cursor:"pointer", height:4 }}
+            />
+            <input type="date"
+              value={syncDaysToIso(syncDays)}
+              min={syncDaysToIso(365)}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={e => {
+                if (!e.target.value) return;
+                const d = Math.round((Date.now() - new Date(e.target.value).getTime()) / 86400000);
+                setSyncDays(Math.max(1, Math.min(365, d)));
+              }}
+              style={{ background:"hsl(var(--card))", border:"1px solid hsl(var(--border))", borderRadius:6, padding:"4px 7px", fontSize:11, fontFamily:monoFont, color:"hsl(var(--foreground))", outline:0, cursor:"pointer" }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Sync progress */}
       {syncProgress && (

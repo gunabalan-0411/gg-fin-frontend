@@ -3,7 +3,7 @@ import type { CSSProperties, ElementType, ReactNode } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
 import {
   Trash2, Link2, Unlink, X, Search, Eye, Mail, FileText, Check,
-  Database, Sparkles, Filter,
+  Database, Sparkles, Filter, RefreshCw,
 } from "lucide-react";
 import { upiApi } from "@/services/api";
 
@@ -366,6 +366,7 @@ export default function UpiPage() {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden", background: "hsl(var(--background))" }}>
+      <style>{`@keyframes upiSpin { to { transform: rotate(360deg); } }`}</style>
 
       {/* ── Summary bar ────────────────────────────────────────────────────── */}
       <div style={{
@@ -519,6 +520,15 @@ export default function UpiPage() {
                   Clear
                 </button>
               )}
+              <button
+                onClick={fetchTxns}
+                disabled={loading}
+                title="Refresh"
+                style={{ display:"flex", alignItems:"center", gap:4, padding:"5px 8px", borderRadius:6, fontSize:12, fontWeight:500, border:"1px solid hsl(var(--border))", background:"hsl(var(--card))", color:"hsl(var(--muted-foreground))", cursor:"pointer", opacity:loading?0.5:1, flexShrink:0 }}
+              >
+                <RefreshCw size={11} style={loading?{animation:"upiSpin 1s linear infinite"}:{}}/>
+                Refresh
+              </button>
             </div>
 
             {/* Bulk bar */}

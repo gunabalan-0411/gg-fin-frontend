@@ -2,7 +2,7 @@ import React from "react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Download, Loader2, Wallet, Users, HardDrive } from "lucide-react";
+import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Download, Loader2, Wallet, Users, HardDrive, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { voiceApi, customersApi, datasetApi, upiApi } from "@/services/api";
 import { formatCurrency, toISODate } from "@/utils";
@@ -600,7 +600,7 @@ export default function VoicePage() {
   const cashTotal = [...ediTxns, ...iopTxns].filter((t) => (t as any).payment_mode === "CASH").reduce((s, t) => s + Number(t.amount), 0);
 
   // UPI transactions for selected date
-  const { data: upiRaw } = useQuery({
+  const { data: upiRaw, refetch: refetchUpi, isFetching: upiRefetching } = useQuery({
     queryKey: ["upi-voice-date", date],
     queryFn: async () => {
       const res = await upiApi.list({ date_from: date, date_to: date, limit: 500 });
@@ -969,6 +969,12 @@ export default function VoicePage() {
               <span className="text-xs text-muted-foreground">{upiTxnsForDate.length} txns</span>
             </div>
             <div className="flex items-center gap-2">
+              <button onClick={(e) => { e.stopPropagation(); void refetchUpi(); }}
+                disabled={upiRefetching}
+                title="Refresh UPI"
+                className="flex items-center justify-center h-6 w-6 rounded-lg border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors disabled:opacity-40">
+                <RefreshCw className={`h-3 w-3 ${upiRefetching ? "animate-spin" : ""}`} />
+              </button>
               <button onClick={(e) => { e.stopPropagation(); applyMappedUpiTransactions(); }}
                 className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-muted text-foreground border border-border hover:bg-muted/80 transition-colors">
                 <Zap className="h-3 w-3" /> Apply

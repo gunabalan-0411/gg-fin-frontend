@@ -1577,17 +1577,26 @@ export default function OcrPage() {
       </div>
     ) : (upiTxns.length > 0 || loadingUpi) ? (
       <div className="flex-shrink-0 mt-3">
-        <button onClick={() => setUpiExpanded((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-colors">
-          <div className="flex items-center gap-2">
-            <Wifi className="h-3.5 w-3.5 text-foreground/60" />
-            <span className="text-xs font-semibold">UPI{allExtractedDates.length > 0
-              ? ` — ${allExtractedDates.length === 1 ? allExtractedDates[0] : `${allExtractedDates[0]} · ${allExtractedDates.length} dates`}`
-              : ""}</span>
-            <span className="text-[11px] text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">{upiTxns.length}</span>
-          </div>
-          <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${upiExpanded ? "rotate-180" : ""}`} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setUpiExpanded((v) => !v)}
+            className="flex-1 flex items-center justify-between px-3 py-2 rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-colors">
+            <div className="flex items-center gap-2">
+              <Wifi className="h-3.5 w-3.5 text-foreground/60" />
+              <span className="text-xs font-semibold">UPI{allExtractedDates.length > 0
+                ? ` — ${allExtractedDates.length === 1 ? allExtractedDates[0] : `${allExtractedDates[0]} · ${allExtractedDates.length} dates`}`
+                : ""}</span>
+              <span className="text-[11px] text-muted-foreground bg-background/60 rounded-full px-2 py-0.5">{upiTxns.length}</span>
+            </div>
+            <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${upiExpanded ? "rotate-180" : ""}`} />
+          </button>
+          <button
+            onClick={() => fetchUpiForDates(allExtractedDates, pageIndex)}
+            disabled={loadingUpi}
+            title="Refresh UPI"
+            className="flex items-center justify-center h-8 w-8 rounded-xl bg-primary/10 border border-primary/20 text-muted-foreground hover:text-foreground hover:bg-primary/15 transition-colors disabled:opacity-40 flex-shrink-0">
+            <RefreshCw className={`h-3.5 w-3.5 ${loadingUpi ? "animate-spin" : ""}`} />
+          </button>
+        </div>
         {upiExpanded && (
           <div className="mt-1.5 max-h-52 overflow-y-auto">
             {loadingUpi ? (
@@ -2367,10 +2376,21 @@ export default function OcrPage() {
                 <Wifi className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
                 UPI Reference
               </h3>
-              <button onClick={() => setUpiExpanded((v) => !v)}
-                className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${upiExpanded ? "rotate-180" : ""}`} />
-              </button>
+              <div className="flex items-center gap-1">
+                {allExtractedDates.length > 0 && (
+                  <button
+                    onClick={() => fetchUpiForDates(allExtractedDates, pageIndex)}
+                    disabled={loadingUpi}
+                    title="Refresh UPI"
+                    className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40">
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingUpi ? "animate-spin" : ""}`} />
+                  </button>
+                )}
+                <button onClick={() => setUpiExpanded((v) => !v)}
+                  className="flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${upiExpanded ? "rotate-180" : ""}`} />
+                </button>
+              </div>
             </div>
 
             {/* UPI date info */}
