@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 import { ChevronLeft, ChevronRight, Download, Loader2 as Spin, Save } from "lucide-react";
 import {
   useDashboardSummary, useLoanSummary,
@@ -78,7 +79,7 @@ function ExportBar({ lang, setLang, onExport, exporting }: {
       <div className="inline-flex rounded-lg border border-border overflow-hidden" style={{ fontSize: 10.5 }}>
         {(["en", "ta"] as const).map((l) => (
           <button key={l} onClick={() => setLang(l)} style={{
-            padding: "3px 8px",
+            padding: "5px 8px",
             background: lang === l ? "hsl(var(--foreground))" : "transparent",
             color: lang === l ? "hsl(var(--background))" : "hsl(var(--muted-foreground))",
             fontWeight: lang === l ? 600 : 400,
@@ -87,7 +88,7 @@ function ExportBar({ lang, setLang, onExport, exporting }: {
       </div>
       <button onClick={onExport} disabled={exporting}
         className="flex items-center gap-1 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-        style={{ padding: "3px 9px", fontSize: 11 }}>
+        style={{ padding: "5px 10px", fontSize: 11 }}>
         {exporting ? <Spin className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
         {exporting ? "…" : "Export"}
       </button>
@@ -104,7 +105,7 @@ function IgnoreToggle({ on, pending, onToggle }: { on: boolean; pending: boolean
       title={on ? "Ignored — click to un-ignore" : "Click to ignore"}
       className="flex-shrink-0 relative inline-flex cursor-pointer items-center rounded-full transition-all"
       style={{
-        width: 28, height: 16,
+        width: 32, height: 18,
         background: on
           ? pending ? "hsl(38 92% 50% / 0.7)" : "hsl(var(--muted-foreground) / 0.35)"
           : pending ? "hsl(38 92% 50% / 0.35)" : "hsl(var(--border))",
@@ -114,9 +115,9 @@ function IgnoreToggle({ on, pending, onToggle }: { on: boolean; pending: boolean
       <span
         className="inline-block rounded-full shadow-sm transition-transform"
         style={{
-          width: 11, height: 11,
+          width: 13, height: 13,
           background: pending ? "hsl(38 92% 50%)" : "hsl(var(--background))",
-          transform: on ? "translateX(15px)" : "translateX(2px)",
+          transform: on ? "translateX(17px)" : "translateX(2px)",
         }}
       />
     </button>
@@ -230,7 +231,8 @@ function HeroCard({ trend, prev }: { trend: MonthlyProfit; prev: MonthlyProfit |
         {trend.defaulted > 0 && (<><span className="w-px h-3 bg-border" /><span>Defaulted <b className="font-medium" style={{ color: "hsl(var(--neg))", fontFamily: "var(--font-mono, ui-monospace)" }}>−{fmt(trend.defaulted)}</b></span></>)}
         {prev && (<><span className="w-px h-3 bg-border" /><span style={{ color: isUp ? "hsl(var(--pos))" : "hsl(var(--neg))" }}>{isUp ? "↑" : "↓"} {fmt(Math.abs(trend.net_profit - prev.net_profit))} vs prev month</span></>)}
       </div>
-      <div className="mt-[22px] pt-[18px] border-t border-border/40 grid grid-cols-7" style={{ gap: 0 }}>
+      <div style={{ overflowX: "auto", marginTop: 22 }}>
+      <div className="pt-[18px] border-t border-border/40 grid grid-cols-7" style={{ gap: 0, minWidth: 480 }}>
         {wfCols.map((col, i) => (
           <div key={i} className="flex flex-col gap-1.5 min-w-0"
             style={{ padding: "0 12px", paddingLeft: i === 0 ? 0 : 12, paddingRight: i === wfCols.length - 1 ? 0 : 12,
@@ -256,6 +258,7 @@ function HeroCard({ trend, prev }: { trend: MonthlyProfit; prev: MonthlyProfit |
             )}
           </div>
         ))}
+      </div>
       </div>
     </div>
   );
@@ -1271,9 +1274,15 @@ const TAB_LABELS: Record<DashTab, string> = {
   reminders: "Reminder Report",
   defaulters: "Defaulters Report",
 };
+const TAB_SHORT_LABELS: Record<DashTab, string> = {
+  main: "Main",
+  reminders: "Reminders",
+  defaulters: "Defaulters",
+};
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<DashTab>("main");
+  const isMobile = useIsMobile();
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary();
   const { data: loanSummary, isLoading: loanLoading } = useLoanSummary();
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -1321,8 +1330,8 @@ export default function DashboardPage() {
             {(["main", "reminders", "defaulters"] as DashTab[]).map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`rounded-md font-medium transition-colors ${activeTab === tab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-                style={{ padding: "4px 12px", fontSize: 12 }}>
-                {TAB_LABELS[tab]}
+                style={{ padding: isMobile ? "5px 8px" : "4px 12px", fontSize: isMobile ? 11.5 : 12 }}>
+                {isMobile ? TAB_SHORT_LABELS[tab] : TAB_LABELS[tab]}
               </button>
             ))}
           </div>

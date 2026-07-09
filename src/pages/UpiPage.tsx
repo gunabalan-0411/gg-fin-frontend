@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import type { CSSProperties, ElementType, ReactNode } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 import {
   Trash2, Link2, Unlink, X, Search, Eye, Mail, FileText, Check,
   Database, Sparkles, Filter, RefreshCw,
@@ -127,6 +128,8 @@ function IBtn({
 
 export default function UpiPage() {
   const { toast, show } = useToast();
+  const isMobile = useIsMobile();
+  const [mobilePanel, setMobilePanel] = useState<"txns" | "cockpit">("txns");
 
   // Transactions
   const [txns, setTxns] = useState<UpiTxn[]>([]);
@@ -375,12 +378,12 @@ export default function UpiPage() {
         borderBottom: "1px solid hsl(var(--border))",
         flexShrink: 0,
         display: "grid",
-        gridTemplateColumns: "minmax(240px, 1.4fr) repeat(3, minmax(120px, 1fr))",
+        gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "minmax(240px, 1.4fr) repeat(3, minmax(120px, 1fr))",
         gap: 14,
         alignItems: "center",
       }}>
         {/* Reconciliation */}
-        <div>
+        <div style={{ gridColumn: isMobile ? "1 / -1" : undefined }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, color: "hsl(var(--muted-foreground))", fontWeight: 500, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
             <span style={{ width: 5, height: 5, borderRadius: 999, background: "hsl(var(--pos))", display: "inline-block" }} />
             Reconciliation · last 30 days
@@ -456,11 +459,33 @@ export default function UpiPage() {
         </div>
       </div>
 
+      {/* ── Mobile panel switcher ──────────────────────────────────────────── */}
+      {isMobile && (
+        <div style={{ display: "flex", background: "hsl(var(--secondary))", borderBottom: "1px solid hsl(var(--border))", flexShrink: 0 }}>
+          {([
+            { id: "txns" as const, label: "Transactions" },
+            { id: "cockpit" as const, label: "Map VPAs" },
+          ]).map(tab => (
+            <button key={tab.id} onClick={() => setMobilePanel(tab.id)}
+              style={{
+                flex: 1, padding: "11px 12px", fontSize: 13, fontWeight: 500,
+                color: mobilePanel === tab.id ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                borderBottom: mobilePanel === tab.id ? "2px solid hsl(var(--foreground))" : "2px solid transparent",
+                marginBottom: -1,
+                background: "none", border: "none", cursor: "pointer",
+                transition: "color .12s",
+              }}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Two-column grid ────────────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 14, padding: "14px 16px", flex: 1, overflow: "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1.4fr) minmax(0,1fr)", gap: isMobile ? 0 : 14, padding: isMobile ? "10px 12px" : "14px 16px", flex: 1, overflow: "hidden" }}>
 
         {/* LEFT: Transaction list */}
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        <div style={{ display: !isMobile || mobilePanel === "txns" ? "flex" : "none", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
           <div style={card}>
 
             {/* Card header */}
@@ -548,7 +573,7 @@ export default function UpiPage() {
             )}
 
             {/* Transaction scroll */}
-            <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingBottom: 12 }}>
+            <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingBottom: isMobile ? 72 : 12 }}>
               {loading ? (
                 <div style={{ padding: "40px 20px", textAlign: "center", color: "hsl(var(--muted-foreground))", fontSize: 13 }}>Loading…</div>
               ) : grouped.length === 0 ? (
@@ -603,7 +628,7 @@ export default function UpiPage() {
         </div>
 
         {/* RIGHT: Mapping cockpit */}
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
+        <div style={{ display: !isMobile || mobilePanel === "cockpit" ? "flex" : "none", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
           <div style={card}>
 
             {/* Tabs */}
@@ -654,7 +679,7 @@ export default function UpiPage() {
             </div>
 
             {/* Cockpit body */}
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12 }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12, paddingBottom: isMobile ? 72 : 12 }}>
 
               {/* Map VPAs tab — VPA list */}
               {cockpitTab === "map" && !selectedVpa && (

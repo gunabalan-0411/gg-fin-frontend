@@ -212,7 +212,7 @@ function HistoryPanel({
   };
 
   return (
-    <div className="absolute right-0 top-full mt-1 z-50 w-[420px] bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
+    <div className="absolute right-0 top-full mt-1 z-50 w-[min(420px,90vw)] bg-card border border-border rounded-xl shadow-2xl overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary">
         <span className="text-[12px] font-semibold">Recent queries</span>
         <div className="flex items-center gap-3">
@@ -360,7 +360,7 @@ export default function SqlPage() {
   return (
     <div
       className="flex overflow-hidden"
-      style={{ height: "calc(100vh - 57px)" }}
+      style={{ height: "100%" }}
     >
       {/* ── Schema sidebar ─────────────────────────────────────────────────── */}
       <div

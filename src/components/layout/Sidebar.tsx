@@ -112,7 +112,7 @@ export default function Sidebar({
               title={collapsed ? item.label : undefined}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-100",
+                  "flex items-center gap-2.5 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-100",
                   collapsed ? "justify-center px-2" : "px-2.5",
                   isActive
                     ? "bg-card text-foreground shadow-sm"

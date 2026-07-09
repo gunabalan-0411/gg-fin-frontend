@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import type { CSSProperties, ElementType, ChangeEvent, ReactNode } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
+import { useIsMobile } from "@/hooks/useBreakpoint";
 import {
   CloudDownload, CloudUpload, CheckCircle, AlertCircle, RefreshCw,
   Unlink, Upload, HardDriveDownload, HardDriveUpload, HardDrive,
@@ -1079,6 +1080,7 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useSessionState<NavSection>("settings.activeSection", "local");
   const [toast, setToast] = useState<{ msg: string; type: "success"|"error" }|null>(null);
   const [gStat, setGStat] = useState({ gmailOk:false, driveOk:false, driveCount:0, deviceMode:"cpu" as "cpu"|"cuda", deviceName:"CPU" });
+  const isMobile = useIsMobile();
 
   const showToast = (msg: string, type: "success"|"error" = "success") => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 4000);
@@ -1145,32 +1147,49 @@ export default function SettingsPage() {
       </div>
 
       {/* Body */}
-      <div style={{ flex:1, display:"grid", gridTemplateColumns:"260px 1fr", overflow:"hidden" }}>
+      <div style={{ flex:1, display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: isMobile ? undefined : "260px 1fr", overflow:"hidden" }}>
 
-        {/* Sidebar */}
-        <aside style={{ background:"hsl(var(--card))", borderRight:"1px solid hsl(var(--border))", overflowY:"auto", padding:"16px 12px", display:"flex", flexDirection:"column", gap:4 }}>
-          <h1 style={{ margin:"4px 8px 12px", fontSize:13, fontWeight:500, color:"hsl(var(--muted-foreground))", letterSpacing:".12em", textTransform:"uppercase" }}>Settings</h1>
-          {NAV_ITEMS.map(({ id, label, icon: Icon, desc }) => {
-            const isOn = activeSection === id;
-            const s = statusFor(id);
-            return (
-              <button key={id} onClick={() => setActiveSection(id)}
-                style={{ display:"grid", gridTemplateColumns:"28px 1fr auto", gap:12, alignItems:"center", padding:"10px 11px", borderRadius:8, textAlign:"left", cursor:"pointer", fontFamily:"inherit", border:`1px solid ${isOn?"hsl(var(--border))":"transparent"}`, background:isOn?"hsl(var(--background))":"transparent", color:isOn?"hsl(var(--foreground))":"hsl(var(--muted-foreground))", boxShadow:isOn?"0 1px 2px rgba(0,0,0,.04)":"none", transition:"background .12s, color .12s" }}>
-                <IcoWrap size={28} radius={7} variant={isOn?"dark":"default"}>
-                  <Icon size={14}/>
-                </IcoWrap>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:500, lineHeight:1.2, color:"hsl(var(--foreground))" }}>{label}</div>
-                  <div style={{ fontSize:11, color:"hsl(var(--muted-foreground))", marginTop:1 }}>{desc}</div>
-                </div>
-                <span style={{ width:7, height:7, borderRadius:999, background:dotColor(s), flexShrink:0 }}/>
-              </button>
-            );
-          })}
-        </aside>
+        {/* Nav — sidebar on desktop, horizontal scroll tabs on mobile */}
+        {isMobile ? (
+          <nav style={{ display:"flex", overflowX:"auto", gap:6, padding:"8px 12px", background:"hsl(var(--card))", borderBottom:"1px solid hsl(var(--border))", flexShrink:0 }}>
+            {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+              const isOn = activeSection === id;
+              const s = statusFor(id);
+              return (
+                <button key={id} onClick={() => setActiveSection(id)}
+                  style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:8, whiteSpace:"nowrap", flexShrink:0, fontSize:13, fontWeight: isOn ? 500 : 400, fontFamily:"inherit", cursor:"pointer", border:`1px solid ${isOn?"hsl(var(--border))":"transparent"}`, background:isOn?"hsl(var(--background))":"transparent", color:isOn?"hsl(var(--foreground))":"hsl(var(--muted-foreground))" }}>
+                  <Icon size={13}/>
+                  {label}
+                  <span style={{ width:6, height:6, borderRadius:999, background:dotColor(s), flexShrink:0 }}/>
+                </button>
+              );
+            })}
+          </nav>
+        ) : (
+          <aside style={{ background:"hsl(var(--card))", borderRight:"1px solid hsl(var(--border))", overflowY:"auto", padding:"16px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+            <h1 style={{ margin:"4px 8px 12px", fontSize:13, fontWeight:500, color:"hsl(var(--muted-foreground))", letterSpacing:".12em", textTransform:"uppercase" }}>Settings</h1>
+            {NAV_ITEMS.map(({ id, label, icon: Icon, desc }) => {
+              const isOn = activeSection === id;
+              const s = statusFor(id);
+              return (
+                <button key={id} onClick={() => setActiveSection(id)}
+                  style={{ display:"grid", gridTemplateColumns:"28px 1fr auto", gap:12, alignItems:"center", padding:"10px 11px", borderRadius:8, textAlign:"left", cursor:"pointer", fontFamily:"inherit", border:`1px solid ${isOn?"hsl(var(--border))":"transparent"}`, background:isOn?"hsl(var(--background))":"transparent", color:isOn?"hsl(var(--foreground))":"hsl(var(--muted-foreground))", boxShadow:isOn?"0 1px 2px rgba(0,0,0,.04)":"none", transition:"background .12s, color .12s" }}>
+                  <IcoWrap size={28} radius={7} variant={isOn?"dark":"default"}>
+                    <Icon size={14}/>
+                  </IcoWrap>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:500, lineHeight:1.2, color:"hsl(var(--foreground))" }}>{label}</div>
+                    <div style={{ fontSize:11, color:"hsl(var(--muted-foreground))", marginTop:1 }}>{desc}</div>
+                  </div>
+                  <span style={{ width:7, height:7, borderRadius:999, background:dotColor(s), flexShrink:0 }}/>
+                </button>
+              );
+            })}
+          </aside>
+        )}
 
         {/* Content */}
-        <main style={{ overflowY:"auto", padding:"24px 28px 60px", background:"hsl(var(--background))" }}>
+        <main style={{ overflowY:"auto", padding: isMobile ? "16px 14px 80px" : "24px 28px 60px", background:"hsl(var(--background))" }}>
           <div style={{ maxWidth:760, margin:"0 auto" }}>
             {activeSection === "local" && <LocalBackupSection showToast={showToast}/>}
             {activeSection === "upi" && (
