@@ -94,53 +94,61 @@ function BorrowingsTab() {
           <h2 className="text-sm font-semibold text-foreground">Lender Details</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ minWidth: 900 }}>
             <thead>
               <tr className="border-b border-border">
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground w-8" />
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground w-20">ID</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Lender Name</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Repaid</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Balance</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Notes</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">Actions</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground w-8" />
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Date</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Lender</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Borrower</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Loan Amt</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">EMI/mo</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Rate</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Tenure</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">End Date</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Paid By</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Repaid</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">Balance</th>
+                <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {debtsLoading ? (
                 [...Array(3)].map((_, i) => (
                   <tr key={i} className="border-b border-border/50">
-                    {[...Array(9)].map((_, j) => (
-                      <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>
+                    {[...Array(13)].map((_, j) => (
+                      <td key={j} className="px-3 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>
                     ))}
                   </tr>
                 ))
               ) : debts.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">No borrowings recorded</td></tr>
+                <tr><td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">No borrowings recorded</td></tr>
               ) : (
                 debts.map((d) => (
                   <tr key={d.id}
                     className={`border-b border-border/50 transition-colors ${selectedDebtId === d.id ? "bg-primary/5" : "hover:bg-secondary/30"}`}>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <button onClick={() => setSelectedDebtId((prev) => prev === d.id ? null : d.id)}
                         className="text-muted-foreground hover:text-foreground transition-colors">
                         {selectedDebtId === d.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{d.id}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatDate(d.date)}</td>
-                    <td className="px-4 py-3 font-medium text-foreground">{d.lender_name}</td>
-                    <td className="px-4 py-3 font-semibold text-foreground">{formatCurrency(d.amount)}</td>
-                    <td className="px-4 py-3 text-green-400">{formatCurrency(d.total_repaid)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{formatDate(d.date)}</td>
+                    <td className="px-3 py-3 font-medium text-foreground whitespace-nowrap">{d.lender_name}</td>
+                    <td className="px-3 py-3 text-muted-foreground">{d.borrower_name ?? "—"}</td>
+                    <td className="px-3 py-3 font-semibold text-foreground whitespace-nowrap">{formatCurrency(d.amount)}</td>
+                    <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{d.emi_amount != null ? formatCurrency(d.emi_amount) : "—"}</td>
+                    <td className="px-3 py-3 text-muted-foreground">{d.interest_rate_pa != null ? `${d.interest_rate_pa}%` : "—"}</td>
+                    <td className="px-3 py-3 text-muted-foreground">{d.tenure_months != null ? `${d.tenure_months}m` : "—"}</td>
+                    <td className="px-3 py-3 text-muted-foreground whitespace-nowrap">{d.end_date ? formatDate(d.end_date) : "—"}</td>
+                    <td className="px-3 py-3 text-muted-foreground">{d.paid_by ?? "—"}</td>
+                    <td className="px-3 py-3 text-green-400 whitespace-nowrap">{formatCurrency(d.total_repaid)}</td>
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className={`font-semibold ${d.balance > 0 ? "text-red-400" : "text-green-400"}`}>
                         {formatCurrency(d.balance)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{d.notes ?? "—"}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => setDebtForm({ open: true, editing: d })}>
                           <Pencil className="h-3.5 w-3.5" />
@@ -401,23 +409,78 @@ function InvestorsTab() {
 function DebtFormModal({ initial, onClose, onSave }: { initial: Debt | null; onClose: () => void; onSave: (data: object) => void }) {
   const [date, setDate] = useState(initial?.date ?? new Date().toISOString().split("T")[0]);
   const [lenderName, setLenderName] = useState(initial?.lender_name ?? "");
+  const [borrowerName, setBorrowerName] = useState(initial?.borrower_name ?? "");
   const [amount, setAmount] = useState(String(initial?.amount ?? ""));
+  const [emiAmount, setEmiAmount] = useState(String(initial?.emi_amount ?? ""));
+  const [interestRate, setInterestRate] = useState(String(initial?.interest_rate_pa ?? ""));
+  const [tenureMonths, setTenureMonths] = useState(String(initial?.tenure_months ?? ""));
+  const [endDate, setEndDate] = useState(initial?.end_date ?? "");
+  const [paidBy, setPaidBy] = useState(initial?.paid_by ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
 
   return (
     <Modal open onClose={onClose} title={initial ? "Edit Borrowing" : "Add Lender"}>
-      <form onSubmit={(e) => { e.preventDefault(); onSave({ date, lender_name: lenderName, amount: Number(amount), notes: notes || null }); }} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
-          <DatePicker value={date} onChange={setDate} />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave({
+            date,
+            lender_name: lenderName,
+            borrower_name: borrowerName || null,
+            amount: Number(amount),
+            emi_amount: emiAmount ? Number(emiAmount) : null,
+            interest_rate_pa: interestRate ? Number(interestRate) : null,
+            tenure_months: tenureMonths ? Number(tenureMonths) : null,
+            end_date: endDate || null,
+            paid_by: paidBy || null,
+            notes: notes || null,
+          });
+        }}
+        className="space-y-4"
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
+            <DatePicker value={date} onChange={setDate} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">End Date</label>
+            <DatePicker value={endDate} onChange={setEndDate} />
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Lender Name</label>
-          <Input value={lenderName} onChange={(e) => setLenderName(e.target.value)} required autoFocus />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Lender Name</label>
+            <Input value={lenderName} onChange={(e) => setLenderName(e.target.value)} required autoFocus />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Borrower</label>
+            <Input value={borrowerName} onChange={(e) => setBorrowerName(e.target.value)} placeholder="e.g. Gu" />
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Amount</label>
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Loan Amount</label>
+            <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">EMI / month</label>
+            <Input type="number" value={emiAmount} onChange={(e) => setEmiAmount(e.target.value)} placeholder="0" />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Rate % p.a.</label>
+            <Input type="number" step="0.01" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} placeholder="0.00" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Tenure (months)</label>
+            <Input type="number" value={tenureMonths} onChange={(e) => setTenureMonths(e.target.value)} placeholder="0" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Paid By</label>
+            <Input value={paidBy} onChange={(e) => setPaidBy(e.target.value)} placeholder="Business / Gu" />
+          </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>

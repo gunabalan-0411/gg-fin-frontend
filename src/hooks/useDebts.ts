@@ -6,7 +6,13 @@ export interface Debt {
   id: number;
   date: string;
   lender_name: string;
+  borrower_name?: string | null;
   amount: number;
+  emi_amount?: number | null;
+  interest_rate_pa?: number | null;
+  tenure_months?: number | null;
+  end_date?: string | null;
+  paid_by?: string | null;
   total_repaid: number;
   balance: number;
   notes?: string | null;
