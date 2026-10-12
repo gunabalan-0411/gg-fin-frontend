@@ -2,31 +2,51 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { authApi } from "@/services/api";
 import { isAuthenticated, useAuthStore } from "@/hooks/useAuth";
 
-const WARN_AFTER_MS  = 55 * 60 * 1000; // show warning at 55 min of inactivity
-const LOGOUT_AFTER_S = 60;              // seconds of countdown before auto-logout
+const TOKEN_LIFE_MS    = 60 * 60 * 1000; // must match backend ACCESS_TOKEN_EXPIRE_MINUTES
+const WARN_BEFORE_S    = 3 * 60;         // show countdown during the last 3 min of the session
 const REFRESH_EVERY_MS = 30 * 60 * 1000; // silently refresh token every 30 min if active
+const ACTIVE_WINDOW_MS = 5 * 60 * 1000;  // "active" = input within the last 5 min
+const TOKEN_AT_KEY     = "gg_fin_token_at";
+
+function getTokenAt(): number {
+  try {
+    const v = Number(sessionStorage.getItem(TOKEN_AT_KEY));
+    if (v > 0) return v;
+  } catch { /* ignore */ }
+  const now = Date.now();
+  setTokenAt(now);
+  return now;
+}
+function setTokenAt(t: number) {
+  try { sessionStorage.setItem(TOKEN_AT_KEY, String(t)); } catch { /* ignore */ }
+}
 
 export function SessionGuard({ children }: { children: React.ReactNode }) {
   const [showInactive, setShowInactive]   = useState(false);
   const [showExpired,  setShowExpired]    = useState(false);
-  const [countdown,    setCountdown]      = useState(LOGOUT_AFTER_S);
+  const [countdown,    setCountdown]      = useState(WARN_BEFORE_S);
 
   const lastActivity  = useRef(Date.now());
-  const lastRefresh   = useRef(Date.now());
-  const warnShown     = useRef(false);
-  const countdownTick = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshing    = useRef(false);
 
   const logout = useAuthStore((s) => s.logout);
 
-  // ── Activity tracker ──────────────────────────────────────────────────────
-  const onActivity = useCallback(() => {
-    lastActivity.current = Date.now();
-    if (warnShown.current) {
-      warnShown.current = false;
-      setShowInactive(false);
-      if (countdownTick.current) clearInterval(countdownTick.current);
+  const doRefresh = useCallback(async () => {
+    if (refreshing.current) return false;
+    refreshing.current = true;
+    try {
+      await authApi.refresh();
+      setTokenAt(Date.now());
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshing.current = false;
     }
   }, []);
+
+  // ── Activity tracker ──────────────────────────────────────────────────────
+  const onActivity = useCallback(() => { lastActivity.current = Date.now(); }, []);
 
   useEffect(() => {
     const events = ["mousemove", "keydown", "mousedown", "scroll", "touchstart"];
@@ -34,65 +54,52 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
     return () => events.forEach((e) => window.removeEventListener(e, onActivity));
   }, [onActivity]);
 
-  // ── 401 listener ─────────────────────────────────────────────────────────
+  // ── 401 listener (token already invalid) ─────────────────────────────────
   useEffect(() => {
-    const handle = () => setShowExpired(true);
+    const handle = () => { setShowInactive(false); setShowExpired(true); };
     window.addEventListener("gg_fin_401", handle);
     return () => window.removeEventListener("gg_fin_401", handle);
   }, []);
 
-  // ── Inactivity check + auto-refresh ──────────────────────────────────────
+  // ── Token age check: auto-refresh, 3-min warning countdown, then expiry ──
   useEffect(() => {
     const tick = setInterval(() => {
       if (!isAuthenticated()) return;   // session flag — no token stored in JS
 
-      const now      = Date.now();
-      const inactive = now - lastActivity.current;
-      const sinceRef = now - lastRefresh.current;
+      const now       = Date.now();
+      const age       = now - getTokenAt();
+      const remaining = Math.ceil((TOKEN_LIFE_MS - age) / 1000);
+      const active    = now - lastActivity.current < ACTIVE_WINDOW_MS;
 
-      if (sinceRef >= REFRESH_EVERY_MS && inactive < 5 * 60 * 1000) {
-        authApi.refresh()
-          .then(() => { lastRefresh.current = Date.now(); })
-          .catch(() => {});
+      if (remaining <= 0) {
+        setShowInactive(false);
+        setShowExpired(true);
+        return;
       }
 
-      if (inactive >= WARN_AFTER_MS && !warnShown.current) {
-        warnShown.current = true;
-        setCountdown(LOGOUT_AFTER_S);
+      // Active user: keep the session alive silently, no interruption.
+      if (active && age >= REFRESH_EVERY_MS) {
+        doRefresh().then((ok) => { if (ok) setShowInactive(false); });
+        if (remaining > WARN_BEFORE_S) return;
+      }
+
+      if (remaining <= WARN_BEFORE_S) {
+        setCountdown(remaining);
         setShowInactive(true);
-
-        countdownTick.current = setInterval(() => {
-          setCountdown((c) => {
-            if (c <= 1) {
-              clearInterval(countdownTick.current!);
-              warnShown.current = false;
-              setShowInactive(false);
-              logout();
-              window.location.href = "/login";
-              return 0;
-            }
-            return c - 1;
-          });
-        }, 1000);
       }
-    }, 60_000);
+    }, 1000);
 
     return () => clearInterval(tick);
-  }, [logout]);
+  }, [doRefresh]);
 
   // ── Continue session ──────────────────────────────────────────────────────
   const handleContinue = async () => {
-    try { await authApi.refresh(); lastRefresh.current = Date.now(); }
-    catch { /* old cookie still valid for remaining window */ }
     lastActivity.current = Date.now();
-    warnShown.current = false;
-    setShowInactive(false);
-    if (countdownTick.current) clearInterval(countdownTick.current);
+    if (await doRefresh()) setShowInactive(false);
+    else { setShowInactive(false); setShowExpired(true); }
   };
 
   const handleLogoutNow = () => {
-    if (countdownTick.current) clearInterval(countdownTick.current);
-    warnShown.current = false;
     setShowInactive(false);
     logout();
     window.location.href = "/login";
@@ -120,13 +127,15 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
               </div>
               <div>
                 <h3 className="font-semibold text-foreground">Still there?</h3>
-                <p className="text-xs text-muted-foreground">Session inactive for 55 minutes</p>
+                <p className="text-xs text-muted-foreground">Your session is about to expire</p>
               </div>
             </div>
             <p className="text-sm text-muted-foreground mb-5">
-              Your session will end in{" "}
-              <span className="font-bold text-foreground tabular-nums">{countdown}s</span>{" "}
-              to protect your data. Any unsaved changes will be lost.
+              Your session will expire in{" "}
+              <span className="font-bold text-foreground tabular-nums">
+                {Math.floor(countdown / 60)}:{String(countdown % 60).padStart(2, "0")}
+              </span>
+              . Click "Continue session" to stay signed in and keep your work.
             </p>
             <div className="flex gap-2">
               <button onClick={handleLogoutNow}

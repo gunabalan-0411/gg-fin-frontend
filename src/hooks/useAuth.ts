@@ -10,7 +10,7 @@ export function isAuthenticated(): boolean {
   return sessionStorage.getItem(AUTH_FLAG) === "1";
 }
 
-function setAuthFlag()   { sessionStorage.setItem(AUTH_FLAG, "1"); }
+function setAuthFlag()   { sessionStorage.setItem(AUTH_FLAG, "1"); sessionStorage.setItem("gg_fin_token_at", String(Date.now())); }
 function clearAuthFlag() { sessionStorage.removeItem(AUTH_FLAG); }
 
 // Module-level listeners for cross-component reactivity
