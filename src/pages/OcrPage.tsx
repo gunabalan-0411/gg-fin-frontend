@@ -25,16 +25,21 @@ import {
   Layers,
   Undo2,
   Redo2,
+  PenLine,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { ocrApi, upiApi, expensesApi, customersApi } from "@/services/api";
+import { ocrApi, upiApi, expensesApi, customersApi, nameMappingsApi } from "@/services/api";
 import { CustomerStepOverlay } from "@/components/CustomerStepOverlay";
+import { CustomerCombobox, type ComboboxPick, type Suggestion } from "@/components/ocr/CustomerCombobox";
+import { NameMappingModal } from "@/components/NameMappingModal";
+import {
+  clearedCustomer, MappingEditButton, MatchBadge, RememberBanner, pickPatch, type RowMappingFields,
+} from "@/components/ocr/rowMapping";
+import type { MappingCandidate, MappingKind } from "@/types";
 import { ImageCropModal } from "@/components/ImageCropModal";
 import toast from "react-hot-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Suggestion = { id: number; name: string; score: number; balance?: number };
-
 type Row = {
   uid: string;
   collection_date: string;
@@ -47,7 +52,7 @@ type Row = {
   confidence_score: number;
   notes: string;
   customer_suggestions: Suggestion[];
-};
+} & RowMappingFields;                                     // alias / AI-mismatch mapping fields
 
 type UpiTxn = {
   id: number;
@@ -190,182 +195,25 @@ function SkeletonRow({ index }: { index: number }) {
   );
 }
 
-// ── CustomerCombobox ──────────────────────────────────────────────────────────
-function CustomerCombobox({
-  row,
-  onChange,
-  fetchSuggestions,
-  compact,
-}: {
-  row: Row;
-  onChange: (name: string, id: number | null) => void;
-  fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
-  compact?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [liveSuggestions, setLiveSuggestions] = useState<Suggestion[]>([]);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-
-  const handleChange = (value: string) => {
-    onChange(value, null);
-    setHighlightedIndex(-1);
-    if (!fetchSuggestions) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      if (value.trim().length >= 2) {
-        const results = await fetchSuggestions(value.trim(), row.product_type);
-        setLiveSuggestions(results);
-      } else {
-        setLiveSuggestions([]);
-      }
-    }, 200);
-  };
-
-  const suggestions = fetchSuggestions
-    ? liveSuggestions.length > 0 ? liveSuggestions : row.customer_suggestions
-    : row.customer_suggestions;
-
-  // Scroll highlighted item into view
-  useEffect(() => {
-    if (highlightedIndex < 0 || !listRef.current) return;
-    const buttons = listRef.current.querySelectorAll("button");
-    buttons[highlightedIndex]?.scrollIntoView({ block: "nearest" });
-  }, [highlightedIndex]);
-
-  const selectSuggestion = (s: Suggestion) => {
-    onChange(s.name, s.id);
-    setLiveSuggestions([]);
-    setOpen(false);
-    setHighlightedIndex(-1);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!open) {
-      if (e.key === "ArrowDown" && suggestions.length > 0) {
-        setOpen(true);
-        setHighlightedIndex(0);
-        e.preventDefault();
-      }
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedIndex((i) => Math.min(i + 1, suggestions.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const idx = highlightedIndex >= 0 ? highlightedIndex : 0;
-      if (suggestions[idx]) selectSuggestion(suggestions[idx]);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setOpen(false);
-      setHighlightedIndex(-1);
-    }
-  };
-
-  if (compact) {
-    return (
-      <div className="relative w-full">
-        <input
-          type="text"
-          value={row.customer_name}
-          onChange={(e) => handleChange(e.target.value)}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 160)}
-          onKeyDown={handleKeyDown}
-          placeholder="Customer…"
-          className={`w-full text-[12.5px] bg-transparent border-0 outline-0 px-1.5 py-1 rounded transition-all
-            hover:bg-muted focus:bg-card focus:shadow-[0_0_0_2px_hsl(var(--foreground)),0_0_0_4px_hsl(var(--primary)/0.35)]
-            ${!row.customer_id ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}
-        />
-        {open && suggestions.length > 0 && (
-          <div ref={listRef} className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-2xl overflow-y-auto min-w-[220px] max-h-52">
-            {suggestions.map((s, i) => (
-              <button
-                key={s.id}
-                onMouseDown={() => selectSuggestion(s)}
-                onMouseEnter={() => setHighlightedIndex(i)}
-                className={`w-full flex items-center justify-between px-3 py-2 text-left gap-3 text-[12.5px] transition-colors ${
-                  i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
-                }`}
-              >
-                <span className="font-medium truncate">{s.name}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-mono font-semibold ${
-                  s.score >= 0.9 ? "bg-green-500/15 text-green-600 dark:text-green-400"
-                  : s.score >= 0.75 ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                  : "bg-red-500/15 text-red-400"
-                }`}>
-                  {Math.round(s.score * 100)}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative flex-1 min-w-0">
-      <input
-        type="text"
-        value={row.customer_name}
-        onChange={(e) => handleChange(e.target.value)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 160)}
-        onKeyDown={handleKeyDown}
-        className={`w-full text-sm rounded-lg border px-3 py-1.5 bg-background focus:outline-none focus:ring-2 pr-7 ${
-          row.customer_id
-            ? "border-green-500/40 focus:ring-green-500/20"
-            : "border-amber-500/40 focus:ring-amber-500/20"
-        }`}
-        placeholder="Customer name…"
-      />
-      {!row.customer_id && (
-        <AlertTriangle className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-amber-400 pointer-events-none" />
-      )}
-      {open && suggestions.length > 0 && (
-        <div ref={listRef} className="absolute top-full left-0 right-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-xl overflow-y-auto max-h-52">
-          {suggestions.map((s, i) => (
-            <button
-              key={s.id}
-              onMouseDown={() => selectSuggestion(s)}
-              onMouseEnter={() => setHighlightedIndex(i)}
-              className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left gap-3 transition-colors ${
-                i === highlightedIndex ? "bg-secondary" : "hover:bg-secondary"
-              }`}
-            >
-              <span className="font-medium truncate">{s.name}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-semibold ${
-                s.score >= 0.9 ? "bg-green-500/20 text-green-600 dark:text-green-400"
-                : s.score >= 0.75 ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
-                : "bg-red-500/20 text-red-400"
-              }`}>
-                {Math.round(s.score * 100)}%
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── RecordCard (mobile) ───────────────────────────────────────────────────────
 function RecordCard({
   row,
   onUpdate,
   onDelete,
   fetchSuggestions,
+  fetchMappingSuggestions,
+  onOpenMapping,
+  onRemember,
+  onDismissRemember,
 }: {
   row: Row;
   onUpdate: (uid: string, patch: Partial<Row>) => void;
   onDelete: (uid: string) => void;
   fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
+  fetchMappingSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<MappingCandidate[]>;
+  onOpenMapping?: (row: Row) => void;
+  onRemember?: (row: Row) => void;
+  onDismissRemember?: (row: Row) => void;
 }) {
   return (
     <div className={`rounded-xl border p-3 space-y-2 ${
@@ -376,9 +224,11 @@ function RecordCard({
           title={`Confidence: ${Math.round(row.confidence_score * 100)}%`} />
         <CustomerCombobox
           row={row}
-          onChange={(name, id) => onUpdate(row.uid, { customer_name: name, customer_id: id })}
+          onChange={(name, id, pick) => onUpdate(row.uid, pickPatch(row, name, id, pick))}
           fetchSuggestions={fetchSuggestions}
+          fetchMappingSuggestions={fetchMappingSuggestions}
         />
+        <MappingEditButton row={row} onOpen={onOpenMapping} size={4} />
         <button onClick={() => onDelete(row.uid)}
           className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors">
           <Trash2 className="h-3.5 w-3.5" />
@@ -388,7 +238,7 @@ function RecordCard({
         <input type="date" value={ddmmyyyyToInput(row.collection_date)}
           onChange={(e) => onUpdate(row.uid, { collection_date: inputToDdmmyyyy(e.target.value) })}
           className="text-xs rounded-lg border border-border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20" />
-        <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", customer_name: "", customer_id: null, customer_suggestions: [] })}
+        <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", ...clearedCustomer() })}
           className={`text-xs px-2 py-1 rounded-lg font-bold transition-colors ${
             row.product_type === "IOP"
               ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
@@ -425,6 +275,15 @@ function RecordCard({
             className="w-20 text-sm font-semibold bg-transparent focus:outline-none" />
         </div>
       </div>
+      {(row.match_source === "ai_mismatch" || row.match_source === "alias") && (
+        <div className="flex items-center gap-1.5 flex-wrap pl-4">
+          <MatchBadge row={row} />
+          {row.matched_customer_name && (
+            <span className="text-[10.5px] text-muted-foreground">→ {row.matched_customer_name}</span>
+          )}
+        </div>
+      )}
+      <RememberBanner row={row} onRemember={onRemember} onDismiss={onDismissRemember} />
       {row.notes && <p className="text-xs text-muted-foreground italic pl-4">{row.notes}</p>}
     </div>
   );
@@ -730,13 +589,16 @@ function AddRowModal({
 
 // ── OcrTableRow (desktop table row) ──────────────────────────────────────────
 function OcrTableRow({
-  row, index, onUpdate, onDelete, fetchSuggestions, isActive, onHoverIn, onHoverOut,
+  row, index, onUpdate, onDelete, fetchSuggestions, fetchMappingSuggestions, onOpenMapping,
+  isActive, onHoverIn, onHoverOut,
 }: {
   row: Row;
   index: number;
   onUpdate: (uid: string, patch: Partial<Row>) => void;
   onDelete: (uid: string) => void;
   fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
+  fetchMappingSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<MappingCandidate[]>;
+  onOpenMapping?: (row: Row) => void;
   isActive?: boolean;
   onHoverIn?: () => void;
   onHoverOut?: () => void;
@@ -760,12 +622,21 @@ function OcrTableRow({
       <td className="min-w-0 max-w-0">
         <CustomerCombobox
           row={row}
-          onChange={(name, id) => onUpdate(row.uid, { customer_name: name, customer_id: id })}
+          onChange={(name, id, pick) => onUpdate(row.uid, pickPatch(row, name, id, pick))}
           fetchSuggestions={fetchSuggestions}
+          fetchMappingSuggestions={fetchMappingSuggestions}
           compact
         />
-        {row.customer_id && (
-          <span className="text-[10px] font-mono text-muted-foreground/65 px-1.5 block leading-tight pb-0.5">#{row.customer_id}</span>
+        {/* Second line: id, how it was matched, and the alias / AI-mismatch editor. The editor lives here (not beside the
+            name box) because this panel is narrow — the name box keeps its full width. */}
+        {(row.customer_id || onOpenMapping) && (
+          <span className="flex items-center gap-1.5 px-1.5 pb-0.5 leading-tight min-w-0">
+            {row.customer_id && (
+              <span className="text-[10px] font-mono text-muted-foreground/65 flex-shrink-0">#{row.customer_id}</span>
+            )}
+            <MatchBadge row={row} />
+            <span className="ml-auto flex-shrink-0"><MappingEditButton row={row} onOpen={onOpenMapping} /></span>
+          </span>
         )}
       </td>
 
@@ -784,7 +655,7 @@ function OcrTableRow({
       <td className="px-1 text-center">
         <button
           tabIndex={-1}
-          onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", customer_name: "", customer_id: null, customer_suggestions: [] })}
+          onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", ...clearedCustomer() })}
           className={`text-[10.5px] px-2 py-0.5 rounded-md font-bold transition-colors ${
             row.product_type === "IOP"
               ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
@@ -1166,6 +1037,11 @@ export default function OcrPage() {
   const [pendingExtracted, setPendingExtracted] = useState<Row[]>([]);
   const [rowsUndo, setRowsUndo] = useState<Row[][]>([]);
   const [rowsRedo, setRowsRedo] = useState<Row[][]>([]);
+  const [mappingModal, setMappingModal] = useState<{
+    row: Row;
+    prefill?: { kind: MappingKind; word: string } | null;
+    notice?: string | null;
+  } | null>(null);
 
   // ── Workflow ──────────────────────────────────────────────────────────────
   const [wfStep, setWfStep] = useState<WfStep | null>(1);
@@ -1335,8 +1211,18 @@ export default function OcrPage() {
       setPageImageB64(data.page_image_b64);
       const extracted = (data.records as any[]).map((r) => {
         const mode = ((r.payment_mode as string) || "CASH").toUpperCase() as "CASH" | "ONLINE";
-        return { ...r, uid: mkUid(), product_type: ((r.product_type as string) || "EDI").toUpperCase() as "EDI" | "IOP", payment_mode: mode, is_paid: mode === "CASH" };
+        return {
+          ...r,
+          uid: mkUid(),
+          product_type: ((r.product_type as string) || "EDI").toUpperCase() as "EDI" | "IOP",
+          payment_mode: mode,
+          is_paid: mode === "CASH",
+          extracted_name: (r.customer_name as string) ?? "",       // the OCR text, kept for "Remember this"
+          mapping_suggestions: (r.mapping_suggestions as MappingCandidate[]) ?? [],
+          remember_offer: null,
+        };
       });
+      if (data.mapping_warning) toast(data.mapping_warning, { icon: "⚠️" });
       setPendingExtracted(extracted);
       setShowDateConfirm(true);
       setWfDone((prev) => new Set([...prev, 1]));
@@ -1415,6 +1301,50 @@ export default function OcrPage() {
     setRows((r) => r.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
   };
 
+  /** Row change that is UI bookkeeping only (not an edit the user would want to undo). */
+  const patchRowSilently = (uid: string, patch: Partial<Row>) =>
+    setRows((r) => r.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
+
+  // ── Alias / AI-mismatch names ────────────────────────────────────────────
+  const openMapping = (row: Row) => setMappingModal({ row });
+  const dismissRemember = (row: Row) => patchRowSilently(row.uid, { remember_offer: null });
+
+  const handleRemember = async (row: Row) => {
+    const word = row.remember_offer;
+    if (!word || !row.customer_id) return;
+    try {
+      const { data } = await nameMappingsApi.remember({ finance_type: row.product_type, customer_id: row.customer_id, word });
+      if (data.status === "added") {
+        toast.success(`Remembered “${word}”`);
+        patchRowSilently(row.uid, { remember_offer: null });
+      } else if (data.status === "exists") {
+        toast(`“${word}” is already remembered`);
+        patchRowSilently(row.uid, { remember_offer: null });
+      } else if (data.status === "limit_reached") {
+        setMappingModal({
+          row,
+          notice: `This customer already has ${data.limit} AI-mismatch names. Edit or delete one to make room for “${word}”.`,
+        });
+      } else if (data.status === "conflict") {
+        setMappingModal({
+          row,
+          prefill: { kind: "ai_mismatch", word },
+          notice: `“${word}” is already mapped to another customer — choose what to do, then Save.`,
+        });
+      }
+    } catch (err: any) {
+      const d = err?.response?.data?.detail;
+      toast.error((d && typeof d === "object" ? d.message : d) || "Could not save the name");
+    }
+  };
+
+  const fetchMappingSuggestions = async (query: string, productType: "EDI" | "IOP" = "EDI"): Promise<MappingCandidate[]> => {
+    try {
+      const { data } = await nameMappingsApi.suggest(productType, query);
+      return data.candidates;
+    } catch { return []; }
+  };
+
   const deleteRow = (uid: string) => {
     pushHistory();
     setRows((r) => r.filter((row) => row.uid !== uid));
@@ -1431,6 +1361,7 @@ export default function OcrPage() {
           collection_date: r.collection_date, customer_name: r.customer_name,
           customer_id: r.customer_id, product_type: r.product_type,
           payment_mode: r.payment_mode, is_paid: r.is_paid, amount: r.amount,
+          mapping_ref: r.mapping_ref ?? undefined,       // lets the server count a use of the alias / AI-mismatch name
         })),
       });
       toast.success(`${data.submitted} records saved`, { id: tid });
@@ -1483,6 +1414,20 @@ export default function OcrPage() {
     setRows((prev) => [...prev, { ...rowData, uid: mkUid(), confidence_score: 1, notes: "", customer_suggestions: [] }]);
     if (isMobile) setMobileTab("records");
   };
+
+
+  const mappingModalEl = mappingModal && (
+    <NameMappingModal
+      open
+      financeType={mappingModal.row.product_type}
+      customerId={mappingModal.row.customer_id}
+      extractedName={mappingModal.row.extracted_name}
+      prefill={mappingModal.prefill ?? null}
+      notice={mappingModal.notice ?? null}
+      onClose={() => setMappingModal(null)}
+      onSaved={() => patchRowSilently(mappingModal.row.uid, { remember_offer: null })}
+    />
+  );
 
   const todayStr = (() => {
     const t = new Date();
@@ -1780,7 +1725,9 @@ export default function OcrPage() {
                                   <div className="flex-1 h-px bg-primary/25" />
                                 </div>
                               )}
-                              <RecordCard row={row} onUpdate={updateRow} onDelete={deleteRow} fetchSuggestions={fetchCustomerSuggestions} />
+                              <RecordCard row={row} onUpdate={updateRow} onDelete={deleteRow} fetchSuggestions={fetchCustomerSuggestions}
+                                fetchMappingSuggestions={fetchMappingSuggestions} onOpenMapping={openMapping}
+                                onRemember={handleRemember} onDismissRemember={dismissRemember} />
                               {showSummary && (
                                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 rounded-xl border border-border/50 text-[10.5px] font-mono">
                                   <span className="text-muted-foreground/50 text-[9.5px] uppercase tracking-wide font-semibold">subtotal</span>
@@ -1807,6 +1754,7 @@ export default function OcrPage() {
         </div>
         <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
           onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
+        {mappingModalEl}
         {showDateConfirm && pendingExtracted.length > 0 && (
           <DateConfirmModal pendingRows={pendingExtracted}
             onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
@@ -2307,10 +2255,22 @@ export default function OcrPage() {
                                   onUpdate={updateRow}
                                   onDelete={deleteRow}
                                   fetchSuggestions={fetchCustomerSuggestions}
+                                  fetchMappingSuggestions={fetchMappingSuggestions}
+                                  onOpenMapping={openMapping}
                                   isActive={activeRowUid === row.uid}
                                   onHoverIn={() => setActiveRowUid(row.uid)}
                                   onHoverOut={() => setActiveRowUid(null)}
                                 />
+                                {row.remember_offer && row.customer_id && (
+                                  <tr>
+                                    <td colSpan={8} className="px-3 pb-2 pt-0.5">
+                                      {/* sticky + bounded width: stays inside the visible part of the table even when it scrolls sideways */}
+                                      <div className="sticky left-3 max-w-[22rem]">
+                                        <RememberBanner row={row} onRemember={handleRemember} onDismiss={dismissRemember} />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
                                 {showSummary && (
                                   <tr className="bg-muted/20 border-b-2 border-primary/15">
                                     <td colSpan={2} className="pl-3 pr-1 py-1.5">
@@ -2594,6 +2554,7 @@ export default function OcrPage() {
       )}
       <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
         onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
+      {mappingModalEl}
       {showDateConfirm && pendingExtracted.length > 0 && (
         <DateConfirmModal pendingRows={pendingExtracted}
           onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />

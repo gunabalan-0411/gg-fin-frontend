@@ -1,4 +1,7 @@
 import axios from "axios";
+import type {
+  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, RememberResult,
+} from "@/types";
 
 // withCredentials sends the httpOnly auth cookie on every request automatically.
 // The Authorization header fallback is kept for dev/API-client use only.
@@ -256,9 +259,34 @@ export const ocrApi = {
   getPage: (sessionId: string, pageIndex: number) =>
     api.get<{ page_image_b64: string }>(`/ocr/page/${sessionId}/${pageIndex}`),
   extract: (body: { session_id: string; page_index: number; model?: string }) =>
-    api.post<{ page_image_b64: string; records: any[] }>("/ocr/extract", body),
+    api.post<{ page_image_b64: string; records: any[]; mapping_warning?: string }>("/ocr/extract", body),
   submit: (body: { records: any[] }) =>
-    api.post<{ submitted: number }>("/ocr/submit", body),
+    api.post<{ submitted: number; mapping_usage?: number }>("/ocr/submit", body),
+};
+
+// ── Alias / AI-mismatch name mappings ─────────────────────────────────────
+export const nameMappingsApi = {
+  /** Popup contents for the customer a row is assigned to. */
+  get: (finance_type: FinanceType, customer_id: number) =>
+    api.get<MappingPopupData>("/name-mappings", { params: { finance_type, customer_id } }),
+  /** Which of these words already belong to ANOTHER active customer? */
+  check: (body: { finance_type: FinanceType; customer_id: number; items: { kind: MappingKind; word: string }[] }) =>
+    api.post<{ conflicts: MappingConflict[] }>("/name-mappings/check", body),
+  /** The popup's Save: replaces the customer's alias / AI-mismatch lists. */
+  save: (body: {
+    finance_type: FinanceType;
+    customer_id: number;
+    aliases: string[];
+    mismatches: string[];
+    resolutions: MappingResolution[];
+  }) => api.put<MappingPopupData>("/name-mappings/customer", body),
+  /** One-click "Remember this" (AI-mismatch only). */
+  remember: (body: { finance_type: FinanceType; customer_id: number; word: string }) =>
+    api.post<RememberResult>("/name-mappings/remember", body),
+  /** Dropdown column 2 for text being typed. */
+  suggest: (finance_type: FinanceType, query: string) =>
+    api.post<{ candidates: MappingCandidate[] }>("/name-mappings/suggest", { finance_type, query }),
+  resync: () => api.post<{ repointed: number; alias_rows: number; mismatch_rows: number }>("/name-mappings/resync"),
 };
 
 // ── Setup (no auth required) ───────────────────────────────────────────────

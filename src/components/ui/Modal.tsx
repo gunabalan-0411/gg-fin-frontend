@@ -10,9 +10,11 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   className?: string;
+  /** Call `event.preventDefault()` to keep the dialog open on Escape (e.g. while an inline edit is active). */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }
 
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+export function Modal({ open, onClose, title, children, className, onEscapeKeyDown }: ModalProps) {
   const isMobile = useIsMobile();
 
   return (
@@ -23,6 +25,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         {isMobile ? (
           /* Mobile: bottom sheet slides up from bottom */
           <Dialog.Content
+            onEscapeKeyDown={onEscapeKeyDown}
             className="fixed bottom-0 left-0 right-0 z-50 w-full rounded-t-2xl border-t border-border bg-card shadow-2xl focus:outline-none"
             style={{ paddingBottom: "max(env(safe-area-inset-bottom), 16px)" }}
           >
@@ -51,6 +54,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
         ) : (
           /* Desktop: centered dialog */
           <Dialog.Content
+            onEscapeKeyDown={onEscapeKeyDown}
             className={cn(
               "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
               "w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl",

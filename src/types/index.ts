@@ -171,3 +171,63 @@ export interface VoiceEntry {
 }
 
 export type ProductType = "edi" | "iop";
+
+// ── Alias / AI-mismatch name mappings (OCR page) ──────────────────────────────
+export type MappingKind = "alias" | "ai_mismatch";
+export type FinanceType = "EDI" | "IOP";
+
+/** Column-2 dropdown candidate: a customer reached through an alias / AI-mismatch word. */
+export interface MappingCandidate {
+  id: number;                 // customer id
+  name: string;               // customer name
+  score: number;              // 0..1 fuzzy score of the extracted text against `matched_word`
+  source: MappingKind;
+  mapping_id: number;
+  matched_word: string;
+  exact: boolean;
+  use_count: number;
+  also: { source: MappingKind; word: string; mapping_id: number }[];
+}
+
+/** Which mapping row a row's customer was picked through (so usage is counted when the row is saved). */
+export interface MappingRef {
+  kind: MappingKind;
+  id: number;
+}
+
+export interface MappingItem {
+  id: number;
+  word: string;
+  use_count: number;
+  last_used_at: string | null;
+  created_at: string | null;
+  stale: boolean;
+}
+
+export interface MappingPopupData {
+  customer: { id: number; name: string; finance_type: FinanceType };
+  aliases: MappingItem[];
+  mismatches: MappingItem[];
+  limits: { alias: number; ai_mismatch: number };
+}
+
+export interface MappingConflict {
+  kind: MappingKind;
+  word: string;
+  customers: { mapping_id: number; customer_id: number; customer_name: string }[];
+}
+
+export type ConflictAction = "keep_both" | "move";
+
+export interface MappingResolution {
+  kind: MappingKind;
+  word: string;
+  action: ConflictAction;
+}
+
+export interface RememberResult {
+  status: "added" | "exists" | "limit_reached" | "conflict";
+  word: string;
+  limit?: number;
+  conflicts?: MappingConflict[];
+}
