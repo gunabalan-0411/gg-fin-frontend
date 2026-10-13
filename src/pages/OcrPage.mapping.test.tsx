@@ -21,11 +21,12 @@ vi.mock("@/services/api", () => {
 });
 
 import toast from "react-hot-toast";
-import { nameMappingsApi, ocrApi } from "@/services/api";
+import { nameMappingsApi, ocrApi, upiApi } from "@/services/api";
 import OcrPage from "./OcrPage";
 
 const ocr = ocrApi as unknown as Record<"upload" | "getPage" | "extract" | "submit", ReturnType<typeof vi.fn>>;
 const nm = nameMappingsApi as unknown as Record<"get" | "check" | "save" | "remember" | "suggest", ReturnType<typeof vi.fn>>;
+const upi = upiApi as unknown as Record<"list" | "fuzzySuggest", ReturnType<typeof vi.fn>>;
 
 const mappedCand = (over: object = {}) => ({
   id: 2, name: "Kannan", score: 1, source: "ai_mismatch", mapping_id: 9, matched_word: "Thirumalay", exact: true,
@@ -221,6 +222,56 @@ describe("EDI / IOP toggle resets everything customer-related", () => {
     await waitFor(() => expect(screen.queryByTestId("match-badge")).toBeNull());
     expect(customerInputs()[0].value).toBe("");
     expect(screen.getAllByTestId("mapping-edit")[0]).toBeDisabled();
+  });
+});
+
+describe("suggestions while typing (score scale)", () => {
+  // /api/upi/fuzzy-suggest returns scores on a 0-100 scale (UpiPage relies on that); the dropdown pill shows round(score x 100)
+  // of a 0-1 value, so the page must divide by 100. Before the fix a 95 showed up as "9500".
+  const live = (rows: object[]) => upi.fuzzySuggest.mockResolvedValue({ data: { data: rows } });
+
+  it("shows the endpoint's 0-100 score as a normal percentage", async () => {
+    live([
+      { customer_id: 1, customer_name: "Selvam", type: "edi", score: 95, balance: 1000 },
+      { customer_id: 2, customer_name: "Kannan", type: "edi", score: 62, balance: 500 },
+    ]);
+    const { user } = await reachReviewStep();
+    await user.click(customerInputs()[2]);
+    await user.type(customerInputs()[2], "x");                                       // live lookup (debounced)
+    await waitFor(() => expect(upi.fuzzySuggest).toHaveBeenCalledWith("Qwertyx"));
+    await waitFor(() =>
+      expect(within(screen.getByTestId("customer-dropdown")).getAllByTestId("fuzzy-option").map((o) => o.textContent))
+        .toEqual(["Selvam95", "Kannan62"]));
+  });
+
+  it("colours the pill by the real score (green >= 90, amber >= 75, red below), like the extract-time list", async () => {
+    live([
+      { customer_id: 1, customer_name: "Strong", type: "edi", score: 95, balance: 1 },
+      { customer_id: 2, customer_name: "Middling", type: "edi", score: 80, balance: 1 },
+      { customer_id: 3, customer_name: "Weak", type: "edi", score: 40, balance: 1 },
+    ]);
+    const { user } = await reachReviewStep();
+    await user.click(customerInputs()[2]);
+    await user.type(customerInputs()[2], "x");
+    await waitFor(() => expect(screen.getAllByTestId("fuzzy-option")).toHaveLength(3));
+    const pill = (name: string) => within(screen.getByText(name).closest("button") as HTMLElement).getByText(/^\d+$/);
+    expect(pill("Strong").className).toMatch(/green/);
+    expect(pill("Middling").className).toMatch(/amber/);
+    expect(pill("Weak").className).toMatch(/red/);                                    // before the fix every typed result was green
+  });
+
+  it("still filters to the row's product and to customers with a balance, and keeps the 80% fallback for a missing score", async () => {
+    live([
+      { customer_id: 1, customer_name: "Edi With Balance", type: "edi", score: 90, balance: 10 },
+      { customer_id: 2, customer_name: "Edi No Balance", type: "edi", score: 99, balance: 0 },
+      { customer_id: 11, customer_name: "Iop Customer", type: "iop", score: 99, balance: 10 },
+      { customer_id: 3, customer_name: "No Score", type: "edi", balance: 10 },
+    ]);
+    const { user } = await reachReviewStep();
+    await user.click(customerInputs()[2]);
+    await user.type(customerInputs()[2], "x");
+    await waitFor(() =>
+      expect(screen.getAllByTestId("fuzzy-option").map((o) => o.textContent)).toEqual(["Edi With Balance90", "No Score80"]));
   });
 });
 

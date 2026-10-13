@@ -1404,7 +1404,8 @@ export default function OcrPage() {
         .map((item: any) => ({
           id: item.customer_id ?? item.id,
           name: item.customer_name ?? item.name ?? "",
-          score: item.score ?? 0.8,
+          // /api/upi/fuzzy-suggest scores are 0–100 (UpiPage relies on that); this dropdown works on 0–1 like /api/ocr/extract
+          score: (item.score ?? 80) / 100,
         }));
     } catch { return []; }
   };
