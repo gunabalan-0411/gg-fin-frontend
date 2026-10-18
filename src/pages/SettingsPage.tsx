@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from "react";
 import type { CSSProperties, ElementType, ChangeEvent, ReactNode } from "react";
-import { useSessionState } from "@/hooks/useSessionState";
-import { useIsMobile } from "@/hooks/useBreakpoint";
+import { useSectionParam } from "@/hooks/useSectionParam";
+import { SETTINGS_SECTIONS, type SettingsSectionId } from "@/components/layout/navConfig";
+import { useIsMobile, useIsTablet } from "@/hooks/useBreakpoint";
 import {
   CloudDownload, CloudUpload, CheckCircle, AlertCircle, RefreshCw,
   Unlink, Upload, HardDriveDownload, HardDriveUpload, HardDrive,
@@ -17,16 +18,11 @@ type RestoreState =
   | { phase: "restoring"; progress: number; message: string }
   | { phase: "done"; message: string }
   | { phase: "error"; message: string };
-type NavSection = "local" | "upi" | "drive" | "device" | "security";
+type NavSection = SettingsSectionId;
 type SyncProgress = { stage: string; total: number; processed: number; imported: number; skipped: number };
 
-const NAV_ITEMS: { id: NavSection; label: string; icon: ElementType; desc: string }[] = [
-  { id: "local",    label: "Local Backup",  icon: HardDrive,   desc: "Export & restore SQL" },
-  { id: "upi",      label: "UPI Import",    icon: Mail,        desc: "Gmail & XLS import" },
-  { id: "drive",    label: "Google Drive",  icon: FolderSync,  desc: "Cloud backup & restore" },
-  { id: "device",   label: "Inference",     icon: Cpu,         desc: "CPU / GPU device" },
-  { id: "security", label: "Security",      icon: Key,         desc: "Change password" },
-];
+// The sections of this page are listed in the left menu (a branch under Settings); the phone tab row below uses the same list.
+const NAV_ITEMS = SETTINGS_SECTIONS;
 
 const monoFont = '"Geist Mono", ui-monospace, monospace';
 
@@ -1077,10 +1073,13 @@ function SecuritySection({ showToast }: { showToast: (msg: string, type: "succes
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useSessionState<NavSection>("settings.activeSection", "local");
+  // The section comes from the URL (?section=drive), chosen in the left menu — this page has no navigation list of its own.
+  const [activeSection, setActiveSection] = useSectionParam(NAV_ITEMS);
   const [toast, setToast] = useState<{ msg: string; type: "success"|"error" }|null>(null);
   const [gStat, setGStat] = useState({ gmailOk:false, driveOk:false, driveCount:0, deviceMode:"cpu" as "cpu"|"cuda", deviceName:"CPU" });
   const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
+  const compact = isMobile || isTablet;      // the menu is only a drawer here, so keep a tab row
 
   const showToast = (msg: string, type: "success"|"error" = "success") => {
     setToast({ msg, type }); setTimeout(() => setToast(null), 4000);
@@ -1147,11 +1146,11 @@ export default function SettingsPage() {
       </div>
 
       {/* Body */}
-      <div style={{ flex:1, display: isMobile ? "flex" : "grid", flexDirection: "column", gridTemplateColumns: isMobile ? undefined : "260px 1fr", overflow:"hidden" }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
-        {/* Nav — sidebar on desktop, horizontal scroll tabs on mobile */}
-        {isMobile ? (
-          <nav style={{ display:"flex", overflowX:"auto", gap:6, padding:"8px 12px", background:"hsl(var(--card))", borderBottom:"1px solid hsl(var(--border))", flexShrink:0 }}>
+        {/* Sections: in the left menu on desktop; a horizontal tab row where the menu is only a drawer (phone, tablet) */}
+        {compact && (
+          <nav data-testid="section-tabs" aria-label="Settings sections" style={{ display:"flex", overflowX:"auto", gap:6, padding:"8px 12px", background:"hsl(var(--card))", borderBottom:"1px solid hsl(var(--border))", flexShrink:0 }}>
             {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
               const isOn = activeSection === id;
               const s = statusFor(id);
@@ -1165,32 +1164,12 @@ export default function SettingsPage() {
               );
             })}
           </nav>
-        ) : (
-          <aside style={{ background:"hsl(var(--card))", borderRight:"1px solid hsl(var(--border))", overflowY:"auto", padding:"16px 12px", display:"flex", flexDirection:"column", gap:4 }}>
-            <h1 style={{ margin:"4px 8px 12px", fontSize:13, fontWeight:500, color:"hsl(var(--muted-foreground))", letterSpacing:".12em", textTransform:"uppercase" }}>Settings</h1>
-            {NAV_ITEMS.map(({ id, label, icon: Icon, desc }) => {
-              const isOn = activeSection === id;
-              const s = statusFor(id);
-              return (
-                <button key={id} onClick={() => setActiveSection(id)}
-                  style={{ display:"grid", gridTemplateColumns:"28px 1fr auto", gap:12, alignItems:"center", padding:"10px 11px", borderRadius:8, textAlign:"left", cursor:"pointer", fontFamily:"inherit", border:`1px solid ${isOn?"hsl(var(--border))":"transparent"}`, background:isOn?"hsl(var(--background))":"transparent", color:isOn?"hsl(var(--foreground))":"hsl(var(--muted-foreground))", boxShadow:isOn?"0 1px 2px rgba(0,0,0,.04)":"none", transition:"background .12s, color .12s" }}>
-                  <IcoWrap size={28} radius={7} variant={isOn?"dark":"default"}>
-                    <Icon size={14}/>
-                  </IcoWrap>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:500, lineHeight:1.2, color:"hsl(var(--foreground))" }}>{label}</div>
-                    <div style={{ fontSize:11, color:"hsl(var(--muted-foreground))", marginTop:1 }}>{desc}</div>
-                  </div>
-                  <span style={{ width:7, height:7, borderRadius:999, background:dotColor(s), flexShrink:0 }}/>
-                </button>
-              );
-            })}
-          </aside>
         )}
 
         {/* Content */}
-        <main style={{ overflowY:"auto", padding: isMobile ? "16px 14px 80px" : "24px 28px 60px", background:"hsl(var(--background))" }}>
+        <main style={{ overflowY:"auto", padding: compact ? "16px 14px 80px" : "24px 28px 60px", background:"hsl(var(--background))" }}>
           <div style={{ maxWidth:760, margin:"0 auto" }}>
+            <h1 className="sr-only">Settings</h1>
             {activeSection === "local" && <LocalBackupSection showToast={showToast}/>}
             {activeSection === "upi" && (
               <UpiImportSection showToast={showToast}

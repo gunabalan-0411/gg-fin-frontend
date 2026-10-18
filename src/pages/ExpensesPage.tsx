@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useSessionState } from "@/hooks/useSessionState";
-import { useIsMobile } from "@/hooks/useBreakpoint";
+import { useSectionParam } from "@/hooks/useSectionParam";
+import { ACCOUNT_SECTIONS, type AccountSectionId } from "@/components/layout/navConfig";
+import { useIsMobile, useIsTablet } from "@/hooks/useBreakpoint";
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Receipt, AlertCircle, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -16,86 +17,52 @@ import { formatCurrency, formatDate } from "@/utils";
 import { cn } from "@/utils";
 import type { Expense } from "@/types";
 
-type Section = "expenses" | "unclaimed" | "defaulted";
+type Section = AccountSectionId;
 
 export default function AccountAdjustmentsPage() {
-  const [section, setSection] = useSessionState<Section>("expenses.section", "expenses");
+  // The section comes from the URL (?section=unclaimed). With the permanent left menu (desktop) it is chosen there: the
+  // sections are a branch under "Account Adjustments", and this page has NO navigation bar of its own. Where the menu is only
+  // a drawer (phone, tablet) a compact tab row is kept so a section is one tap away; it sets the same URL parameter.
+  const [section, setSection] = useSectionParam(ACCOUNT_SECTIONS);
   const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
 
-  if (isMobile) {
-    return (
-      <div className="space-y-4 pb-28">
-        {/* Tab bar */}
-        <div className="flex rounded-xl border border-border overflow-hidden bg-card">
-          {([
-            { key: "expenses",  icon: Receipt,     label: "Expenses"  },
-            { key: "unclaimed", icon: AlertCircle, label: "Unclaimed" },
-            { key: "defaulted", icon: ShieldAlert, label: "Defaulted" },
-          ] as { key: Section; icon: React.ElementType; label: string }[]).map(({ key, icon: Icon, label }) => (
-            <button
-              key={key}
-              onClick={() => setSection(key)}
-              className={cn(
-                "flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold transition-colors",
-                section === key
-                  ? key === "expenses"
-                    ? "bg-foreground/10 text-foreground"
-                    : key === "unclaimed"
-                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                    : "bg-red-500/15 text-red-600 dark:text-red-400"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {section === "expenses"  && <ExpensesSection  isMobile />}
-        {section === "unclaimed" && <UnclaimedBalancesSection isMobile />}
-        {section === "defaulted" && <DefaultedBalancesSection isMobile />}
-      </div>
-    );
-  }
-
-  // ── Desktop layout ──────────────────────────────────────────────────────
-  return (
-    <div className="flex h-full gap-0 -m-6">
-      <aside className="w-52 shrink-0 border-r border-border bg-card flex flex-col py-4 px-2 gap-1">
-        <p className="px-3 pb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Account Adjustments
-        </p>
-        <NavItem active={section === "expenses"}  onClick={() => setSection("expenses")}>
-          <Receipt className="h-4 w-4" /> Add Expense
-        </NavItem>
-        <NavItem active={section === "unclaimed"} onClick={() => setSection("unclaimed")}>
-          <AlertCircle className="h-4 w-4" /> Unclaimed Amount
-        </NavItem>
-        <NavItem active={section === "defaulted"} onClick={() => setSection("defaulted")}>
-          <ShieldAlert className="h-4 w-4" /> Defaulted Amount
-        </NavItem>
-      </aside>
-      <div className="flex-1 overflow-y-auto p-6">
-        {section === "expenses"  && <ExpensesSection />}
-        {section === "unclaimed" && <UnclaimedBalancesSection />}
-        {section === "defaulted" && <DefaultedBalancesSection />}
-      </div>
+  const tabs = (isMobile || isTablet) && (
+    <div data-testid="section-tabs" className="flex rounded-xl border border-border overflow-hidden bg-card">
+      {([
+        { key: "expenses",  icon: Receipt,     label: "Expenses"  },
+        { key: "unclaimed", icon: AlertCircle, label: "Unclaimed" },
+        { key: "defaulted", icon: ShieldAlert, label: "Defaulted" },
+      ] as { key: Section; icon: React.ElementType; label: string }[]).map(({ key, icon: Icon, label }) => (
+        <button
+          key={key}
+          onClick={() => setSection(key)}
+          aria-pressed={section === key}
+          className={cn(
+            "flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px] font-semibold transition-colors",
+            section === key
+              ? key === "expenses"
+                ? "bg-foreground/10 text-foreground"
+                : key === "unclaimed"
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : "bg-red-500/15 text-red-600 dark:text-red-400"
+              : "text-muted-foreground"
+          )}
+        >
+          <Icon className="h-4 w-4" />
+          {label}
+        </button>
+      ))}
     </div>
   );
-}
 
-function NavItem({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium w-full text-left transition-all",
-        active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      )}
-    >
-      {children}
-    </button>
+    <div className={cn(isMobile ? "space-y-4 pb-28" : tabs && "space-y-4")}>
+      {tabs}
+      {section === "expenses"  && <ExpensesSection  isMobile={isMobile} />}
+      {section === "unclaimed" && <UnclaimedBalancesSection isMobile={isMobile} />}
+      {section === "defaulted" && <DefaultedBalancesSection isMobile={isMobile} />}
+    </div>
   );
 }
 

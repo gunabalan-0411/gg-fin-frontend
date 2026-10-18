@@ -1,67 +1,136 @@
-import { NavLink } from "react-router-dom";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { X, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/utils";
 import { useConnection } from "@/hooks/useConnectionStatus";
-import { NAV_GROUPS, SETTINGS_ITEM, type NavItem } from "./navConfig";
+import { NAV_GROUPS, SETTINGS_ITEM, sectionHref, selectedSection, type NavItem } from "./navConfig";
 
-/** One menu row: icon, name, (step number), and a one-line hint. Collapsed: icon only, the tooltip is "Name — hint". */
-function MenuLink({
-  item, collapsed, onClose, dotTitle,
-}: { item: NavItem; collapsed?: boolean; onClose?: () => void; dotTitle?: string | null }) {
+type SectionDots = Record<string, string | null>;   // section id -> why it has a dot (e.g. "Gmail is not connected")
+
+/**
+ * One menu row: icon, name, (step number). Collapsed: icon only, the tooltip is the name.
+ * A page with sections of its own (Account Adjustments, Settings) gets a chevron and a BRANCH under the row — the page has no
+ * navigation bar of its own. The branch of the page you are on is open; the chevron opens / closes any branch.
+ */
+function MenuItem({
+  item, collapsed, onClose, dotTitle, sectionDots,
+}: { item: NavItem; collapsed?: boolean; onClose?: () => void; dotTitle?: string | null; sectionDots?: SectionDots }) {
+  const { pathname, search } = useLocation();
+  const onPage = pathname === item.to;
+  const [manual, setManual] = useState<boolean | null>(null);       // null = follow "am I on this page"
+  const sections = item.sections ?? [];
+  const hasBranch = sections.length > 0 && !collapsed;
+  const open = hasBranch && (manual ?? onPage);
+  const current = sections.length ? selectedSection(sections, search) : null;
+  const slug = item.to.slice(1);
+
   return (
-    <NavLink
-      to={item.to}
-      onClick={onClose}
-      title={collapsed ? `${item.label} — ${item.hint}${dotTitle ? ` (${dotTitle})` : ""}` : undefined}
-      data-testid={`nav-${item.to.slice(1)}`}
-      className={({ isActive }) =>
-        cn(
-          "relative flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-100",
-          collapsed ? "justify-center px-2 py-2.5" : "px-2.5 py-1",
-          isActive
-            ? "bg-card text-foreground shadow-sm"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-        )
-      }
-    >
-      <item.icon className="h-3.5 w-3.5 flex-shrink-0 opacity-80" />
-      {!collapsed && (
-        <>
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="flex items-center gap-1.5 truncate leading-tight">
-              {item.label}
-              {dotTitle && (
+    <div>
+      <div className="relative">
+        <NavLink
+          to={item.to}
+          onClick={onClose}
+          title={collapsed ? (dotTitle ? `${item.label} (${dotTitle})` : item.label) : undefined}
+          data-testid={`nav-${slug}`}
+          className={({ isActive }) =>
+            cn(
+              "relative flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-100",
+              collapsed ? "justify-center px-2 py-2.5" : "px-2.5 py-1.5",
+              hasBranch && "pr-9",
+              // with its branch open, the highlighted row is the section inside it, not the page title
+              isActive && !open
+                ? "bg-card text-foreground shadow-sm"
+                : isActive
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )
+          }
+        >
+          <item.icon className="h-3.5 w-3.5 flex-shrink-0 opacity-80" />
+          {!collapsed && (
+            <>
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+                {item.label}
+                {dotTitle && (
+                  <span
+                    data-testid="settings-dot"
+                    role="img"
+                    aria-label={dotTitle}
+                    title={dotTitle}
+                    className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-500"
+                  />
+                )}
+              </span>
+              {item.step != null && (
                 <span
-                  data-testid="settings-dot"
-                  role="img"
-                  aria-label={dotTitle}
-                  title={dotTitle}
-                  className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-500"
-                />
+                  data-testid="nav-step"
+                  aria-label={`Step ${item.step}`}
+                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-muted font-mono text-[9px] font-bold text-muted-foreground"
+                >
+                  {item.step}
+                </span>
               )}
-            </span>
-            <span className="truncate text-[10.5px] font-normal leading-snug text-muted-foreground/70">{item.hint}</span>
-          </span>
-          {item.step != null && (
-            <span
-              data-testid="nav-step"
-              aria-label={`Step ${item.step}`}
-              className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-muted font-mono text-[9px] font-bold text-muted-foreground"
-            >
-              {item.step}
-            </span>
+            </>
           )}
-        </>
+          {collapsed && dotTitle && (
+            <span
+              data-testid="settings-dot"
+              role="img"
+              aria-label={dotTitle}
+              className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500"
+            />
+          )}
+        </NavLink>
+
+        {hasBranch && (
+          <button
+            type="button"
+            data-testid={`branch-toggle-${slug}`}
+            aria-label={`${open ? "Hide" : "Show"} ${item.label} sections`}
+            aria-expanded={open}
+            aria-controls={`branch-${slug}`}
+            onClick={() => setManual(!open)}
+            className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div
+          id={`branch-${slug}`}
+          role="group"
+          aria-label={`${item.label} sections`}
+          data-testid={`branch-${slug}`}
+          className="ml-[1.15rem] mt-0.5 space-y-0.5 border-l border-border pl-2"
+        >
+          {sections.map((s) => {
+            const active = onPage && current === s.id;
+            const dot = sectionDots?.[s.id];
+            return (
+              <Link
+                key={s.id}
+                to={sectionHref(item, s.id)}
+                onClick={onClose}
+                aria-current={active ? "page" : undefined}
+                data-testid={`section-${slug}-${s.id}`}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1 text-[12.5px] font-medium transition-colors",
+                  active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <s.icon className="h-3 w-3 flex-shrink-0 opacity-70" />
+                <span className="min-w-0 flex-1 truncate">{s.label}</span>
+                {dot && (
+                  <span role="img" aria-label={dot} title={dot} data-testid="section-dot" className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-500" />
+                )}
+              </Link>
+            );
+          })}
+        </div>
       )}
-      {collapsed && dotTitle && (
-        <span
-          data-testid="settings-dot"
-          role="img"
-          aria-label={dotTitle}
-          className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500"
-        />
-      )}
-    </NavLink>
+    </div>
   );
 }
 
@@ -74,11 +143,16 @@ export default function Sidebar({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
-  // A dot on Settings while Gmail or Google Drive is explicitly NOT connected (unknown / still loading = no dot)
+  // A dot on Settings (and on the section that needs it) while Gmail or Google Drive is explicitly NOT connected
+  // (unknown / still loading = no dot)
   const drive = useConnection("drive");
   const gmail = useConnection("gmail");
   const missing = [drive.connected === false && "Google Drive", gmail.connected === false && "Gmail"].filter(Boolean) as string[];
   const settingsDot = missing.length ? `Not connected: ${missing.join(" and ")}` : null;
+  const settingsSectionDots: SectionDots = {
+    upi: gmail.connected === false ? "Gmail is not connected" : null,
+    drive: drive.connected === false ? "Google Drive is not connected" : null,
+  };
 
   return (
     <aside
@@ -139,7 +213,7 @@ export default function Sidebar({
             role="group"
             aria-label={group.heading ?? "Home"}
             data-testid={`nav-group-${group.id}`}
-            className={cn("space-y-0.5", i > 0 && (collapsed ? "mt-2.5 border-t border-border/60 pt-2.5" : "mt-3"))}
+            className={cn("space-y-0.5", i > 0 && (collapsed ? "mt-2.5 border-t border-border/60 pt-2.5" : "mt-3.5"))}
           >
             {group.heading && !collapsed && (
               <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[.1em] text-muted-foreground/60">
@@ -148,15 +222,15 @@ export default function Sidebar({
               </p>
             )}
             {group.items.map((item) => (
-              <MenuLink key={item.to} item={item} collapsed={collapsed} onClose={onClose} />
+              <MenuItem key={item.to} item={item} collapsed={collapsed} onClose={onClose} />
             ))}
           </div>
         ))}
       </nav>
 
-      {/* Settings: pinned below the groups */}
-      <div className="border-t border-border px-2 py-2">
-        <MenuLink item={SETTINGS_ITEM} collapsed={collapsed} onClose={onClose} dotTitle={settingsDot} />
+      {/* Settings: pinned below the groups so it is always reachable; its branch opens under the row and this area scrolls if it is tall */}
+      <div className="border-t border-border px-2 py-2 max-h-[45%] overflow-y-auto">
+        <MenuItem item={SETTINGS_ITEM} collapsed={collapsed} onClose={onClose} dotTitle={settingsDot} sectionDots={settingsSectionDots} />
       </div>
 
       {/* Footer */}
