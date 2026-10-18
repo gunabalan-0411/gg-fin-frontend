@@ -107,6 +107,12 @@ describe("pickPatch", () => {
   it("never touches the extracted text", () => {
     expect("extracted_name" in pickPatch(row(), "Selvam", 1)).toBe(false);
   });
+
+  it("marks a chosen customer as picked by the user (training-data origin), and typing as not picked", () => {
+    expect(pickPatch(row(), "Selvam", 1).picked).toBe(true);
+    expect(pickPatch(row(), "Kannan", 2, { mapping_ref: { kind: "alias", id: 4 }, match_source: "alias" }).picked).toBe(true);
+    expect(pickPatch(row({ picked: true }), "Sel", null).picked).toBe(false);
+  });
 });
 
 describe("clearedCustomer", () => {
@@ -114,7 +120,7 @@ describe("clearedCustomer", () => {
     const a = clearedCustomer();
     expect(a).toEqual({
       customer_name: "", customer_id: null, customer_suggestions: [], mapping_suggestions: [],
-      match_source: null, matched_customer_name: null, mapping_ref: null, remember_offer: null,
+      match_source: null, matched_customer_name: null, mapping_ref: null, remember_offer: null, picked: false,
     });
     expect(clearedCustomer().customer_suggestions).not.toBe(a.customer_suggestions);
     expect("extracted_name" in a).toBe(false);                    // the OCR text is kept

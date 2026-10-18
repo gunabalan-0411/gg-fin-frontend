@@ -13,11 +13,13 @@ import {
   CustomerFormModal, CustomerDetailModal, DeleteConfirmModal,
   CustomerCardMobile, CustomerRow, PAGE_SIZE, SortDir,
 } from "@/pages/CustomersPage";
+import { moveUpiIds, type CustomerSaveOptions } from "@/utils/customerUpiIds";
 import type { EdiCustomer, IopCustomer, ProductType } from "@/types";
 import toast from "react-hot-toast";
 
 type CustAction =
-  | { type: "create"; id: number; product: ProductType; data: object }
+  // upiFrom: the closed account whose UPI ids were moved to this new one ("Use existing UPI ids"), so Undo / Redo can move them back / again
+  | { type: "create"; id: number; product: ProductType; data: object; upiFrom?: number }
   | { type: "update"; id: number; product: ProductType; prev: object; next: object }
   | { type: "delete"; customer: EdiCustomer | IopCustomer; product: ProductType };
 
@@ -72,16 +74,28 @@ export function CustomerStepOverlay({
     setPage(0);
   };
 
-  const handleSave = (formData: object) => {
+  const handleSave = (formData: object, options?: CustomerSaveOptions) => {
     const id = (formData as any).customer_id ?? (editing as EdiCustomer | null)?.customer_id;
+    const upiFrom = options?.reuseUpiIdsFrom;
     if (editing) {
       setUndoStack((p) => [...p.slice(-29), { type: "update", id, product, prev: { ...editing }, next: formData }]);
       setRedoStack([]);
       updateMutation.mutate({ id: (editing as EdiCustomer).customer_id, data: formData });
     } else {
-      setUndoStack((p) => [...p.slice(-29), { type: "create", id, product, data: formData }]);
+      setUndoStack((p) => [...p.slice(-29), { type: "create", id, product, data: formData, upiFrom }]);
       setRedoStack([]);
-      createMutation.mutate(formData);
+      createMutation.mutate(formData, {
+        // "Use existing UPI ids": once the new account exists, the closed account's UPI ids follow it
+        onSuccess: async () => {
+          if (upiFrom == null) return;
+          try {
+            const moved = await moveUpiIds(product, upiFrom, Number(id));
+            if (moved > 0) toast.success(`${moved} UPI id${moved !== 1 ? "s" : ""} moved to the new account`);
+          } catch {
+            toast.error("Account created, but its UPI ids could not be moved");
+          }
+        },
+      });
     }
     setShowForm(false);
     setEditing(null);
@@ -100,6 +114,7 @@ export function CustomerStepOverlay({
   const applyAction = useCallback(async (action: CustAction) => {
     if (action.type === "create") {
       await (action.product === "edi" ? customersApi.createEdi(action.data) : customersApi.createIop(action.data));
+      if (action.upiFrom != null) await moveUpiIds(action.product, action.upiFrom, action.id);      // the UPI ids follow it again
     } else if (action.type === "update") {
       await (action.product === "edi" ? customersApi.updateEdi(action.id, action.next) : customersApi.updateIop(action.id, action.next));
     } else {
@@ -109,6 +124,8 @@ export function CustomerStepOverlay({
 
   const reverseAction = useCallback(async (action: CustAction) => {
     if (action.type === "create") {
+      // the UPI ids go back to the closed account first — deleting the new one would leave them pointing at nothing
+      if (action.upiFrom != null) await moveUpiIds(action.product, action.id, action.upiFrom);
       await (action.product === "edi" ? customersApi.deleteEdi(action.id) : customersApi.deleteIop(action.id));
     } else if (action.type === "update") {
       await (action.product === "edi" ? customersApi.updateEdi(action.id, action.prev) : customersApi.updateIop(action.id, action.prev));

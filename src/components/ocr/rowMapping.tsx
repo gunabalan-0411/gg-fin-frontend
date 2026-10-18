@@ -15,6 +15,8 @@ export interface RowMappingFields {
   matched_customer_name?: string | null;
   mapping_ref?: MappingRef | null;               // set when the customer came from an alias / AI-mismatch row
   remember_offer?: string | null;                // OCR text we offer to remember as an AI-mismatch name
+  picked?: boolean;                              // the user chose the customer in the dropdown (not the automatic match) — training-data `origin`
+  manual?: boolean;                              // the row was added with "Add", not read from the page — training-data `origin`
 }
 
 export type MappableRow = RowMappingFields & {
@@ -33,6 +35,7 @@ export function pickPatch<R extends MappableRow>(row: R, name: string, id: numbe
     match_source: null,
     matched_customer_name: null,
     remember_offer: null,
+    picked: id != null,
     ...pick,
   };
   if (id != null && shouldOfferRemember({
@@ -50,7 +53,7 @@ export function pickPatch<R extends MappableRow>(row: R, name: string, id: numbe
 export function clearedCustomer(): Pick<
   MappableRow,
   "customer_name" | "customer_id" | "customer_suggestions" | "mapping_suggestions" | "match_source"
-  | "matched_customer_name" | "mapping_ref" | "remember_offer"
+  | "matched_customer_name" | "mapping_ref" | "remember_offer" | "picked"
 > {
   return {
     customer_name: "",
@@ -61,6 +64,7 @@ export function clearedCustomer(): Pick<
     matched_customer_name: null,
     mapping_ref: null,
     remember_offer: null,
+    picked: false,
   };
 }
 

@@ -62,7 +62,7 @@ export default function NameMapPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-foreground">Mapping Configs</h1>
+        <h1 className="text-xl font-bold text-foreground">Customer Groupings</h1>
         <p className="text-sm text-muted-foreground">Manage customer name maps, segment maps, and UPI ID mappings</p>
       </div>
 

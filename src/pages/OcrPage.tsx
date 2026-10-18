@@ -16,7 +16,6 @@ import {
   RotateCcw,
   Wifi,
   CheckCircle,
-  Strikethrough,
   Plus,
   ZoomIn,
   ZoomOut,
@@ -28,8 +27,18 @@ import {
   PenLine,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { ocrApi, upiApi, expensesApi, customersApi, nameMappingsApi } from "@/services/api";
+import { ocrApi, upiApi, expensesApi, customersApi, nameMappingsApi, trainingDataApi, type UpiPairing } from "@/services/api";
 import { CustomerStepOverlay } from "@/components/CustomerStepOverlay";
+import { TrainingDataToggle } from "@/components/TrainingDataToggle";
+import { UpiTxnItem } from "@/components/ocr/UpiTxnItem";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { buildOcrTrainingRows, ocrFormData, trainingErrorMessage } from "@/utils/trainingData";
+import { gmailSyncError, gmailSyncOk } from "@/utils/upiSync";
+import {
+  applyPairing, consumedIds, dropPairingsForRow, extractedAmount, isSatisfied, matchLabel, matchTags, reconcile, remainingAmount,
+  removePairing, rowForMappedTxn, type PairKind, type Pairing, type PairingState, type RowSnapshot,
+} from "@/utils/upiPairing";
 import { CustomerCombobox, type ComboboxPick, type Suggestion } from "@/components/ocr/CustomerCombobox";
 import { NameMappingModal } from "@/components/NameMappingModal";
 import {
@@ -205,6 +214,8 @@ function RecordCard({
   onOpenMapping,
   onRemember,
   onDismissRemember,
+  upiArmed,
+  onArmUpi,
 }: {
   row: Row;
   onUpdate: (uid: string, patch: Partial<Row>) => void;
@@ -214,10 +225,13 @@ function RecordCard({
   onOpenMapping?: (row: Row) => void;
   onRemember?: (row: Row) => void;
   onDismissRemember?: (row: Row) => void;
+  upiArmed?: boolean;                      // the highlighted UPI transactions are for this row
+  onArmUpi?: (uid: string) => void;        // start the highlight for this row
 }) {
   return (
-    <div className={`rounded-xl border p-3 space-y-2 ${
-      row.customer_id ? "border-border" : "border-amber-500/30 bg-amber-500/5"
+    <div data-upi-target={upiArmed ? "true" : undefined} className={`rounded-xl border p-3 space-y-2 ${
+      upiArmed ? "border-primary/70 ring-1 ring-primary/50 bg-primary/10"
+      : row.customer_id ? "border-border" : "border-amber-500/30 bg-amber-500/5"
     }`}>
       <div className="flex items-center gap-2">
         <div className={`h-2 w-2 rounded-full flex-shrink-0 ${confidenceDotClass(row.confidence_score)}`}
@@ -266,6 +280,19 @@ function RecordCard({
               )}
             </span>
             {row.is_paid ? "Paid" : "Unpaid"}
+          </button>
+        )}
+        {row.payment_mode === "ONLINE" && !row.is_paid && onArmUpi && (
+          <button
+            data-testid="upi-waiting"
+            onClick={() => onArmUpi(row.uid)}
+            className={`text-xs px-2 py-1 rounded-lg font-semibold border transition-colors ${
+              upiArmed
+                ? "border-primary/60 bg-primary/25 text-foreground"
+                : "border-dashed border-sky-500/40 text-sky-700 hover:bg-sky-500/10 dark:text-sky-400"
+            }`}
+          >
+            {upiArmed ? "Picking UPI…" : "Waiting for UPI"}
           </button>
         )}
         <div className="flex items-center border border-border rounded-lg px-2 py-1 bg-background ml-auto">
@@ -590,7 +617,7 @@ function AddRowModal({
 // ── OcrTableRow (desktop table row) ──────────────────────────────────────────
 function OcrTableRow({
   row, index, onUpdate, onDelete, fetchSuggestions, fetchMappingSuggestions, onOpenMapping,
-  isActive, onHoverIn, onHoverOut,
+  isActive, onHoverIn, onHoverOut, upiArmed, onArmUpi,
 }: {
   row: Row;
   index: number;
@@ -602,11 +629,15 @@ function OcrTableRow({
   isActive?: boolean;
   onHoverIn?: () => void;
   onHoverOut?: () => void;
+  upiArmed?: boolean;                      // the highlighted UPI transactions are for this row
+  onArmUpi?: (uid: string) => void;        // start the highlight for this row
 }) {
   return (
     <tr
+      data-upi-target={upiArmed ? "true" : undefined}
       className={`group border-b border-border/50 transition-colors cursor-default ${
-        isActive ? "bg-primary/10" : !row.customer_id ? "bg-amber-500/5 hover:bg-amber-500/8" : "hover:bg-secondary"
+        upiArmed ? "ring-1 ring-inset ring-primary/70 bg-primary/10"
+        : isActive ? "bg-primary/10" : !row.customer_id ? "bg-amber-500/5 hover:bg-amber-500/8" : "hover:bg-secondary"
       }`}
       onMouseEnter={onHoverIn}
       onMouseLeave={onHoverOut}
@@ -702,6 +733,21 @@ function OcrTableRow({
               )}
             </button>
           )}
+          {row.payment_mode === "ONLINE" && !row.is_paid && onArmUpi && (
+            <button
+              tabIndex={-1}
+              data-testid="upi-waiting"
+              onClick={() => onArmUpi(row.uid)}
+              title="Waiting for a UPI payment — click to highlight the transactions you can pick"
+              className={`whitespace-nowrap rounded-md border px-1.5 py-px text-[9.5px] font-semibold transition-colors ${
+                upiArmed
+                  ? "border-primary/60 bg-primary/25 text-foreground"
+                  : "border-dashed border-sky-500/40 text-sky-700 hover:bg-sky-500/10 dark:text-sky-400"
+              }`}
+            >
+              UPI?
+            </button>
+          )}
         </div>
       </td>
 
@@ -749,7 +795,7 @@ const WF_STEPS: { n: WfStep; label: string; desc: string }[] = [
   { n: 1, label: "Extract",  desc: "Choose page & run OCR" },
   { n: 2, label: "Dates",    desc: "Confirm extracted dates" },
   { n: 3, label: "Review",   desc: "Review & edit rows" },
-  { n: 4, label: "UPI",      desc: "Match & strike UPI" },
+  { n: 4, label: "UPI",      desc: "Match UPI payments" },
   { n: 5, label: "Expense",  desc: "Log daily expenses" },
   { n: 6, label: "Customer", desc: "Add new customers" },
   { n: 7, label: "Submit",   desc: "Final review & submit" },
@@ -879,6 +925,8 @@ function FinalSummaryModal({
   assignedCount,
   unassigned,
   submitting,
+  trainingOn,
+  onTrainingChange,
   onSubmit,
   onClose,
 }: {
@@ -887,6 +935,8 @@ function FinalSummaryModal({
   assignedCount: number;
   unassigned: number;
   submitting: boolean;
+  trainingOn: boolean;
+  onTrainingChange: (on: boolean) => void;
   onSubmit: () => void;
   onClose: () => void;
 }) {
@@ -967,7 +1017,10 @@ function FinalSummaryModal({
           </table>
         </div>
         {/* Footer */}
-        <div className="flex gap-2 px-4 py-4 bg-secondary border-t border-border flex-shrink-0">
+        <div className="flex justify-center px-4 pt-3 bg-secondary border-t border-border flex-shrink-0">
+          <TrainingDataToggle checked={trainingOn} onCheckedChange={onTrainingChange} className="flex-wrap justify-center" />
+        </div>
+        <div className="flex gap-2 px-4 py-4 bg-secondary flex-shrink-0">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
             Close
           </button>
@@ -1028,8 +1081,14 @@ export default function OcrPage() {
   const upiTxns = pageUpiTxns[pageIndex] ?? [];
   const [loadingUpi, setLoadingUpi] = useState(false);
   const [upiExpanded, setUpiExpanded] = useState(true);
-  const [struckUpiIds, setStruckUpiIds] = useState<Set<number>>(new Set());
-  const [appliedUpiTxns, setAppliedUpiTxns] = useState<Map<number, { payment_mode: "CASH" | "ONLINE"; is_paid: boolean; amount: number }>>(new Map());
+  // UPI pairing: a transaction is "struck out" only by being paired with a customer row (no strike-out icon any more).
+  const [pairings, setPairings] = useState<Pairing[]>([]);
+  const [pairingOriginals, setPairingOriginals] = useState<Record<string, RowSnapshot>>({});
+  const [upiTargetUid, setUpiTargetUid] = useState<string | null>(null);   // the row marked paid online the highlighted UPI transactions are for
+  const [remapConfirm, setRemapConfirm] = useState<{ txn: UpiTxn; rowUid: string } | null>(null);
+  const [syncingGmail, setSyncingGmail] = useState(false);
+  // Training data -> Google Drive: ON by default, decided when Submit is pressed; back to ON for every new file
+  const [trainingOn, setTrainingOn] = useState(true);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -1100,24 +1159,16 @@ export default function OcrPage() {
     return () => { if (extractTimerRef.current) clearInterval(extractTimerRef.current); };
   }, []);
 
-  // Auto-trigger Step 5 when all UPI transactions are handled (struck or applied).
-  // Fires on step 3 OR 4 because users often strike UPI without clicking the manual → button.
-  useEffect(() => {
-    if (wfStep === null || wfStep > 4) return;
-    if (loadingUpi) return;
-    if (upiTxns.length === 0) {
-      if (wfStep === 4) wfComplete(4, 5);
-      return;
-    }
-    const handled = upiTxns.filter((t: UpiTxn) => struckUpiIds.has(t.id) || appliedUpiTxns.has(t.id)).length;
-    if (handled >= upiTxns.length) {
-      const t = setTimeout(() => {
-        setWfDone((prev) => new Set([...prev, 3, 4]));
-        setWfStep(5);
-      }, 500);
-      return () => clearTimeout(t);
-    }
-  }, [wfStep, loadingUpi, upiTxns.length, struckUpiIds.size, appliedUpiTxns.size, pageIndex, wfComplete]);
+  // The UPI step never moves on by itself — not when every transaction is paired, not on a day without UPI credits.
+  // The user presses "Continue" (or "Skip remaining & continue") in the UPI panel.
+
+  /** Forget every UPI pairing and the highlight (new file, another page, after Submit). */
+  const resetPairings = useCallback(() => {
+    setPairings([]);
+    setPairingOriginals({});
+    setUpiTargetUid(null);
+    setRemapConfirm(null);
+  }, []);
 
   const processFile = useCallback(async (file: File) => {
     const ext = file.name.toLowerCase().split(".").pop() ?? "";
@@ -1143,8 +1194,8 @@ export default function OcrPage() {
       setPageImageB64(null);
       setPageRows({});
       setPageUpiTxns({});
-      setStruckUpiIds(new Set());
-      setAppliedUpiTxns(new Map());
+      resetPairings();
+      setTrainingOn(true);                                       // a new file starts with "Save data for training" ON
       setWfStep(1);
       setWfDone(new Set());
       setWfSkipped(new Set());
@@ -1155,7 +1206,7 @@ export default function OcrPage() {
       setUploadStage(null);
       setUploadProgress(0);
     }
-  }, []);
+  }, [resetPairings]);
 
   const isImageFile = (f: File) => /\.(jpe?g|png)$/i.test(f.name);
 
@@ -1255,8 +1306,7 @@ export default function OcrPage() {
     const next = pageIndex + dir;
     if (next < 0 || next >= totalPages) return;
     setPageIndex(next);
-    setStruckUpiIds(new Set());
-    setAppliedUpiTxns(new Map());
+    resetPairings();
     setExtractError(null);
     setRowsUndo([]);
     setRowsRedo([]);
@@ -1268,13 +1318,22 @@ export default function OcrPage() {
     setRowsRedo([]);
   }, [rows]);
 
+  /** After the page's own Undo / Redo replaced the rows: keep only the UPI pairings whose row still shows the payment. */
+  const reconcileWith = useCallback((nextRows: Row[]) => {
+    const s = reconcile<Row>({ rows: nextRows, pairings, originals: pairingOriginals });
+    setPairings(s.pairings);
+    setPairingOriginals(s.originals);
+    if (upiTargetUid && !nextRows.some((r) => r.uid === upiTargetUid)) setUpiTargetUid(null);
+  }, [pairings, pairingOriginals, upiTargetUid]);
+
   const undoRows = useCallback(() => {
     if (!rowsUndo.length) return;
     const prev = rowsUndo[rowsUndo.length - 1];
     setRowsRedo((f) => [rows, ...f.slice(0, 29)]);
     setRowsUndo((p) => p.slice(0, -1));
     setRows(prev);
-  }, [rowsUndo, rows, setRows]);
+    reconcileWith(prev);
+  }, [rowsUndo, rows, setRows, reconcileWith]);
 
   const redoRows = useCallback(() => {
     if (!rowsRedo.length) return;
@@ -1282,7 +1341,8 @@ export default function OcrPage() {
     setRowsUndo((p) => [...p.slice(-29), rows]);
     setRowsRedo((f) => f.slice(1));
     setRows(next);
-  }, [rowsRedo, rows, setRows]);
+    reconcileWith(next);
+  }, [rowsRedo, rows, setRows, reconcileWith]);
 
   // Keyboard undo/redo — skip when focus is in an input
   useEffect(() => {
@@ -1297,8 +1357,18 @@ export default function OcrPage() {
   }, [undoRows, redoRows]);
 
   const updateRow = (uid: string, patch: Partial<Row>) => {
+    const before = rows.find((r) => r.uid === uid);
     pushHistory();
     setRows((r) => r.map((row) => (row.uid === uid ? { ...row, ...patch } : row)));
+    // UPI: a customer marked paid ONLINE starts the highlight for that row; switching back to cash ends it
+    if (patch.payment_mode === "ONLINE" && before?.payment_mode !== "ONLINE") setUpiTargetUid(uid);
+    if (patch.payment_mode === "CASH") {
+      if (upiTargetUid === uid) setUpiTargetUid(null);
+      if (pairings.some((p) => p.rowUid === uid)) {                        // its UPI payments are free again
+        setPairings((p) => p.filter((x) => x.rowUid !== uid));
+        setPairingOriginals(({ [uid]: _gone, ...rest }) => rest);
+      }
+    }
   };
 
   /** Row change that is UI bookkeeping only (not an edit the user would want to undo). */
@@ -1348,6 +1418,48 @@ export default function OcrPage() {
   const deleteRow = (uid: string) => {
     pushHistory();
     setRows((r) => r.filter((row) => row.uid !== uid));
+    const s = dropPairingsForRow<Row>({ rows, pairings, originals: pairingOriginals }, uid);   // its UPI transactions become free again
+    setPairings(s.pairings);
+    setPairingOriginals(s.originals);
+    if (upiTargetUid === uid) setUpiTargetUid(null);
+  };
+
+  /** UPI id -> customer mappings for the pairings made on this page. Saved only now, so abandoned / undone pairings leave nothing behind. */
+  const saveUpiPairings = async (submitted: Row[]) => {
+    const list: UpiPairing[] = pairings.flatMap((p) => {
+      if (!p.needsSave) return [];                                          // that UPI id was already mapped to this customer
+      const row = submitted.find((r) => r.uid === p.rowUid);
+      if (!row?.customer_id) return [];
+      return [{
+        txn_id: p.txnId, customer_id: row.customer_id, customer_type: row.product_type.toLowerCase() as "edi" | "iop",
+        customer_name: row.customer_name, replace: p.replace,
+      }];
+    });
+    if (!list.length) return;
+    try {
+      const { data } = await upiApi.applyPairings(list);
+      if (data.skipped?.length) {
+        toast(`${data.skipped.length} UPI id${data.skipped.length !== 1 ? "s were" : " was"} not saved — already mapped to another customer`, { icon: "⚠️" });
+      }
+    } catch {
+      toast.error("Records saved, but the UPI ids could not be saved for future auto-mapping");
+    }
+  };
+
+  /** The page image as shown + the submitted summary table -> Google Drive. The server only relays it; it never stores it. */
+  const uploadOcrTraining = async () => {
+    const trainingRows = buildOcrTrainingRows(rows);
+    if (!trainingRows.length) return;
+    if (!pageImageB64) {
+      toast("Training data skipped — the page image is not loaded", { icon: "⚠️" });
+      return;
+    }
+    try {
+      await trainingDataApi.saveOcr(ocrFormData({ pageImageB64, page: pageIndex + 1, rows: trainingRows }));
+      toast.success("Training data saved to Drive");
+    } catch (err) {
+      toast.error(trainingErrorMessage(err));
+    }
   };
 
   const handleSubmit = async () => {
@@ -1365,12 +1477,14 @@ export default function OcrPage() {
         })),
       });
       toast.success(`${data.submitted} records saved`, { id: tid });
+      // The records are saved. These two follow and can never fail or block the submit.
+      void saveUpiPairings(valid);
+      if (trainingOn) void uploadOcrTraining();
+      resetPairings();
       setRows([]);
       const nextPage = pageIndex + 1;
       if (nextPage < totalPages) {
         setPageIndex(nextPage);
-        setStruckUpiIds(new Set());
-        setAppliedUpiTxns(new Map());
         setWfStep(1);
         setWfDone(new Set());
         setWfSkipped(new Set());
@@ -1388,7 +1502,7 @@ export default function OcrPage() {
   const reset = () => {
     setSessionId(null); setPageImageB64(null); setPageRows({}); setPageUpiTxns({});
     setTotalPages(0); setPageIndex(0); setUploadError(null); setExtractError(null);
-    setStruckUpiIds(new Set()); setAppliedUpiTxns(new Map());
+    resetPairings(); setTrainingOn(true);
     setWfStep(1); setWfDone(new Set()); setWfSkipped(new Set());
   };
 
@@ -1412,7 +1526,7 @@ export default function OcrPage() {
 
   const addManualRow = (rowData: Omit<Row, "uid" | "confidence_score" | "notes" | "customer_suggestions">) => {
     pushHistory();
-    setRows((prev) => [...prev, { ...rowData, uid: mkUid(), confidence_score: 1, notes: "", customer_suggestions: [] }]);
+    setRows((prev) => [...prev, { ...rowData, uid: mkUid(), confidence_score: 1, notes: "", customer_suggestions: [], manual: true }]);
     if (isMobile) setMobileTab("records");
   };
 
@@ -1443,6 +1557,156 @@ export default function OcrPage() {
     if (wfStep === n) return "active";
     return "pending";
   };
+
+  // ── UPI pairing ────────────────────────────────────────────────────────────
+  // (defined before the mobile layout returns: its JSX hands these functions to the list items while rendering)
+  const pairingByTxn = new Map(pairings.map((p) => [p.txnId, p]));
+  const consumedUpi = consumedIds(pairings);
+  const targetRow = upiTargetUid ? rows.find((r) => r.uid === upiTargetUid) ?? null : null;
+  const unpairedUpiCount = upiTxns.filter((t) => !consumedUpi.has(t.id)).length;
+  const rowLabel = (uid: string) => rows.find((r) => r.uid === uid)?.customer_name || "—";
+  const sameCustomer = (txn: UpiTxn, row: Row) =>
+    txn.mapped_customer_id === row.customer_id && (txn.mapped_customer_type ?? "").toLowerCase() === row.product_type.toLowerCase();
+
+  /** Pair a transaction with a row: the row becomes Online + Paid (a second payment the same day is ADDED); the highlight ends once the sheet amount is covered. */
+  const pairTxn = (txn: UpiTxn, rowUid: string, kind: PairKind, replace = false) => {
+    const row = rows.find((r) => r.uid === rowUid);
+    if (!row) return;
+    const needsSave = kind === "click" && !sameCustomer(txn, row);
+    const next = applyPairing<Row>({ rows, pairings, originals: pairingOriginals }, txn, rowUid, { kind, needsSave, replace });
+    if (next.pairings === pairings) return;                                   // that transaction is already used
+    pushHistory();
+    setRows(next.rows);
+    setPairings(next.pairings);
+    setPairingOriginals(next.originals);
+    const after = next.rows.find((r) => r.uid === rowUid)!;
+    toast.success(`Paired ₹${Number(txn.amount).toLocaleString("en-IN")} → ${after.customer_name}`);
+    if (isSatisfied(next.originals, next.pairings, after)) {
+      if (upiTargetUid === rowUid) setUpiTargetUid(null);
+      const sheet = extractedAmount(next.originals, after);
+      if (after.amount > sheet + 0.5) {
+        toast(`UPI total ₹${after.amount.toLocaleString("en-IN")} is more than the sheet's ₹${sheet.toLocaleString("en-IN")}`, { icon: "⚠️" });
+      }
+    }
+  };
+
+  /** Click on a highlighted transaction: pair it with the customer that was marked paid online. */
+  const pickUpiTxn = (txn: UpiTxn) => {
+    if (!targetRow) return;
+    if (!targetRow.customer_id) { toast.error("Pick a customer for this row first"); return; }
+    if (txn.mapped_customer_id != null && !sameCustomer(txn, targetRow)) {      // that UPI id belongs to someone else — ask first
+      setRemapConfirm({ txn, rowUid: targetRow.uid });
+      return;
+    }
+    pairTxn(txn, targetRow.uid, "click");
+  };
+
+  /** The existing "Apply": the UPI id is already mapped to a customer, so its row is known. */
+  const applyUpiTxn = (txn: UpiTxn) => {
+    const row = rowForMappedTxn<Row>(rows, txn, pairings);
+    if (!row) { toast.error(`No row for ${txn.mapped_customer_name} (${(txn.mapped_customer_type ?? "").toUpperCase()})`); return; }
+    pairTxn(txn, row.uid, "apply");
+  };
+
+  const undoUpiTxn = (txn: UpiTxn) => {
+    const pairing = pairings.find((p) => p.txnId === txn.id);
+    if (!pairing) return;
+    const next = removePairing<Row>({ rows, pairings, originals: pairingOriginals }, txn.id);
+    pushHistory();
+    setRows(next.rows);
+    setPairings(next.pairings);
+    setPairingOriginals(next.originals);
+    const row = next.rows.find((r) => r.uid === pairing.rowUid);
+    // the row is waiting for a payment again — bring the highlight back so another one can be picked
+    if (row && row.payment_mode === "ONLINE" && !isSatisfied(next.originals, next.pairings, row)) setUpiTargetUid(row.uid);
+    toast(`Reverted ${row?.customer_name ?? "the row"}`);
+  };
+
+  /** "Skip remaining & continue" / "Continue": the only way the UPI step ends. Switches the highlight off. */
+  const continueFromUpi = () => {
+    setUpiTargetUid(null);
+    setWfDone((prev) => new Set([...prev, 3, 4]));
+    setWfStep(5);
+  };
+
+  /** Start the highlight for a row that is waiting for a UPI payment (the "UPI?" badge). */
+  const armUpi = (uid: string) => setUpiTargetUid(uid);
+
+  /** "Sync Gmail now" in the empty UPI panel: pull the latest credits from Gmail, then reload this page's list. */
+  const syncGmailNow = async () => {
+    setSyncingGmail(true);
+    try {
+      const { data } = await upiApi.gmailSync();
+      toast.success(gmailSyncOk(data));
+      await fetchUpiForDates(allExtractedDates, pageIndex);
+    } catch (err) {
+      toast.error(gmailSyncError(err));
+    } finally {
+      setSyncingGmail(false);
+    }
+  };
+
+  const upiItemProps = (txn: UpiTxn, variant: "desktop" | "mobile") => {
+    const paired = pairingByTxn.get(txn.id);
+    const highlighted = Boolean(targetRow) && !paired;
+    return {
+      txn, variant,
+      paired: paired ? { customerName: rowLabel(paired.rowUid) } : null,
+      highlighted,
+      tag: highlighted && targetRow ? matchLabel(matchTags(txn, targetRow, pairingOriginals, pairings)) : null,
+      canApply: !paired && rowForMappedTxn<Row>(rows, txn, pairings) !== undefined,
+      onPick: pickUpiTxn, onApply: applyUpiTxn, onUndo: undoUpiTxn,
+    };
+  };
+
+  /** Which customer the highlight is for, and how much is still to find. */
+  const upiTargetBanner = targetRow && (
+    <div data-testid="upi-target-banner" className="flex items-center gap-2 border-b border-border/50 bg-primary/10 px-3 py-1.5 text-[11.5px]">
+      <span className="min-w-0 flex-1 truncate text-foreground/80">
+        Pick the UPI payment for{" "}
+        <b className="font-semibold text-foreground">{targetRow.customer_name || "this customer"}</b>
+        {" · "}
+        <span className="font-mono">₹{Math.max(remainingAmount(pairingOriginals, pairings, targetRow), 0).toLocaleString("en-IN")}</span>
+      </span>
+      <button
+        type="button"
+        aria-label="Stop highlighting"
+        title="Stop highlighting"
+        onClick={() => setUpiTargetUid(null)}
+        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+      >×</button>
+    </div>
+  );
+
+  const showUpiContinue = hasSession && !loadingUpi && upiTxns.length > 0 && rows.length > 0 && wfStep !== null && wfStep <= 4;
+  const upiContinueButton = showUpiContinue && (
+    <button
+      data-testid="upi-continue"
+      onClick={continueFromUpi}
+      className="w-full rounded-lg bg-foreground py-1.5 text-[11.5px] font-semibold text-background transition-colors hover:bg-foreground/85"
+    >
+      {unpairedUpiCount > 0 ? `Skip remaining (${unpairedUpiCount}) & continue →` : "Continue to Expenses →"}
+    </button>
+  );
+
+  /** Re-pointing a UPI id that is saved for another customer needs the user's OK first. */
+  const remapModalEl = remapConfirm && (() => {
+    const t = remapConfirm.txn;
+    const row = rows.find((r) => r.uid === remapConfirm.rowUid);
+    return (
+      <Modal open onClose={() => setRemapConfirm(null)} title="Re-point this UPI id?">
+        <p data-testid="remap-text" className="text-sm leading-relaxed text-muted-foreground">
+          The UPI id <span className="font-mono text-foreground">{t.sender_vpa || t.sender_name}</span> is saved for{" "}
+          <span className="font-medium text-foreground">{t.mapped_customer_name}</span> ({(t.mapped_customer_type ?? "").toUpperCase()}).
+          Save it for <span className="font-medium text-foreground">{row?.customer_name}</span> instead? Earlier payments from it stay where they are.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setRemapConfirm(null)}>Cancel</Button>
+          <Button type="button" onClick={() => { pairTxn(t, remapConfirm.rowUid, "click", true); setRemapConfirm(null); }}>Re-point</Button>
+        </div>
+      </Modal>
+    );
+  })();
 
   // ── Upload zone ────────────────────────────────────────────────────────────
   const uploadZone = (() => {
@@ -1505,7 +1769,7 @@ export default function OcrPage() {
   // ── Mobile layout ──────────────────────────────────────────────────────────
   if (isMobile) {
     const noUpiForDay = !loadingUpi && allExtractedDates.length > 0 && upiTxns.length === 0 && rows.length > 0 && wfStep !== null && wfStep <= 4;
-    const skipToExpenses = () => { setWfDone((prev) => new Set([...prev, 3, 4])); setWfStep(5); };
+    const skipToExpenses = continueFromUpi;
 
     const mobileUpiSection = noUpiForDay ? (
       <div className="flex-shrink-0 mt-3 px-0">
@@ -1513,6 +1777,14 @@ export default function OcrPage() {
           <p className="text-[11.5px] text-muted-foreground">
             No UPI credits for {allExtractedDates.length > 1 ? "these dates" : allExtractedDates[0]}.
           </p>
+          <button
+            data-testid="sync-gmail"
+            onClick={syncGmailNow}
+            disabled={syncingGmail}
+            className="w-full py-2 rounded-lg border border-border bg-card text-[12.5px] font-medium text-foreground hover:bg-muted/60 disabled:opacity-60 transition-colors"
+          >
+            {syncingGmail ? "Syncing…" : "Sync Gmail now"}
+          </button>
           <button
             onClick={skipToExpenses}
             className="w-full py-2 rounded-lg bg-foreground text-background text-[12.5px] font-semibold hover:bg-foreground/85 transition-colors"
@@ -1543,6 +1815,7 @@ export default function OcrPage() {
             <RefreshCw className={`h-3.5 w-3.5 ${loadingUpi ? "animate-spin" : ""}`} />
           </button>
         </div>
+        {upiExpanded && upiTargetBanner && <div className="mt-1.5 overflow-hidden rounded-xl border border-border/60">{upiTargetBanner}</div>}
         {upiExpanded && (
           <div className="mt-1.5 max-h-52 overflow-y-auto">
             {loadingUpi ? (
@@ -1563,55 +1836,16 @@ export default function OcrPage() {
                     <span className="text-[9px] font-mono text-muted-foreground/40">{mobileByDate[date].length}</span>
                   </div>
                   <div className="space-y-1 px-0 py-1">
-                    {mobileByDate[date].map((txn) => {
-                      const isMapped = txn.mapped_customer_id != null;
-                      const isStruck = struckUpiIds.has(txn.id);
-                      const isApplied = appliedUpiTxns.has(txn.id);
-                      return (
-                        <div key={txn.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
-                          isStruck ? "opacity-40 bg-muted/40 border-border/40"
-                          : isApplied ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40"
-                          : isMapped ? "bg-primary/8 border-primary/20" : "bg-card border-border/60"
-                        }`}>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium truncate ${isStruck ? "line-through text-muted-foreground" : ""}`}>
-                              {txn.sender_name || txn.sender_vpa || "—"}
-                            </p>
-                            {isMapped && (
-                              <p className={`text-xs flex items-center gap-0.5 mt-0.5 truncate ${isStruck ? "line-through text-muted-foreground/50" : isApplied ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-700 dark:text-emerald-400"}`}>
-                                <CheckCircle className="h-3 w-3 flex-shrink-0" />{txn.mapped_customer_name}
-                              </p>
-                            )}
-                          </div>
-                          <span className={`text-sm font-bold flex-shrink-0 ${isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"}`}>
-                            ₹{Number(txn.amount).toLocaleString("en-IN")}
-                          </span>
-                          {isMapped && !isStruck && (
-                            isApplied ? (
-                              <button onClick={() => undoUpiTxn(txn)}
-                                className="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted-foreground bg-muted/60 hover:bg-muted border border-border/50 transition-colors">
-                                <RotateCcw className="h-2.5 w-2.5" />Undo
-                              </button>
-                            ) : (
-                              <button onClick={() => applyUpiTxn(txn)}
-                                className="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-colors">
-                                <CheckCircle className="h-2.5 w-2.5" />Apply
-                              </button>
-                            )
-                          )}
-                          <button onClick={() => setStruckUpiIds((prev) => { const next = new Set(prev); next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id); return next; })}
-                            className="flex-shrink-0 p-1.5 rounded-lg text-muted-foreground/40 hover:text-muted-foreground hover:bg-secondary transition-colors">
-                            <Strikethrough className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
+                    {mobileByDate[date].map((txn) => (
+                      <UpiTxnItem key={txn.id} {...upiItemProps(txn, "mobile")} />
+                    ))}
                   </div>
                 </React.Fragment>
               ));
             })()}
           </div>
         )}
+        {upiContinueButton && <div className="mt-2">{upiContinueButton}</div>}
       </div>
     ) : null;
 
@@ -1728,7 +1962,8 @@ export default function OcrPage() {
                               )}
                               <RecordCard row={row} onUpdate={updateRow} onDelete={deleteRow} fetchSuggestions={fetchCustomerSuggestions}
                                 fetchMappingSuggestions={fetchMappingSuggestions} onOpenMapping={openMapping}
-                                onRemember={handleRemember} onDismissRemember={dismissRemember} />
+                                onRemember={handleRemember} onDismissRemember={dismissRemember}
+                                upiArmed={upiTargetUid === row.uid} onArmUpi={armUpi} />
                               {showSummary && (
                                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 rounded-xl border border-border/50 text-[10.5px] font-mono">
                                   <span className="text-muted-foreground/50 text-[9.5px] uppercase tracking-wide font-semibold">subtotal</span>
@@ -1746,6 +1981,9 @@ export default function OcrPage() {
                         })}
                       </div>
                     )}
+                    {rows.length > 0 && (
+                      <TrainingDataToggle checked={trainingOn} onCheckedChange={setTrainingOn} className="flex-shrink-0 justify-center flex-wrap pt-2" />
+                    )}
                     {mobileUpiSection}
                   </div>
                 )}
@@ -1756,6 +1994,7 @@ export default function OcrPage() {
         <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
           onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
         {mappingModalEl}
+        {remapModalEl}
         {showDateConfirm && pendingExtracted.length > 0 && (
           <DateConfirmModal pendingRows={pendingExtracted}
             onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
@@ -1783,6 +2022,8 @@ export default function OcrPage() {
             assignedCount={assignedCount}
             unassigned={unassigned}
             submitting={submitting}
+            trainingOn={trainingOn}
+            onTrainingChange={setTrainingOn}
             onSubmit={handleSubmit}
             onClose={() => wfSkipStep(7, null)}
           />
@@ -1790,47 +2031,6 @@ export default function OcrPage() {
       </>
     );
   }
-
-  const applyUpiTxn = (txn: UpiTxn) => {
-    if (!txn.mapped_customer_id || !txn.mapped_customer_type) return;
-    const productType = txn.mapped_customer_type.toUpperCase() as "EDI" | "IOP";
-    const matchIdx = rows.findIndex(
-      (r) => r.customer_id === txn.mapped_customer_id && r.product_type === productType
-    );
-    if (matchIdx === -1) {
-      toast.error(`No row for ${txn.mapped_customer_name} (${productType})`);
-      return;
-    }
-    const orig = {
-      payment_mode: rows[matchIdx].payment_mode,
-      is_paid: rows[matchIdx].is_paid,
-      amount: rows[matchIdx].amount,
-    };
-    setRows((prev) => {
-      const next = [...prev];
-      next[matchIdx] = { ...next[matchIdx], payment_mode: "ONLINE" as const, is_paid: true, amount: Number(txn.amount) };
-      return next;
-    });
-    setAppliedUpiTxns((prev) => { const next = new Map(prev); next.set(txn.id, orig); return next; });
-    toast.success(`Applied ₹${Number(txn.amount).toLocaleString("en-IN")} → ${txn.mapped_customer_name}`);
-  };
-
-  const undoUpiTxn = (txn: UpiTxn) => {
-    if (!txn.mapped_customer_id || !txn.mapped_customer_type) return;
-    const productType = txn.mapped_customer_type.toUpperCase() as "EDI" | "IOP";
-    const matchIdx = rows.findIndex(
-      (r) => r.customer_id === txn.mapped_customer_id && r.product_type === productType
-    );
-    const orig = appliedUpiTxns.get(txn.id);
-    if (matchIdx === -1 || !orig) return;
-    setRows((prev) => {
-      const next = [...prev];
-      next[matchIdx] = { ...next[matchIdx], ...orig };
-      return next;
-    });
-    setAppliedUpiTxns((prev) => { const next = new Map(prev); next.delete(txn.id); return next; });
-    toast(`Reverted ${txn.mapped_customer_name}`);
-  };
 
   // ── Desktop layout ─────────────────────────────────────────────────────────
   // Progress % — uses stored avg time; caps at 95 until response arrives
@@ -1955,7 +2155,7 @@ export default function OcrPage() {
                     )}
                     {status === "active" && step.n === 4 && (
                       <button
-                        onClick={() => wfComplete(4, 5)}
+                        onClick={() => { setUpiTargetUid(null); wfComplete(4, 5); }}
                         title="Proceed to Expense step"
                         className="ml-0.5 px-1.5 py-px rounded text-[9px] font-semibold bg-background/20 hover:bg-background/40 transition-colors"
                       >→</button>
@@ -2261,6 +2461,8 @@ export default function OcrPage() {
                                   isActive={activeRowUid === row.uid}
                                   onHoverIn={() => setActiveRowUid(row.uid)}
                                   onHoverOut={() => setActiveRowUid(null)}
+                                  upiArmed={upiTargetUid === row.uid}
+                                  onArmUpi={armUpi}
                                 />
                                 {row.remember_offer && row.customer_id && (
                                   <tr>
@@ -2380,6 +2582,9 @@ export default function OcrPage() {
               </div>
             )}
 
+            {/* Which customer the highlighted transactions are for */}
+            {upiTargetBanner}
+
             {/* UPI list */}
             <div className="flex-1 overflow-y-auto min-h-0">
               {loadingUpi ? (
@@ -2406,77 +2611,9 @@ export default function OcrPage() {
                         </span>
                         <span className="text-[9.5px] font-mono text-muted-foreground/40">{upiByDate[date].length}</span>
                       </div>
-                      {upiByDate[date].map((txn) => {
-                        const isMapped = txn.mapped_customer_id != null;
-                        const isStruck = struckUpiIds.has(txn.id);
-                        const isApplied = appliedUpiTxns.has(txn.id);
-                        return (
-                          <div
-                            key={txn.id}
-                            className={`flex items-center gap-2 px-4 py-2.5 cursor-default group border-b border-border/30 transition-colors last:border-0 ${
-                              isStruck ? "opacity-40"
-                              : isApplied ? "bg-emerald-50/70 dark:bg-emerald-950/20"
-                              : isMapped ? "hover:bg-primary/10"
-                              : "hover:bg-muted/60"
-                            }`}
-                            style={isMapped && !isStruck && !isApplied ? {
-                              background: "color-mix(in oklab, hsl(var(--primary)) 8%, transparent)"
-                            } : undefined}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-[12.5px] font-medium truncate ${isStruck ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                                {txn.sender_name || txn.sender_vpa || "—"}
-                              </p>
-                              {isMapped ? (
-                                <p className={`text-[10.5px] flex items-center gap-0.5 mt-0.5 truncate ${
-                                  isStruck ? "line-through text-muted-foreground/50"
-                                  : isApplied ? "text-emerald-600 dark:text-emerald-400"
-                                  : "text-emerald-700 dark:text-emerald-400"
-                                }`}>
-                                  <CheckCircle className="h-2.5 w-2.5 flex-shrink-0" />
-                                  {txn.mapped_customer_name}
-                                  {txn.mapped_customer_type && (
-                                    <span className={`ml-1 text-[8.5px] font-bold px-1 py-px rounded uppercase ${
-                                      txn.mapped_customer_type === "edi" ? "bg-blue-500/15 text-blue-700 dark:text-blue-400" : "bg-orange-500/15 text-orange-700 dark:text-orange-400"
-                                    }`}>{txn.mapped_customer_type}</span>
-                                  )}
-                                </p>
-                              ) : (
-                                <p className="text-[10.5px] text-muted-foreground/40 mt-0.5">Unmapped</p>
-                              )}
-                            </div>
-                            <span className={`text-[12.5px] font-semibold font-mono flex-shrink-0 ${
-                              isStruck ? "line-through text-muted-foreground" : "text-emerald-700 dark:text-emerald-400"
-                            }`}>
-                              ₹{Number(txn.amount).toLocaleString("en-IN")}
-                            </span>
-                            {isMapped && !isStruck && (
-                              isApplied ? (
-                                <button
-                                  onClick={() => undoUpiTxn(txn)}
-                                  className="flex-shrink-0 flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium text-muted-foreground bg-muted/80 hover:bg-muted border border-border/60 transition-colors"
-                                >
-                                  <RotateCcw className="h-2.5 w-2.5" />Undo
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => applyUpiTxn(txn)}
-                                  title={`Apply ₹${Number(txn.amount).toLocaleString("en-IN")} as ONLINE + Paid`}
-                                  className="flex-shrink-0 flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-colors opacity-0 group-hover:opacity-100"
-                                >
-                                  <CheckCircle className="h-2.5 w-2.5" />Apply
-                                </button>
-                              )
-                            )}
-                            <button
-                              onClick={() => setStruckUpiIds((prev) => { const next = new Set(prev); next.has(txn.id) ? next.delete(txn.id) : next.add(txn.id); return next; })}
-                              className="flex-shrink-0 p-1 rounded text-muted-foreground/20 hover:text-muted-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
-                            >
-                              <Strikethrough className="h-3 w-3" />
-                            </button>
-                          </div>
-                        );
-                      })}
+                      {upiByDate[date].map((txn) => (
+                        <UpiTxnItem key={txn.id} {...upiItemProps(txn, "desktop")} />
+                      ))}
                     </React.Fragment>
                   ))}
                 </div>
@@ -2490,7 +2627,15 @@ export default function OcrPage() {
                   No UPI credits for {allExtractedDates.length > 1 ? "these dates" : extractedDate}.
                 </p>
                 <button
-                  onClick={() => { setWfDone((prev) => new Set([...prev, 3, 4])); setWfStep(5); }}
+                  data-testid="sync-gmail"
+                  onClick={syncGmailNow}
+                  disabled={syncingGmail}
+                  className="mb-1.5 w-full py-1.5 rounded-lg border border-border bg-card text-[11.5px] font-medium text-foreground hover:bg-muted/60 disabled:opacity-60 transition-colors"
+                >
+                  {syncingGmail ? "Syncing…" : "Sync Gmail now"}
+                </button>
+                <button
+                  onClick={continueFromUpi}
                   className="w-full py-1.5 rounded-lg bg-foreground text-background text-[11.5px] font-semibold hover:bg-foreground/85 transition-colors"
                 >
                   Skip to Expenses →
@@ -2511,6 +2656,7 @@ export default function OcrPage() {
                     ₹{upiTxns.reduce((s, t) => s + Number(t.amount), 0).toLocaleString("en-IN")}
                   </span>
                 </div>
+                {upiContinueButton}
               </div>
             )}
           </div>
@@ -2538,6 +2684,8 @@ export default function OcrPage() {
               })()}
               {!activeRowUid && <span>Hover a row to see details</span>}
               <span style={{ width: 1, height: 14, background: "hsl(var(--border))", display: "inline-block" }} />
+              <TrainingDataToggle checked={trainingOn} onCheckedChange={setTrainingOn} className="font-sans" />
+              <span style={{ width: 1, height: 14, background: "hsl(var(--border))", display: "inline-block" }} />
               <span>p.{pageIndex + 1}</span>
             </>
           ) : (
@@ -2556,6 +2704,7 @@ export default function OcrPage() {
       <AddRowModal open={showAddModal} defaultDate={extractedDate ?? todayStr}
         onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
       {mappingModalEl}
+      {remapModalEl}
       {showDateConfirm && pendingExtracted.length > 0 && (
         <DateConfirmModal pendingRows={pendingExtracted}
           onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
@@ -2583,6 +2732,8 @@ export default function OcrPage() {
           assignedCount={assignedCount}
           unassigned={unassigned}
           submitting={submitting}
+          trainingOn={trainingOn}
+          onTrainingChange={setTrainingOn}
           onSubmit={handleSubmit}
           onClose={() => wfSkipStep(7, null)}
         />

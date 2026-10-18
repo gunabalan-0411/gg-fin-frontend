@@ -13,7 +13,9 @@ vi.mock("@/services/api", () => {
   const ok = (data: unknown = {}) => vi.fn().mockResolvedValue({ data });
   return {
     ocrApi: { upload: vi.fn(), getPage: vi.fn(), extract: vi.fn(), submit: vi.fn() },
-    upiApi: { list: ok({ data: [] }), fuzzySuggest: ok({ data: [] }) },
+    upiApi: { list: ok({ data: [] }), fuzzySuggest: ok({ data: [] }), applyPairings: ok({ paired: 0, skipped: [] }), gmailSync: ok({ imported: 0, skipped: 0, total_found: 0 }) },
+    driveApi: { status: ok({ connected: true, email: "owner@example.com" }) },
+    trainingDataApi: { saveOcr: ok({ saved: 1, folder: "fintech/ocr/x", files: [] }), saveVoice: ok() },
     expensesApi: { create: ok() },
     customersApi: {},
     nameMappingsApi: { get: vi.fn(), check: vi.fn(), save: vi.fn(), remember: vi.fn(), suggest: vi.fn(), resync: vi.fn() },

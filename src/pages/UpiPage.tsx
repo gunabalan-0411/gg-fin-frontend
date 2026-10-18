@@ -7,6 +7,7 @@ import {
   Database, Sparkles, Filter, RefreshCw,
 } from "lucide-react";
 import { upiApi } from "@/services/api";
+import { gmailSyncError, gmailSyncOk } from "@/utils/upiSync";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ export default function UpiPage() {
   const [txns, setTxns] = useState<UpiTxn[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);                  // "Sync Gmail now"
   const [dateFrom, setDateFrom] = useSessionState("upi.dateFrom", "");
   const [dateTo, setDateTo] = useSessionState("upi.dateTo", "");
   const [sourceFilter, setSourceFilter] = useSessionState<"" | "gmail" | "csv">("upi.sourceFilter", "");
@@ -235,6 +237,20 @@ export default function UpiPage() {
       setTotal(data.total);
     } finally {
       setLoading(false);
+    }
+  }
+
+  /** Pull the latest UPI credits from Gmail now (the same sync as Settings → UPI Import), then refresh the list. */
+  async function syncGmailNow() {
+    setSyncing(true);
+    try {
+      const { data } = await upiApi.gmailSync();
+      show(gmailSyncOk(data), "success");
+      await fetchTxns();
+    } catch (err) {
+      show(gmailSyncError(err), "error");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -428,6 +444,17 @@ export default function UpiPage() {
           <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2, fontFamily: "\"Geist Mono\", ui-monospace, monospace" }}>
             {txns.length ? Math.round(gmailCount / txns.length * 100) : 0}% of imports
           </div>
+          <button
+            type="button"
+            data-testid="sync-gmail"
+            onClick={syncGmailNow}
+            disabled={syncing}
+            title="Pull the latest UPI credits from Gmail now"
+            style={{ ...smBtn, marginTop: 8, width: "100%", justifyContent: "center", opacity: syncing ? 0.6 : 1, cursor: syncing ? "default" : "pointer" }}
+          >
+            <RefreshCw size={11} style={syncing ? { animation: "upiSpin 1s linear infinite" } : undefined} />
+            {syncing ? "Syncing…" : "Sync Gmail now"}
+          </button>
         </div>
 
         {/* XLS tile */}

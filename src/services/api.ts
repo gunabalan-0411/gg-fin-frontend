@@ -3,6 +3,14 @@ import type {
   FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, RememberResult,
 } from "@/types";
 
+export interface UpiPairing {
+  txn_id: number;
+  customer_id: number;
+  customer_type: "edi" | "iop";
+  customer_name?: string;
+  replace?: boolean;
+}
+
 // withCredentials sends the httpOnly auth cookie on every request automatically.
 // The Authorization header fallback is kept for dev/API-client use only.
 const api = axios.create({
@@ -207,19 +215,13 @@ export const backupApi = {
     ),
 };
 
-// ── Dataset ───────────────────────────────────────────────────────────────
-export const datasetApi = {
-  saveAudio: (audio: Blob, audioId: string) => {
-    const form = new FormData();
-    form.append("audio", audio, `${audioId}.webm`);
-    form.append("audio_id", audioId);
-    return api.post("/dataset/save-audio", form);
-  },
-  saveMetadata: (records: { audio_id: string; transcription: string; labels: string }[]) =>
-    api.post("/dataset/save-metadata", records),
-  exportZip: (date?: string) => api.get("/dataset/export", { params: date ? { date } : undefined, responseType: "blob" }),
-  clear: () => api.delete("/dataset/clear"),
-  stats: () => api.get<{ audio_files: number; metadata_rows: number }>("/dataset/stats"),
+// ── Training data → Google Drive (OCR page + table, Voice recordings + table) ──
+// The server only relays these to Drive; it never stores them.
+export const trainingDataApi = {
+  saveOcr: (form: FormData) =>
+    api.post<{ saved: number; folder: string; files: string[] }>("/training-data/ocr", form),
+  saveVoice: (form: FormData) =>
+    api.post<{ saved: number; folder: string; files: string[] }>("/training-data/voice", form),
 };
 
 // ── UPI ───────────────────────────────────────────────────────────────────
@@ -237,7 +239,15 @@ export const upiApi = {
   mapCustomer: (id: number, data: { customer_id: number | null; customer_type: string | null }) =>
     api.patch(`/upi/transactions/${id}/map`, null, { params: data }),
   deleteTransaction: (id: number) => api.delete(`/upi/transactions/${id}`),
-  listVpaMappings: () => api.get<{ data: any[] }>("/upi/vpa-mappings"),
+  listVpaMappings: (params?: { customer_id?: number; customer_type?: string }) =>
+    api.get<{ data: any[] }>("/upi/vpa-mappings", { params }),
+  // Pairings made on the OCR page, saved when the page is submitted (UPI id → customer, for future auto-mapping)
+  applyPairings: (pairings: UpiPairing[]) =>
+    api.post<{ paired: number; created: number; replaced: number; unchanged: number; stamped: number; skipped: { txn_id: number; reason: string }[] }>(
+      "/upi/vpa-mappings/apply-pairings", { pairings }),
+  // "Use existing UPI ids": move a closed account's UPI ids to its re-opened copy (and back, for undo)
+  moveVpaMappings: (body: { customer_type: string; from_customer_id: number; to_customer_id: number }) =>
+    api.post<{ moved: number }>("/upi/vpa-mappings/move", body),
   createVpaMapping: (params: { upi_vpa: string; customer_id: number; customer_type: string; customer_name?: string }) =>
     api.post("/upi/vpa-mappings", null, { params }),
   deleteVpaMapping: (id: number) => api.delete(`/upi/vpa-mappings/${id}`),

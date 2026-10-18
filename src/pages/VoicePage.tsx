@@ -2,9 +2,13 @@ import React from "react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Download, Loader2, Wallet, Users, HardDrive, RefreshCw } from "lucide-react";
+import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Loader2, Wallet, Users, HardDrive, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { voiceApi, customersApi, datasetApi, upiApi } from "@/services/api";
+import { voiceApi, customersApi, trainingDataApi, upiApi } from "@/services/api";
+import { TrainingDataToggle } from "@/components/TrainingDataToggle";
+import {
+  buildVoiceTrainingRows, toTrainingAudio, trainingErrorMessage, voiceFormData, type VoiceSpokenEntry,
+} from "@/utils/trainingData";
 import { formatCurrency, toISODate } from "@/utils";
 import toast from "react-hot-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -14,11 +18,8 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import type { ProductType, VoiceEntry, VoiceAlternative, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction } from "@/types";
 
 
-function generateAudioId(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
+// One recording kept in the browser until Submit (training data → Google Drive; the server never stores it).
+type VoiceRecording = { id: string; blob: Blob; transcription: string; entries: Map<number, VoiceSpokenEntry> };
 
 type TableRow = {
   customer_id: number;
@@ -61,9 +62,10 @@ export default function VoicePage() {
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcribeAbortRef = useRef<AbortController | null>(null);
-  const audioIdRef = useRef<string>("");
-  // Each recording produces one entry; labels accumulate as queue resolves
-  const datasetRecordsRef = useRef<{ audioId: string; transcription: string; labels: { name: string; amount: number }[] }[]>([]);
+  // Training data: every recording of this work session + the spoken entries that were resolved to a customer.
+  const [trainingOn, setTrainingOn] = useState(true);               // "Save data for training" — ON by default, decided at Submit
+  const recordingsRef = useRef<VoiceRecording[]>([]);
+  const recordingCounterRef = useRef(0);
   const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -254,6 +256,15 @@ export default function VoicePage() {
     }
   };
 
+  /** Keep a resolved spoken entry for the training data. Keyed by queue position, so stepping back and forth never duplicates it. */
+  const recordSpoken = (index: number, entry: VoiceEntry, customerId: number, customerName: string, origin: "matched" | "picked") => {
+    const rec = recordingsRef.current[recordingsRef.current.length - 1];
+    if (!rec || !customerName) return;
+    rec.entries.set(index, {
+      recordingId: rec.id, spokenName: entry.spoken_name ?? "", amount: entry.amount, customerId, customerName, origin,
+    });
+  };
+
   // Process queue entry whenever the active index changes
   useEffect(() => {
     if (queueIndex < 0 || queueIndex >= queue.length) return;
@@ -273,12 +284,8 @@ export default function VoicePage() {
       });
       setHighlightedCustomerId(entry.customer_id);
       scrollToRow(entry.customer_id);
-      // Collect auto-matched customer name + amount for dataset
-      if (entry.customer_name) {
-        const records = datasetRecordsRef.current;
-        const last = records[records.length - 1];
-        if (last) last.labels.push({ name: entry.customer_name, amount: entry.amount });
-      }
+      // Remember the auto-matched entry (real customer name + spoken word) for the training data
+      recordSpoken(queueIndex, entry, entry.customer_id, entry.customer_name ?? "", "matched");
       // Show circular progress on the row, then advance
       startRowProgress(entry.customer_id, () => {
         setHighlightedCustomerId(null);
@@ -368,7 +375,6 @@ export default function VoicePage() {
       };
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        audioIdRef.current = generateAudioId();
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         await transcribeAudio(blob);
       };
@@ -439,13 +445,9 @@ export default function VoicePage() {
       setQueue(entries);
       setQueueDisplayMode(activeQueueModeRef.current);
       setQueueIndex(0);
-      // Save audio file now; metadata (with final customer names) is saved at submit time
-      if (audioIdRef.current) {
-        datasetApi.saveAudio(blob, audioIdRef.current).catch((err) =>
-          console.error("Dataset audio save failed:", err)
-        );
-        datasetRecordsRef.current.push({ audioId: audioIdRef.current, transcription, labels: [] });
-      }
+      // Keep the recording in memory (nothing is sent anywhere yet); it goes to Drive at Submit if "Save data for training" is ON
+      recordingCounterRef.current += 1;
+      recordingsRef.current.push({ id: `rec${recordingCounterRef.current}`, blob, transcription, entries: new Map() });
     } catch (err: any) {
       if (err?.code !== "ERR_CANCELED") toast.error("Transcription failed");
     } finally {
@@ -483,10 +485,8 @@ export default function VoicePage() {
       };
       return updated;
     });
-    // Collect manually chosen customer name + amount for dataset
-    const records = datasetRecordsRef.current;
-    const last = records[records.length - 1];
-    if (last && alt.name) last.labels.push({ name: alt.name, amount: entry.amount });
+    // Remember the manually chosen customer (real name) + the spoken word for the training data
+    recordSpoken(queueIndex, entry, alt.customer_id, alt.name, "picked");
 
     setHighlightedCustomerId(alt.customer_id);
     scrollToRow(alt.customer_id);
@@ -494,6 +494,24 @@ export default function VoicePage() {
       setHighlightedCustomerId(null);
       setQueueIndex((i) => i + 1);
     }, activeQueueModeRef.current === "online" ? 3000 : 2000);
+  };
+
+  /** Recordings (as 16 kHz mono WAV, encoded here in the browser) + the table -> Drive. The server only relays them. */
+  const uploadTrainingData = async (recordings: VoiceRecording[], finalRows: TableRow[]) => {
+    try {
+      const entries = recordings.flatMap((r) => [...r.entries.values()]);
+      const trainingRows = buildVoiceTrainingRows(entries, finalRows, { date, product });
+      if (trainingRows.length === 0) return;
+      const used = recordings.filter((r) => trainingRows.some((t) => t.source_file === r.id));
+      const files = await Promise.all(used.map(async (r) => {
+        const audio = await toTrainingAudio(r.blob);
+        return { id: r.id, blob: audio.blob, ext: audio.ext, transcription: r.transcription };
+      }));
+      await trainingDataApi.saveVoice(voiceFormData({ recordings: files, rows: trainingRows, folderDate: date }));
+      toast.success("Training data saved to Drive");
+    } catch (err) {
+      toast.error(trainingErrorMessage(err));
+    }
   };
 
   const handleSubmitAll = async () => {
@@ -509,37 +527,11 @@ export default function VoicePage() {
       toast.success(`${nonZero.length} transactions saved`);
       qc.invalidateQueries({ queryKey: ["transactions", product, date] });
 
-      // Save metadata with final customer names, then export zip
-      const pendingRecords = datasetRecordsRef.current;
-      if (pendingRecords.length > 0) {
-        try {
-          await datasetApi.saveMetadata(
-            pendingRecords.map((r) => ({
-              audio_id: r.audioId,
-              transcription: r.transcription,
-              labels: r.labels.map((l) => `${l.name} ${l.amount}`).join(", "),
-            }))
-          );
-          datasetRecordsRef.current = [];
-        } catch (err) {
-          console.error("Dataset metadata save failed:", err);
-        }
-      }
-      try {
-        // Export only this day's recordings (date format: YYYYMMDD)
-        const datePrefix = date.replace(/-/g, "");
-        const zipRes = await datasetApi.exportZip(datePrefix);
-        const url = URL.createObjectURL(new Blob([zipRes.data], { type: "application/zip" }));
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `dataset_${datePrefix}.zip`;
-        a.click();
-        URL.revokeObjectURL(url);
-        // Always clear dataset folder after export
-        await datasetApi.clear();
-      } catch (err) {
-        console.error("Dataset export failed:", err);
-      }
+      // Training data → Google Drive. The records are already saved above, so this never blocks or fails the submit.
+      const recordings = recordingsRef.current;
+      recordingsRef.current = [];
+      if (trainingOn) void uploadTrainingData(recordings, rows);
+      setTrainingOn(true);                                         // a new work session starts with the toggle ON again
     } catch {
       toast.error("Submit failed");
     } finally {
@@ -830,6 +822,7 @@ export default function VoicePage() {
               </button>
             )}
             <button onClick={recording ? stopRecording : startRecording} disabled={loading}
+              aria-label={recording ? "Stop recording" : "Start recording"}
               className={`relative flex h-20 w-20 items-center justify-center rounded-full transition-all shadow-lg ${
                 recording ? "bg-red-500/20 border-2 border-red-500 animate-pulse"
                 : micMode === "online" ? "bg-sky-500/15 border-2 border-sky-500/60"
@@ -1121,7 +1114,8 @@ export default function VoicePage() {
           )}
         </div>
 
-        {/* ── Submit ───────────────────────────────────────────────────────── */}
+        {/* ── Training data toggle + Submit ────────────────────────────────── */}
+        <TrainingDataToggle checked={trainingOn} onCheckedChange={setTrainingOn} className="justify-center flex-wrap" />
         <Button onClick={handleSubmitAll} disabled={submitting || isTableLoading} className="w-full h-12 text-base">
           <Send className="h-4 w-4 mr-2" />
           {submitting ? "Saving…" : `Submit All (${nonZeroCount} with amount)`}
@@ -1330,6 +1324,7 @@ export default function VoicePage() {
               <div className="flex flex-col items-center gap-3 py-2">
                 <div className="relative">
                   <button onClick={recording ? stopRecording : startRecording} disabled={loading}
+                    aria-label={recording ? "Stop recording" : "Start recording"}
                     className={`relative flex items-center justify-center w-[132px] h-[132px] rounded-full border-2 transition-all ${
                       recording
                         ? "border-red-500 bg-red-500/10 shadow-[0_0_0_8px_rgba(239,68,68,0.15),0_18px_50px_rgba(239,68,68,0.18)]"
@@ -1824,9 +1819,7 @@ export default function VoicePage() {
             </span>
           </div>
           <div className="flex-1" />
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-[12.5px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-            <Download className="h-3.5 w-3.5" /> Export dataset
-          </button>
+          <TrainingDataToggle checked={trainingOn} onCheckedChange={setTrainingOn} />
           <button onClick={handleSubmitAll} disabled={submitting || isTableLoading || nonZeroCount === 0}
             className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-foreground text-background text-[12.5px] font-semibold hover:bg-foreground/85 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
             {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}

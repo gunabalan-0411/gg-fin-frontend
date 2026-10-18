@@ -14,7 +14,9 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import {
   useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer,
 } from "@/hooks/useCustomers";
-import { customersApi } from "@/services/api";
+import { customersApi, upiApi } from "@/services/api";
+import { Switch } from "@/components/ui/Switch";
+import { moveUpiIds, type CustomerSaveOptions } from "@/utils/customerUpiIds";
 import toast from "react-hot-toast";
 import { formatCurrency } from "@/utils";
 import type { ProductType, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction } from "@/types";
@@ -23,7 +25,8 @@ export const PAGE_SIZE = 20;
 export type SortDir = "asc" | "desc";
 
 type HistoryEntry =
-  | { type: "create"; formData: object; customerId: number; product: ProductType }
+  // upiFrom: the closed account whose UPI ids were moved to this new one ("Use existing UPI ids"), so Undo / Redo can move them back / again
+  | { type: "create"; formData: object; customerId: number; product: ProductType; upiFrom?: number }
   | { type: "update"; id: number; before: object; after: object; product: ProductType }
   | { type: "delete"; customer: EdiCustomer | IopCustomer; resequence: boolean; product: ProductType };
 
@@ -91,17 +94,31 @@ export default function CustomersPage() {
     deleteMutation.mutate({ id: confirmDelete.id, resequence });
     setConfirmDelete(null);
   };
-  const handleSave = (formData: object) => {
+  const handleSave = (formData: object, options?: CustomerSaveOptions) => {
+    const customerId = Number((formData as Record<string, string>).customer_id);
+    const upiFrom = options?.reuseUpiIdsFrom;
     if (editing) {
       const id = (editing as EdiCustomer).customer_id;
       setUndoStack((prev) => [...prev.slice(-2), { type: "update", id, before: { ...editing }, after: formData, product }]);
     } else {
-      const customerId = Number((formData as Record<string, string>).customer_id);
-      setUndoStack((prev) => [...prev.slice(-2), { type: "create", formData, customerId, product }]);
+      setUndoStack((prev) => [...prev.slice(-2), { type: "create", formData, customerId, product, upiFrom }]);
     }
     setRedoStack([]);
     if (editing) updateMutation.mutate({ id: (editing as EdiCustomer).customer_id, data: formData });
-    else createMutation.mutate(formData);
+    else {
+      createMutation.mutate(formData, {
+        // "Use existing UPI ids": once the new account exists, the closed account's UPI ids follow it
+        onSuccess: async () => {
+          if (upiFrom == null) return;
+          try {
+            const moved = await moveUpiIds(product, upiFrom, customerId);
+            if (moved > 0) toast.success(`${moved} UPI id${moved !== 1 ? "s" : ""} moved to the new account`);
+          } catch {
+            toast.error("Account created, but its UPI ids could not be moved");
+          }
+        },
+      });
+    }
     setShowForm(false);
     setEditing(null);
     setDuplicateSource(null);
@@ -114,6 +131,8 @@ export default function CustomersPage() {
     setRedoStack((prev) => [...prev.slice(-2), entry]);
     try {
       if (entry.type === "create") {
+        // the UPI ids go back to the closed account first — deleting the new one would leave them pointing at nothing
+        if (entry.upiFrom != null) await moveUpiIds(entry.product, entry.customerId, entry.upiFrom);
         const fn = entry.product === "edi" ? customersApi.deleteEdi : customersApi.deleteIop;
         await fn(entry.customerId, false);
       } else if (entry.type === "update") {
@@ -138,6 +157,7 @@ export default function CustomersPage() {
       if (entry.type === "create") {
         const fn = entry.product === "edi" ? customersApi.createEdi : customersApi.createIop;
         await fn(entry.formData);
+        if (entry.upiFrom != null) await moveUpiIds(entry.product, entry.upiFrom, entry.customerId);   // and the UPI ids follow it again
       } else if (entry.type === "update") {
         const fn = entry.product === "edi" ? customersApi.updateEdi : customersApi.updateIop;
         await fn(entry.id, entry.after);
@@ -755,11 +775,12 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
   product: ProductType;
   initial: EdiCustomer | IopCustomer | null;
   duplicateFrom?: EdiCustomer | IopCustomer | null;
-  onSave: (data: object) => void;
+  onSave: (data: object, options?: CustomerSaveOptions) => void;
 }) {
   const [form, setForm] = useState<Record<string, string>>({});
   const [nextId, setNextId] = useState<number | null>(null);
   const [tamilLoading, setTamilLoading] = useState(false);
+  const [reuseUpi, setReuseUpi] = useState(true);                // "Use existing UPI ids" — ON by default
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: _segmentsRaw } = useQuery<{ segment_id: number; name: string }[]>({
@@ -772,6 +793,18 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
     staleTime: 5 * 60 * 1000,
   });
   const segments = Array.isArray(_segmentsRaw) ? _segmentsRaw : [];
+
+  // "Use existing UPI ids": only when a CLOSED account is copied and the copy is saved as OPEN (= the account is re-opened)
+  // and the closed account actually has saved UPI ids.
+  const copyOfClosed = Boolean(duplicateFrom?.is_closed);
+  const { data: closedUpiIds } = useQuery({
+    queryKey: ["vpa-mappings", product, duplicateFrom?.customer_id],
+    queryFn: async () => (await upiApi.listVpaMappings({ customer_id: duplicateFrom!.customer_id, customer_type: product })).data.data,
+    enabled: open && copyOfClosed && !initial,
+  });
+  const upiIdCount = closedUpiIds?.length ?? 0;
+  const formClosed = (form.is_closed ?? String(copyOfClosed)) === "true";   // until the form is prefilled, it is the source's state
+  const showReuseUpi = open && !initial && copyOfClosed && !formClosed && upiIdCount > 0;
 
   useEffect(() => {
     if (open && !initial) {
@@ -797,6 +830,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       setForm({});
       setNextId(null);
     }
+    setReuseUpi(true);                                         // every time the form opens, "Use existing UPI ids" starts ON
   }, [open, initial, duplicateFrom, product]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -857,7 +891,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       if (data[k]) data[k] = Number(data[k]);
     });
     if (data.is_closed !== undefined) data.is_closed = data.is_closed === "true" || data.is_closed === true;
-    onSave(data);
+    onSave(data, showReuseUpi && reuseUpi && duplicateFrom ? { reuseUpiIdsFrom: duplicateFrom.customer_id } : undefined);
   };
 
   const getVal = (key: string) => {
@@ -994,6 +1028,22 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
               </div>
             );
           })()}
+
+          {showReuseUpi && (
+            <div className="col-span-2 pt-1" data-testid="reuse-upi">
+              <label className="flex w-full items-center gap-3 text-left">
+                <Switch checked={reuseUpi} onCheckedChange={setReuseUpi} aria-label="Use existing UPI ids" />
+                <div>
+                  <p className="text-sm font-medium text-foreground leading-none">Use existing UPI ids</p>
+                  <p className="text-xs text-muted-foreground mt-0.5" data-testid="reuse-upi-hint">
+                    {reuseUpi
+                      ? `${upiIdCount} saved UPI id${upiIdCount !== 1 ? "s" : ""} of the closed account will follow this account`
+                      : "The UPI ids stay with the closed account; this account starts with none"}
+                  </p>
+                </div>
+              </label>
+            </div>
+          )}
         </div>
         {field("customer_address", "Address", true)}
         {field("proof_aadhaar", "Aadhaar", true)}
