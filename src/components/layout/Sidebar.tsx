@@ -8,7 +8,7 @@ import { NAV_GROUPS, SETTINGS_ITEM, sectionHref, selectedSection, type NavItem }
 type SectionDots = Record<string, string | null>;   // section id -> why it has a dot (e.g. "Gmail is not connected")
 
 /**
- * One menu row: icon, name, (step number). Collapsed: icon only, the tooltip is the name.
+ * One menu row: icon, name. Collapsed: icon only, the tooltip is the name.
  * A page with sections of its own (Account Adjustments, Settings) gets a chevron and a BRANCH under the row — the page has no
  * navigation bar of its own. The branch of the page you are on is open; the chevron opens / closes any branch.
  */
@@ -61,15 +61,6 @@ function MenuItem({
                   />
                 )}
               </span>
-              {item.step != null && (
-                <span
-                  data-testid="nav-step"
-                  aria-label={`Step ${item.step}`}
-                  className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-muted font-mono text-[9px] font-bold text-muted-foreground"
-                >
-                  {item.step}
-                </span>
-              )}
             </>
           )}
           {collapsed && dotTitle && (

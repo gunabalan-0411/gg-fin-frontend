@@ -23,8 +23,7 @@ export interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  step?: number;              // position in the daily routine; Voice and OCR share a step (do one or the other)
-  sections?: readonly NavSection[];   // the page's own sections, shown as a branch under this item (first = default)
+ sections?: readonly NavSection[];   // the page's own sections, shown as a branch under this item (first = default)
 }
 
 export interface NavGroup {
@@ -72,10 +71,10 @@ export const NAV_GROUPS: NavGroup[] = [
     heading: "Daily work",
     note: "in this order",
     items: [
-      { to: "/daily-print", icon: Printer, label: "Daily Print", step: 1 },
-      { to: "/ocr", icon: ScanText, label: "OCR Entry", step: 2 },
-      { to: "/voice", icon: Mic, label: "Voice Entry", step: 2 },
-      { to: "/transactions", icon: ArrowLeftRight, label: "Collections", step: 3 },
+      { to: "/daily-print", icon: Printer, label: "Daily Print" },
+      { to: "/ocr", icon: ScanText, label: "OCR Entry" },
+      { to: "/voice", icon: Mic, label: "Voice Entry" },
+      { to: "/transactions", icon: ArrowLeftRight, label: "Collections" },
     ],
   },
   {

@@ -67,11 +67,11 @@ describe("left menu — groups and order (MN-01)", () => {
 });
 
 describe("no sub-text under the menu items (SM-01)", () => {
-  it("a row holds only its name (and a step number) — no hint line", () => {
+  it("a row holds only its name — no hint line, no number", () => {
     renderMenu();
     for (const item of ALL_NAV_ITEMS) {
       const link = screen.getByTestId(`nav-${item.to.slice(1)}`);
-      expect(link.textContent).toBe(item.label + (item.step ?? ""));
+      expect(link.textContent).toBe(item.label);
       expect(link.querySelector("span.leading-snug")).toBeNull();
     }
     for (const old of ["Print today's collection sheet", "Match UPI payments to customers", "Name spellings, segments, UPI ids", "Run queries (admin only)"]) {
@@ -105,12 +105,12 @@ describe("every page exactly once, URLs unchanged (MN-02)", () => {
   });
 });
 
-describe("step numbers (MN-03)", () => {
-  it("the daily routine is numbered 1 – 3, with Voice and OCR sharing step 2", () => {
+describe("daily work order, no step numbers (MN-03)", () => {
+  it("lists the daily routine in order and shows no number chips anywhere", () => {
     renderMenu();
-    const steps = [...within(groupEl("daily")).getAllByRole("link")].map((a) => [labelOf(a), a.querySelector('[data-testid="nav-step"]')?.textContent]);
-    expect(steps).toEqual([["Daily Print", "1"], ["OCR Entry", "2"], ["Voice Entry", "2"], ["Collections", "3"]]);
-    expect(screen.getAllByTestId("nav-step")).toHaveLength(4);                           // no other group is numbered
+    expect([...within(groupEl("daily")).getAllByRole("link")].map(labelOf)).toEqual(["Daily Print", "OCR Entry", "Voice Entry", "Collections"]);
+    expect(screen.queryAllByTestId("nav-step")).toHaveLength(0);
+    for (const item of ALL_NAV_ITEMS) expect(item).not.toHaveProperty("step");
   });
 
   it("the page you are on is marked as current", () => {
@@ -329,9 +329,8 @@ describe("mobile drawer and bottom bar (MN-07)", () => {
 });
 
 describe("navConfig", () => {
-  it("only Daily work carries a note and numbers", () => {
+  it("only Daily work carries a note", () => {
     expect(NAV_GROUPS.filter((g) => g.note).map((g) => g.id)).toEqual(["daily"]);
-    expect(NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.step != null).map((i) => i.step)).toEqual([1, 2, 2, 3]);
   });
 
   it("sectionHref and selectedSection agree", () => {
