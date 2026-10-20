@@ -256,3 +256,12 @@ export interface NotePage {
   created_at: string;
   updated_at: string;
 }
+// ── OCR scan animation ─────────────────────────────────────────────────────
+/** Where the ink is on a page (all coordinates in width x height, the size of the analysed image). */
+export interface PageInk {
+  width: number;
+  height: number;
+  mask_png_b64: string;                         // white = ink
+  blobs: [number, number, number, number][];     // [x, y, w, h] per character, ordered by bottom edge
+  coverage: number;
+}

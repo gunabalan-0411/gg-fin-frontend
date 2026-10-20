@@ -41,6 +41,9 @@ import {
 } from "@/utils/upiPairing";
 import { CustomerCombobox, type ComboboxPick, type Suggestion } from "@/components/ocr/CustomerCombobox";
 import { NameMappingModal } from "@/components/NameMappingModal";
+import { ScanOverlay } from "@/components/ocr/ScanOverlay";
+import { usePageInk } from "@/hooks/usePageInk";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
 import {
   clearedCustomer, MappingEditButton, MatchBadge, RememberBanner, pickPatch, type RowMappingFields,
 } from "@/components/ocr/rowMapping";
@@ -1126,6 +1129,17 @@ export default function OcrPage() {
   }, []);
 
   const hasSession = Boolean(sessionId) && !uploadStage;
+
+  // Scan animation over the page while it is being read (instead of a plain progress bar): the server finds the ink (OpenCV), a mint
+  // line sweeps down and each character lights after the line passes it. Without the ink, or with "reduce motion", the plain bar stays.
+  const pageInk = usePageInk(sessionId, pageIndex, hasSession && Boolean(pageImageB64) && !loadingImage);
+  const reducedMotion = useReducedMotion();
+  const [scanOn, setScanOn] = useState(false);
+  useEffect(() => { if (extracting && pageInk) setScanOn(true); }, [extracting, pageInk]);     // only a reading that starts WITH the ink in hand is scanned
+  const scanShown = scanOn && pageInk !== null && !reducedMotion;                              // the one place "reduce motion" is honoured
+  const scanOverlay = scanShown && pageInk
+    ? <ScanOverlay ink={pageInk} active={extracting} onDone={() => setScanOn(false)} />
+    : null;
   const unassigned = rows.filter((r) => !r.customer_id).length;
   const assignedCount = rows.filter((r) => r.customer_id).length;
   const totalAmount = rows.reduce((s, r) => s + (r.amount || 0), 0);
@@ -1938,7 +1952,10 @@ export default function OcrPage() {
                           <Loader2 className="h-8 w-8 animate-spin" /><p className="text-sm">Loading page…</p>
                         </div>
                       ) : pageImageB64 ? (
-                        <img src={`data:image/png;base64,${pageImageB64}`} alt={`Page ${pageIndex + 1}`} className="w-full object-contain" />
+                        <div className="relative">
+                          <img src={`data:image/png;base64,${pageImageB64}`} alt={`Page ${pageIndex + 1}`} className="w-full object-contain" />
+                          {scanOverlay}
+                        </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-3 text-muted-foreground">
                           <ImageIcon className="h-10 w-10 opacity-30" /><p className="text-sm">Page will appear here</p>
@@ -1981,10 +1998,29 @@ export default function OcrPage() {
                       </div>
                     </div>
                     {rows.length === 0 ? (
+                      extracting && pageImageB64 ? (
+                        // reading in progress and the user is on the Records tab: a small preview of the page being scanned
+                        <div data-testid="scan-preview-card" className="rounded-xl border border-border bg-card overflow-hidden">
+                          <div className="flex items-center gap-2 px-3 py-2 bg-secondary border-b border-border text-[12.5px] font-medium">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground flex-shrink-0" />
+                            <span>Reading your page…</span>
+                            <span className="ml-auto font-mono text-[11px] text-muted-foreground tabular-nums">
+                              {(extractElapsed / 1000).toFixed(1)}s{modelAvgMs > 0 && ` / ~${Math.round(modelAvgMs / 1000)}s`}
+                            </span>
+                          </div>
+                          <div className="p-3 bg-muted/20">
+                            <div className="relative mx-auto w-fit bg-white shadow">
+                              <img src={`data:image/png;base64,${pageImageB64}`} alt={`Page ${pageIndex + 1}`} className="block max-h-[46vh] w-auto" />
+                              {scanOverlay}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
                       <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
                         <ClipboardList className="h-10 w-10 opacity-30" />
                         <p className="text-sm">Click "Extract" on the image tab</p>
                       </div>
+                      )
                     ) : (
                       <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
                         {rows.map((row, i) => {
@@ -2300,10 +2336,11 @@ export default function OcrPage() {
                 </div>
               ) : pageImageB64 ? (
                 <div
-                  className="m-6 shadow-2xl rounded-sm overflow-hidden bg-white flex-shrink-0"
+                  className="relative m-6 shadow-2xl rounded-sm overflow-hidden bg-white flex-shrink-0"
                   style={{ transform: `scale(${zoom})`, transformOrigin: "top center", width: 560 }}
                 >
                   <img src={`data:image/png;base64,${pageImageB64}`} alt={`Page ${pageIndex + 1}`} className="w-full" />
+                  {scanOverlay}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-4 py-24 text-muted-foreground">
@@ -2371,8 +2408,13 @@ export default function OcrPage() {
                       </span>
                     </div>
 
-                    {/* Progress bar */}
-                    <div className="px-4 pt-3 pb-2">
+                    {/* The scan over the page replaces the progress bar (the bar stays when the scan cannot be shown) */}
+                    {scanShown ? (
+                      <p data-testid="scan-caption" className="px-4 pt-3 pb-2 text-[11.5px] text-muted-foreground">
+                        Scanning your page — what lights up is being read.
+                      </p>
+                    ) : (
+                    <div data-testid="progress-bar" className="px-4 pt-3 pb-2">
                       <div className="w-full bg-muted rounded-full h-1 overflow-hidden">
                         <div
                           className="h-1 rounded-full transition-[width] duration-200 ease-linear"
@@ -2388,6 +2430,7 @@ export default function OcrPage() {
                         <span className="text-[9.5px] font-mono text-muted-foreground">{Math.round(extractPct)}%</span>
                       </div>
                     </div>
+                    )}
 
                     {/* Skeleton table */}
                     <div className="border-t border-border overflow-auto">

@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, RememberResult,
+  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -268,6 +268,9 @@ export const ocrApi = {
     }),
   getPage: (sessionId: string, pageIndex: number) =>
     api.get<{ page_image_b64: string }>(`/ocr/page/${sessionId}/${pageIndex}`),
+  /** Where the ink is on a page (OpenCV on the server): the ink mask and one box per character, for the scan animation. */
+  pageInk: (sessionId: string, pageIndex: number) =>
+    api.get<PageInk>(`/ocr/page/${sessionId}/${pageIndex}/ink`),
   extract: (body: { session_id: string; page_index: number; model?: string }) =>
     api.post<{ page_image_b64: string; records: any[]; mapping_warning?: string }>("/ocr/extract", body),
   submit: (body: { records: any[] }) =>

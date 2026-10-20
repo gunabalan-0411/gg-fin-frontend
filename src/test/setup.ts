@@ -15,4 +15,7 @@ if (!window.matchMedia) {
   })) as any;
 }
 
+// jsdom has no canvas: getContext answers null quietly (the scan overlay then draws nothing), instead of logging "not implemented"
+if (typeof HTMLCanvasElement !== "undefined") (HTMLCanvasElement.prototype as any).getContext = () => null;
+
 afterEach(() => cleanup());
