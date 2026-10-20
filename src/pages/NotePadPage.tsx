@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { AlertTriangle, Check, Download, Eye, Loader2, Pencil, Plus, Columns2, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Download, Eye, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { MarkdownEditor } from "@/components/notepad/MarkdownEditor";
 import { MarkdownPreview } from "@/components/notepad/MarkdownPreview";
 import { useNoteDraft } from "@/hooks/useNoteDraft";
-import { useIsMobile, useIsTablet } from "@/hooks/useBreakpoint";
 import { notesApi } from "@/services/api";
 import { cn } from "@/utils";
 import { fileNameFor, toggleTask, wordCount } from "@/utils/markdownEdit";
@@ -16,7 +15,7 @@ import type { NotePage, NotePageSummary } from "@/types";
 export const MAX_PAGES = 20;
 export const MAX_BYTES = 200_000;
 
-type View = "edit" | "split" | "preview";
+type View = "edit" | "preview";
 const VIEW_KEY = "gg_notepad_view";
 const PAGE_KEY = "gg_notepad_page";
 
@@ -75,8 +74,7 @@ function PageDraft({ page, view, focusTitle, onSaved, onDelete }: {
     }
   })();
 
-  const showEditor = view !== "preview";
-  const showPreview = view !== "edit";
+  const editing = view === "edit";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -120,14 +118,13 @@ function PageDraft({ page, view, focusTitle, onSaved, onDelete }: {
         </div>
       )}
 
-      <div className={cn(
-        // fills what is left of the window: header bar, tabs, title row and footer are above / below it
-        "grid min-h-[16rem] gap-3",
-        "h-[calc(100dvh-24rem)] md:h-[calc(100dvh-17.5rem)]",
-        showEditor && showPreview ? "grid-cols-2" : "grid-cols-1",
-      )}>
-        {showEditor && <MarkdownEditor value={d.text} onChange={d.setText} className="min-w-0" />}
-        {showPreview && (
+      {/* fills what is left of the window: header bar, tabs, title row and footer are above / below it */}
+      <div className="grid h-[calc(100dvh-24rem)] min-h-[16rem] grid-cols-1 md:h-[calc(100dvh-17.5rem)]">
+        {/* the editor stays mounted (just hidden) while previewing, so the caret, scroll position and Undo history survive the switch */}
+        <div hidden={!editing} className={cn("min-h-0 min-w-0", !editing && "hidden")}>
+          <MarkdownEditor value={d.text} onChange={d.setText} className="h-full" />
+        </div>
+        {!editing && (
           <div className="min-h-0 min-w-0 overflow-y-auto rounded-xl border border-border bg-card p-4">
             <MarkdownPreview source={d.text} onToggleTask={(n) => d.setText(toggleTask(d.text, n))} />
           </div>
@@ -166,9 +163,6 @@ function PageLoader({ id, view, focusTitle, onSaved, onDelete }: {
 
 export default function NotePadPage() {
   const qc = useQueryClient();
-  const isMobile = useIsMobile();
-  const isTablet = useIsTablet();
-  const isCompact = isMobile || isTablet;
   const list = useQuery({ queryKey: ["notes"], queryFn: async () => (await notesApi.list()).data, refetchOnWindowFocus: false });
   const pages = list.data ?? [];
 
@@ -176,14 +170,11 @@ export default function NotePadPage() {
     const n = Number(recall(PAGE_KEY));
     return Number.isInteger(n) && n > 0 ? n : null;
   });
-  const [view, setView] = useState<View>(() => {
-    const v = recall(VIEW_KEY);
-    return v === "edit" || v === "split" || v === "preview" ? v : "split";
-  });
+  // one view at a time; opens as Edit (an older "side by side" choice stored on this device also opens as Edit)
+  const [view, setView] = useState<View>(() => (recall(VIEW_KEY) === "preview" ? "preview" : "edit"));
   const [focusTitleFor, setFocusTitleFor] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const effectiveView: View = isCompact && view === "split" ? "edit" : view;       // no room for two panes on a phone / tablet
   const activeId = pages.find((p) => p.id === wantedId)?.id ?? pages[0]?.id ?? null;
   const active = pages.find((p) => p.id === activeId);
 
@@ -261,26 +252,23 @@ export default function NotePadPage() {
         </div>
 
         {active && (
+          // Edit | Preview: the page shows one of them; the other button switches
           <div role="group" aria-label="View" className="flex flex-shrink-0 items-center rounded-lg border border-border bg-card p-0.5">
-            {([
-              ["edit", "Edit", Pencil],
-              ...(isCompact ? [] : [["split", "Edit and preview side by side", Columns2] as const]),
-              ["preview", "Preview", Eye],
-            ] as const).map(([v, label, Icon]) => (
+            {([["edit", "Edit", Pencil], ["preview", "Preview", Eye]] as const).map(([v, label, Icon]) => (
               <button
                 key={v}
                 type="button"
-                aria-label={label}
-                title={label}
-                aria-pressed={effectiveView === v}
+                title={v === "edit" ? "Edit the text" : "See how it will look"}
+                aria-pressed={view === v}
                 data-testid={`view-${v}`}
                 onClick={() => chooseView(v)}
                 className={cn(
-                  "flex h-7 w-8 items-center justify-center rounded-md transition-colors",
-                  effectiveView === v ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+                  view === v ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
+                {label}
               </button>
             ))}
           </div>
@@ -297,7 +285,7 @@ export default function NotePadPage() {
         <PageLoader
           key={active.id}
           id={active.id}
-          view={effectiveView}
+          view={view}
           focusTitle={focusTitleFor === active.id}
           onSaved={onSaved}
           onDelete={() => setConfirmDelete(true)}

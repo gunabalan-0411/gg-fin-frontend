@@ -477,60 +477,113 @@ describe("deleting a page (NP-06)", () => {
 });
 
 // ── NP-07: views and preview ─────────────────────────────────────────────────────────────────────────────
-describe("edit / preview / side by side (NP-07)", () => {
-  it("desktop starts side by side: editor and preview together, the preview following the text", async () => {
+describe("Edit | Preview toggle (NP-07)", () => {
+  type U = ReturnType<typeof userEvent.setup>;
+  const showPreview = (user: U) => user.click(screen.getByTestId("view-preview"));
+  /** the editor is only hidden while previewing (kept mounted), so ask for it explicitly */
+  const hiddenEditor = () => screen.getByRole("textbox", { name: "Markdown text", hidden: true }) as HTMLTextAreaElement;
+
+  it("opens on Edit: only the text editor, with an Edit | Preview toggle (no side-by-side)", async () => {
+    h.add("Doc", "# Hello");
+    mount();
+    await open();
+    expect(editor()).toBeInTheDocument();
+    expect(screen.queryByTestId("md-preview")).toBeNull();
+    expect(screen.getByTestId("view-edit")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("view-preview")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("view-edit")).toHaveTextContent("Edit");
+    expect(screen.getByTestId("view-preview")).toHaveTextContent("Preview");
+    expect(screen.queryByTestId("view-split")).toBeNull();
+  });
+
+  it("the button switches to the preview and back: one at a time, never both", async () => {
     h.add("Doc", "# Hello\n\nsome **bold** text");
     const { user } = mount();
     await open();
-    expect(editor()).toBeInTheDocument();
-    const preview = within(screen.getByTestId("md-preview"));
-    expect(preview.getByRole("heading", { level: 1, name: "Hello" })).toBeInTheDocument();
+    await showPreview(user);
+    expect(screen.getByTestId("view-preview")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { level: 1, name: "Hello" })).toBeInTheDocument();
     expect(screen.getByTestId("md-preview").querySelector("strong")).toHaveTextContent("bold");
-    await user.type(editor(), "\n\n## Later");
-    expect(preview.getByRole("heading", { level: 2, name: "Later" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Markdown text" })).toBeNull();          // the editor is out of the way
+    expect(screen.queryByRole("toolbar", { name: "Formatting" })).toBeNull();
+
+    await user.click(screen.getByTestId("view-edit"));
+    expect(editor()).toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
+    expect(screen.queryByTestId("md-preview")).toBeNull();
+    expect(screen.getByTestId("view-edit")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("Edit shows only the editor, Preview only the rendering, and the choice is remembered", async () => {
+  it("what was typed shows in the preview, and is still there (same editor, same text) when switching back", async () => {
+    h.add("Doc", "start");
+    const { user } = mount();
+    await open();
+    const before = editor();
+    await user.type(editor(), "\n\n## Later");
+    await showPreview(user);
+    expect(screen.getByRole("heading", { level: 2, name: "Later" })).toBeInTheDocument();
+    await user.click(screen.getByTestId("view-edit"));
+    expect(editor()).toBe(before);                                            // kept mounted: caret, scroll and Undo history survive
+    expect(editor()).toHaveValue("start\n\n## Later");
+  });
+
+  it("autosave keeps running while previewing", async () => {
+    h.add("Doc", "a");
+    const { user } = mount();
+    await open();
+    await user.type(editor(), "b");
+    await showPreview(user);
+    await settle();
+    expect(h.db.pages[0].content).toBe("ab");
+    expect(status()).toMatch(/Saved/);
+  });
+
+  it("the choice is remembered on this device", async () => {
     h.add("Doc", "# Hello");
     const first = mount();
     await open();
-    await first.user.click(screen.getByTestId("view-edit"));
-    expect(screen.queryByTestId("md-preview")).toBeNull();
-    expect(editor()).toBeInTheDocument();
-    await first.user.click(screen.getByTestId("view-preview"));
-    expect(screen.queryByRole("textbox", { name: "Markdown text" })).toBeNull();
-    expect(screen.getByTestId("md-preview")).toBeInTheDocument();
-    expect(screen.getByTestId("view-preview")).toHaveAttribute("aria-pressed", "true");
+    await showPreview(first.user);
     expect(localStorage.getItem("gg_notepad_view")).toBe("preview");
     first.unmount();
 
-    mount();
+    mount();                                                                  // a later visit opens on Preview
     await screen.findByTestId("md-preview");
+    expect(screen.getByTestId("view-preview")).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("textbox", { name: "Markdown text" })).toBeNull();
   });
 
-  it("a phone has no side-by-side button, and a stored 'side by side' choice opens as Edit", async () => {
-    screenOf("phone");
+  it("an older stored 'side by side' choice opens as Edit", async () => {
     localStorage.setItem("gg_notepad_view", "split");
     h.add("Doc", "text");
     mount();
     await open();
-    expect(screen.queryByTestId("view-split")).toBeNull();
     expect(screen.getByTestId("view-edit")).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByTestId("md-preview")).toBeNull();
   });
 
+  it("the same toggle is there on a phone", async () => {
+    screenOf("phone");
+    h.add("Doc", "# Hello");
+    const { user } = mount();
+    await open();
+    expect(screen.getByTestId("view-edit")).toHaveAttribute("aria-pressed", "true");
+    await showPreview(user);
+    expect(screen.getByRole("heading", { level: 1, name: "Hello" })).toBeInTheDocument();
+  });
+
   it("an empty page previews as a hint, not as a blank box", async () => {
     h.add("Empty", "");
-    mount();
+    const { user } = mount();
     await open();
+    await showPreview(user);
     expect(screen.getByTestId("md-preview")).toHaveTextContent("Nothing to preview yet");
   });
 
   it("renders tables, lists, quotes, code and strikethrough (GitHub-style Markdown)", async () => {
     h.add("Rich", "| a | b |\n|---|---|\n| 1 | 2 |\n\n- one\n- two\n\n1. first\n\n> quote\n\n`code` and ~~gone~~\n\n```\nblock\n```");
-    mount();
+    const { user } = mount();
     await open();
+    await showPreview(user);
     const p = screen.getByTestId("md-preview");
     expect(p.querySelector("table")).not.toBeNull();
     expect(p.querySelectorAll("th")).toHaveLength(2);
@@ -543,8 +596,9 @@ describe("edit / preview / side by side (NP-07)", () => {
 
   it("pasted HTML and scripts are shown as plain text, never run; javascript: links are not links", async () => {
     h.add("Evil", "<script>window.__pwned = 1</script>\n\n<img src=x onerror=\"window.__pwned = 1\">\n\n[click](javascript:window.__pwned=1)\n\n[ok](https://example.com)");
-    mount();
+    const { user } = mount();
     await open();
+    await showPreview(user);
     const p = screen.getByTestId("md-preview");
     expect(p.querySelector("script")).toBeNull();
     expect(p.querySelector("img")).toBeNull();
@@ -560,36 +614,38 @@ describe("edit / preview / side by side (NP-07)", () => {
     h.add("List", "- [ ] milk\n- [x] eggs\n\n```\n- [ ] not a task\n```\n\n- [ ] bread");
     const { user } = mount();
     await open();
+    await showPreview(user);
     const boxes = within(screen.getByTestId("md-preview")).getAllByRole("checkbox");
     expect(boxes).toHaveLength(3);
     expect(boxes.map((b) => (b as HTMLInputElement).checked)).toEqual([false, true, false]);
     await user.click(boxes[2]);                                               // bread — the third REAL task, not the one in the code block
-    expect(editor()).toHaveValue("- [ ] milk\n- [x] eggs\n\n```\n- [ ] not a task\n```\n\n- [x] bread");
+    expect(hiddenEditor()).toHaveValue("- [ ] milk\n- [x] eggs\n\n```\n- [ ] not a task\n```\n\n- [x] bread");
     await settle();
     expect(h.db.pages[0].content).toContain("- [x] bread");
     await user.click(within(screen.getByTestId("md-preview")).getAllByRole("checkbox")[1]);   // untick eggs
-    expect(editor().value.startsWith("- [ ] milk\n- [ ] eggs")).toBe(true);
+    expect(hiddenEditor().value.startsWith("- [ ] milk\n- [ ] eggs")).toBe(true);
   });
 
   it("ticking works in React StrictMode too (the app renders everything twice in development)", async () => {
     h.add("List", "- [ ] one\n- [ ] two\n- [ ] three");
     const { user } = mount({ strict: true });
     await open();
+    await showPreview(user);
     const boxes = within(screen.getByTestId("md-preview")).getAllByRole("checkbox");
     await user.click(boxes[1]);
-    expect(editor()).toHaveValue("- [ ] one\n- [x] two\n- [ ] three");
+    expect(hiddenEditor()).toHaveValue("- [ ] one\n- [x] two\n- [ ] three");
     await user.click(within(screen.getByTestId("md-preview")).getAllByRole("checkbox")[2]);
-    expect(editor()).toHaveValue("- [ ] one\n- [x] two\n- [x] three");
+    expect(hiddenEditor()).toHaveValue("- [ ] one\n- [x] two\n- [x] three");
   });
 
   it("the checklist boxes in the preview can be clicked (they are not read-only)", async () => {
     h.add("List", "- [ ] a");
-    mount();
+    const { user } = mount();
     await open();
+    await showPreview(user);
     expect(within(screen.getByTestId("md-preview")).getByRole("checkbox")).toBeEnabled();
   });
 });
-
 // ── NP-08: the editor ────────────────────────────────────────────────────────────────────────────────────
 describe("toolbar, shortcuts and lists (NP-08)", () => {
   const select = (from: number, to: number) => { const el = editor(); el.focus(); el.setSelectionRange(from, to); };
@@ -648,6 +704,7 @@ describe("toolbar, shortcuts and lists (NP-08)", () => {
     await user.click(screen.getByTestId("tb-table"));
     await flushTimers();
     expect(editor().value).toContain("intro\n\n| Column 1 | Column 2 | Column 3 |");
+    await user.click(screen.getByTestId("view-preview"));
     expect(within(screen.getByTestId("md-preview")).getByRole("table")).toBeInTheDocument();
   });
 
