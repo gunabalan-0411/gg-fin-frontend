@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPairing, consumedIds, ddmmyyyyToIso, dropPairingsForRow, extractedAmount, findVpaOwner, isSatisfied, matchLabel, matchTags, namesMatch,
+  applyPairing, consumedIds, ddmmyyyyToIso, dropPairingsForRow, extractedAmount, findVpaOwner, isSatisfied, matchLabel, matchTags, namesMatch, planAutoPairings,
   pairedTotal, reconcile, remainingAmount, removePairing, rowForMappedTxn,
   type PairableRow, type PairingState, type UpiTxnLike,
 } from "./upiPairing";
@@ -235,5 +235,80 @@ describe("findVpaOwner — who already owns the UPI id (clash caught while pairi
 
   it("a transaction without a UPI id can only clash through its own mapping", () => {
     expect(owner(txn({ sender_vpa: null }), row(), { saved: [{ upi_vpa: "", customer_id: 7, customer_type: "edi" }] })).toBeNull();
+  });
+});
+
+describe("planAutoPairings — mapped payments that apply themselves (AU-01 … AU-04, AU-06)", () => {
+  const mapped = (over: Partial<UpiTxnLike> = {}) =>
+    txn({ amount: "500", mapped_customer_id: 1, mapped_customer_type: "edi", mapped_customer_name: "Selvam", ...over });
+  const plan = (rows: PairableRow[], txns: UpiTxnLike[], skip: number[] = [], pairings: PairingState["pairings"] = []) =>
+    planAutoPairings({ rows, pairings, originals: {} }, txns, new Set(skip)).map((p) => [p.txn.id, p.rowUid]);
+
+  it("applies a payment mapped to the row's customer: same product, same day, same amount", () => {
+    expect(plan([row({ payment_mode: "ONLINE" })], [mapped()])).toEqual([[10, "r1"]]);
+  });
+
+  it("does not need the name: only the mapping counts", () => {
+    expect(plan([row({ customer_name: "Totally Different", payment_mode: "ONLINE" })], [mapped({ sender_name: "SOMEONE" })])).toEqual([[10, "r1"]]);
+  });
+
+  it("the amount has to match the sheet (within 50 paise); otherwise it stays manual", () => {
+    expect(plan([row()], [mapped({ amount: "499.6" })])).toEqual([[10, "r1"]]);
+    expect(plan([row()], [mapped({ amount: "320" })])).toEqual([]);
+    expect(plan([row()], [mapped({ amount: "5000" })])).toEqual([]);
+  });
+
+  it("only on the day of the row's collection date", () => {
+    expect(plan([row()], [mapped({ transaction_date: "2026-10-16" })])).toEqual([]);
+    expect(plan([row({ collection_date: "18-10-2026" })], [mapped()])).toEqual([]);
+  });
+
+  it("not for payments that are unmapped, or mapped to another customer / product", () => {
+    expect(plan([row()], [txn({ amount: "500" })])).toEqual([]);                                   // unmapped
+    expect(plan([row()], [mapped({ mapped_customer_id: 2 })])).toEqual([]);                        // someone else
+    expect(plan([row()], [mapped({ mapped_customer_type: "iop" })])).toEqual([]);                  // same id, other product
+    expect(plan([row({ product_type: "IOP" })], [mapped()])).toEqual([]);
+    expect(plan([row({ customer_id: null })], [mapped()])).toEqual([]);                            // the row has no customer yet
+  });
+
+  it("a Cash row is switched too when the customer has no GPay-marked row", () => {
+    expect(plan([row({ payment_mode: "CASH", is_paid: true })], [mapped()])).toEqual([[10, "r1"]]);
+  });
+
+  it("a customer with a GPay-marked row: only that row is a candidate, even when a Cash row has the amount", () => {
+    const rows = [row({ uid: "cash", payment_mode: "CASH", amount: 500 }), row({ uid: "gpay", payment_mode: "ONLINE", amount: 500 })];
+    expect(plan(rows, [mapped()])).toEqual([[10, "gpay"]]);                                        // the GPay row, not the first row
+    const other = [row({ uid: "cash", payment_mode: "CASH", amount: 500 }), row({ uid: "gpay", payment_mode: "ONLINE", amount: 300 })];
+    expect(plan(other, [mapped()])).toEqual([]);                                                   // the GPay row's amount differs: leave it to the user
+  });
+
+  it("each row takes one payment: a second payment for the same row stays manual", () => {
+    const rows = [row({ payment_mode: "ONLINE" })];
+    expect(plan(rows, [mapped({ id: 10 }), mapped({ id: 11 })])).toEqual([[10, "r1"]]);
+    const two = [row({ uid: "a", payment_mode: "ONLINE" }), row({ uid: "b", payment_mode: "ONLINE" })];
+    expect(plan(two, [mapped({ id: 10 }), mapped({ id: 11 })])).toEqual([[10, "a"], [11, "b"]]);   // two GPay rows, two payments
+  });
+
+  it("never plans a payment that is already used, already auto-applied once (an Undo sticks) or on a row that already has a payment", () => {
+    const rows = [row({ payment_mode: "ONLINE" })];
+    const used = [{ txnId: 10, rowUid: "r1", amount: 500, kind: "click" as const, needsSave: true, replace: false }];
+    expect(plan(rows, [mapped()], [], used)).toEqual([]);
+    expect(plan(rows, [mapped()], [10])).toEqual([]);
+    expect(plan(rows, [mapped({ id: 12 })], [], used)).toEqual([]);                                 // r1 already has a payment
+  });
+
+  it("uses what the sheet said, not an amount already changed by a pairing", () => {
+    const original = { r1: { payment_mode: "CASH" as const, is_paid: true, amount: 500 } };
+    const paired = row({ payment_mode: "ONLINE", amount: 200 });                                    // a 200 payment was paired by hand (sheet: 500)
+    const pairings = [{ txnId: 99, rowUid: "r1", amount: 200, kind: "click" as const, needsSave: true, replace: false }];
+    expect(planAutoPairings({ rows: [paired], pairings, originals: original }, [mapped()], new Set()).length).toBe(0);   // the row already has a payment
+  });
+
+  it("applyPairing marks the pairing as automatic and not needing a save", () => {
+    const s = applyPairing(state([row({ payment_mode: "CASH" })]), mapped(), "r1", { kind: "apply", needsSave: false, auto: true });
+    expect(s.pairings[0]).toMatchObject({ auto: true, needsSave: false, kind: "apply", amount: 500 });
+    expect(s.rows[0]).toMatchObject({ payment_mode: "ONLINE", is_paid: true, amount: 500 });
+    const manual = applyPairing(state([row()]), mapped(), "r1", { kind: "apply", needsSave: false });
+    expect(manual.pairings[0].auto).toBeUndefined();
   });
 });

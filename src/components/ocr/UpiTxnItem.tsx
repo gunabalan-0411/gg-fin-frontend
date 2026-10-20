@@ -1,7 +1,7 @@
 // One UPI transaction in the OCR page's UPI list (desktop column and mobile list share it).
 //  - idle        : plain; an already-mapped transaction offers "Apply"
 //  - highlighted : a customer was just marked paid online -> rotating dotted outline + a small "matches" text; click to pick it
-//  - paired      : used by a customer row -> struck through, shows the customer, "Undo"
+//  - paired      : used by a customer row -> struck through, shows the customer (and "Auto" when it applied itself), "Undo"
 // There is deliberately NO strike-out button: a transaction is struck out only by being paired.
 import { CheckCircle, RotateCcw } from "lucide-react";
 import { cn } from "@/utils";
@@ -12,7 +12,7 @@ export type UpiItemTxn = UpiTxnLike;
 export interface UpiTxnItemProps<T extends UpiItemTxn = UpiItemTxn> {
   txn: T;
   variant: "desktop" | "mobile";
-  paired?: { customerName: string } | null;
+  paired?: { customerName: string; auto?: boolean } | null;     // auto: applied by itself because the UPI id was already mapped
   highlighted?: boolean;
   tag?: string | null;                       // "Name & amount match", "Amount matches", … (only shown while highlighted)
   canApply?: boolean;                        // mapped to a customer that has a row on this page
@@ -64,6 +64,9 @@ export function UpiTxnItem<T extends UpiItemTxn>({ txn, variant, paired, highlig
           <p className={cn("flex items-center gap-0.5 mt-0.5 truncate text-emerald-700 dark:text-emerald-400", desktop ? "text-[10.5px]" : "text-xs")}>
             <CheckCircle className={cn("flex-shrink-0", desktop ? "h-2.5 w-2.5" : "h-3 w-3")} />
             <span className="truncate">{paired.customerName}</span>
+            {paired.auto && (
+              <span data-testid="upi-auto" title="Applied automatically: this UPI id is already saved for this customer" className="ml-1 flex-shrink-0 rounded bg-emerald-500/15 px-1 py-px text-[8.5px] font-bold uppercase">Auto</span>
+            )}
           </p>
         ) : mapped ? (
           <p className={cn("flex items-center gap-0.5 mt-0.5 truncate text-emerald-700 dark:text-emerald-400", desktop ? "text-[10.5px]" : "text-xs")}>

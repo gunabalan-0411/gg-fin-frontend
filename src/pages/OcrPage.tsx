@@ -37,7 +37,7 @@ import { buildOcrTrainingRows, ocrFormData, trainingErrorMessage } from "@/utils
 import { gmailSyncError, gmailSyncOk } from "@/utils/upiSync";
 import {
   applyPairing, consumedIds, dropPairingsForRow, extractedAmount, findVpaOwner, isSatisfied, matchLabel, matchTags, reconcile, remainingAmount,
-  removePairing, rowForMappedTxn, type PairKind, type Pairing, type PairingState, type RowSnapshot, type SavedVpa, type VpaOwner,
+  planAutoPairings, removePairing, rowForMappedTxn, type PairKind, type Pairing, type PairingState, type RowSnapshot, type SavedVpa, type VpaOwner,
 } from "@/utils/upiPairing";
 import { CustomerCombobox, type ComboboxPick, type Suggestion } from "@/components/ocr/CustomerCombobox";
 import { NameMappingModal } from "@/components/NameMappingModal";
@@ -1084,6 +1084,7 @@ export default function OcrPage() {
   // UPI pairing: a transaction is "struck out" only by being paired with a customer row (no strike-out icon any more).
   const [pairings, setPairings] = useState<Pairing[]>([]);
   const [pairingOriginals, setPairingOriginals] = useState<Record<string, RowSnapshot>>({});
+  const autoApplied = useRef<Set<number>>(new Set());                    // UPI payments already applied by themselves once: an Undo must stick
   const [upiTargetUid, setUpiTargetUid] = useState<string | null>(null);   // the row marked paid online the highlighted UPI transactions are for
   const [remapConfirm, setRemapConfirm] = useState<{ txn: UpiTxn; rowUid: string; owner: VpaOwner } | null>(null);
   const [savedVpas, setSavedVpas] = useState<SavedVpa[]>([]);               // the saved UPI id -> customer list, to spot a clash while pairing
@@ -1169,6 +1170,7 @@ export default function OcrPage() {
     setPairingOriginals({});
     setUpiTargetUid(null);
     setRemapConfirm(null);
+    autoApplied.current = new Set();
   }, []);
 
   const processFile = useCallback(async (file: File) => {
@@ -1638,6 +1640,27 @@ export default function OcrPage() {
     toast(`Reverted ${row?.customer_name ?? "the row"}`);
   };
 
+  // UPI payments that are ALREADY mapped to a customer apply themselves: same day as the customer's row, same amount as the sheet,
+  // no click (an earlier pairing saved the UPI id). Re-checked whenever rows or payments change (e.g. the customer is chosen later);
+  // each payment is applied at most once, so an Undo is never undone. Nothing is guessed from names.
+  useEffect(() => {
+    if (!rows.length || !upiTxns.length) return;
+    const plan = planAutoPairings<Row>({ rows, pairings, originals: pairingOriginals }, upiTxns, autoApplied.current);
+    if (!plan.length) return;
+    let state: PairingState<Row> = { rows, pairings, originals: pairingOriginals };
+    for (const { txn, rowUid } of plan) {
+      state = applyPairing<Row>(state, txn, rowUid, { kind: "apply", needsSave: false, auto: true });     // the UPI id is already saved
+      autoApplied.current.add(txn.id);
+    }
+    pushHistory();
+    setRows(state.rows);
+    setPairings(state.pairings);
+    setPairingOriginals(state.originals);
+    if (upiTargetUid && plan.some((p) => p.rowUid === upiTargetUid)) setUpiTargetUid(null);
+    toast.success(`Auto-paired ${plan.length} UPI payment${plan.length === 1 ? "" : "s"} from saved UPI ids`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, upiTxns, pairings, pairingOriginals]);
+
   /** "Skip remaining & continue" / "Continue": the only way the UPI step ends. Switches the highlight off. */
   const continueFromUpi = () => {
     setUpiTargetUid(null);
@@ -1667,7 +1690,7 @@ export default function OcrPage() {
     const highlighted = Boolean(targetRow) && !paired;
     return {
       txn, variant,
-      paired: paired ? { customerName: rowLabel(paired.rowUid) } : null,
+      paired: paired ? { customerName: rowLabel(paired.rowUid), auto: paired.auto } : null,
       highlighted,
       tag: highlighted && targetRow ? matchLabel(matchTags(txn, targetRow, pairingOriginals, pairings)) : null,
       canApply: !paired && rowForMappedTxn<Row>(rows, txn, pairings) !== undefined,

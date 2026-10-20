@@ -52,7 +52,7 @@ const txn = (id: number, over: Record<string, unknown> = {}) => ({
 const TXNS = [
   txn(10, { amount: "500", sender_name: "SELVAM K", sender_vpa: "selvam@upi" }),                                       // matches row 0 by name AND amount
   txn(11, { amount: "200", sender_name: "SOMEONE ELSE", sender_vpa: "x@upi" }),
-  txn(12, { amount: "300", sender_name: "KANNAN R", sender_vpa: "kannan@upi", mapped_customer_id: 2, mapped_customer_type: "edi", mapped_customer_name: "Kannan" }),
+  txn(12, { amount: "320", sender_name: "KANNAN R", sender_vpa: "kannan@upi", mapped_customer_id: 2, mapped_customer_type: "edi", mapped_customer_name: "Kannan" }),   // mapped, but 320 is not the sheet's 300: stays a manual Apply
   txn(13, { amount: "150", sender_name: "ZZ", sender_vpa: "zz@upi", mapped_customer_id: 9, mapped_customer_type: "edi", mapped_customer_name: "Old Owner" }),
   txn(14, { amount: "100", sender_name: "PAYER 14", sender_vpa: "p14@upi" }),
 ];
@@ -230,7 +230,8 @@ describe("picking a transaction (UP-04, UP-05, UP-09)", () => {
     const { user } = await reachUpiStep();
     await user.click(within(item(12)).getByRole("button", { name: /^Apply/ }));
     expect(item(12)).toHaveAttribute("data-state", "paired");
-    expect(amountOf(1)).toBe("300");
+    expect(amountOf(1)).toBe("320");                                          // a payment whose amount differs from the sheet is still applied by hand, with its own amount
+    expect(within(item(12)).queryByTestId("upi-auto")).toBeNull();            // ... and is not marked "Auto"
     expect(within(rowEl(1)).getByTitle("Paid")).toBeInTheDocument();
   });
 });
@@ -343,6 +344,109 @@ describe("a UPI id clash is settled while pairing, not after Submit (UP-11)", ()
     await markOnline(user, 0);
     await pick(user, "PAYER 14");
     expect(item(14)).toHaveAttribute("data-state", "paired");
+  });
+});
+// ── payments already mapped to a customer apply themselves (AU-01 … AU-07) ────
+describe("mapped payments apply themselves", () => {
+  const mappedTo = (id: number, name: string, over: Record<string, unknown> = {}) =>
+    ({ mapped_customer_id: id, mapped_customer_type: "edi", mapped_customer_name: name, ...over });
+  const flush = () => new Promise((r) => setTimeout(r, 60));
+
+  it("a payment from a saved UPI id, same day and same amount as the sheet, marks the row Online + Paid at load — no click", async () => {
+    const txns = [
+      txn(30, { amount: "500", sender_name: "SELVAM K", sender_vpa: "selvam@upi", ...mappedTo(1, "Selvam") }),
+      txn(31, { amount: "75", sender_name: "STRANGER", sender_vpa: "s@upi" }),
+    ];
+    await reachUpiStep(txns);                                                   // Selvam's row was read as CASH, 500
+    await waitFor(() => expect(item(30)).toHaveAttribute("data-state", "paired"));
+    expect(within(rowEl(0)).getByText("ONL")).toBeInTheDocument();             // switched to Online
+    expect(within(rowEl(0)).getByTitle("Paid")).toBeInTheDocument();
+    expect(amountOf(0)).toBe("500");
+    expect(within(item(30)).getByTestId("upi-auto")).toHaveTextContent("Auto");
+    expect(within(item(30)).getByText("Selvam")).toBeInTheDocument();
+    expect(item(31)).toHaveAttribute("data-state", "idle");                    // an unmapped payment is left alone
+    expect(toast.success).toHaveBeenCalledWith("Auto-paired 1 UPI payment from saved UPI ids");
+    expect(screen.queryByTestId("upi-target-banner")).toBeNull();              // no highlight, nothing to pick
+  });
+
+  it("a row the OCR already read as Online is applied too (Kannan 300)", async () => {
+    await reachUpiStep([txn(32, { amount: "300", ...mappedTo(2, "Kannan") })]);
+    await waitFor(() => expect(item(32)).toHaveAttribute("data-state", "paired"));
+    expect(within(rowEl(1)).getByTitle("Paid")).toBeInTheDocument();
+    expect(amountOf(1)).toBe("300");
+  });
+
+  it("several mapped payments are applied together and counted in one message", async () => {
+    await reachUpiStep([
+      txn(33, { amount: "500", ...mappedTo(1, "Selvam") }),
+      txn(34, { amount: "300", ...mappedTo(2, "Kannan") }),
+    ]);
+    await waitFor(() => expect(screen.getAllByTestId("upi-auto")).toHaveLength(2));
+    expect(toast.success).toHaveBeenCalledWith("Auto-paired 2 UPI payments from saved UPI ids");
+  });
+
+  it("when the amount differs from the sheet it is NOT applied: the Apply button stays for the user", async () => {
+    await reachUpiStep([txn(35, { amount: "5000", ...mappedTo(1, "Selvam") })]);
+    await flush();
+    expect(item(35)).toHaveAttribute("data-state", "idle");
+    expect(within(item(35)).getByRole("button", { name: /^Apply/ })).toBeInTheDocument();
+    expect(within(rowEl(0)).getByText("CSH")).toBeInTheDocument();             // the row is untouched
+    expect(toast.success).not.toHaveBeenCalledWith(expect.stringContaining("Auto-paired"));
+  });
+
+  it("a payment from another day is not applied (Selvam's row is 17 Oct)", async () => {
+    await reachUpiStep([txn(36, { amount: "500", transaction_date: "2026-10-16", ...mappedTo(1, "Selvam") })]);
+    await flush();
+    expect(item(36)).toHaveAttribute("data-state", "idle");
+  });
+
+  it("a row on another day takes its own day's payment (Anbu's row is 18 Oct)", async () => {
+    await reachUpiStep([txn(37, { amount: "200", transaction_date: "2026-10-18", ...mappedTo(3, "Anbu") })]);
+    await waitFor(() => expect(item(37)).toHaveAttribute("data-state", "paired"));
+    expect(within(rowEl(2)).getByText("ONL")).toBeInTheDocument();
+  });
+
+  it("a customer with a GPay row and a Cash row: the GPay-marked row takes the payment, the Cash row stays Cash", async () => {
+    const records = [
+      record({ customer_name: "Selvam", customer_id: 1, match_source: "fuzzy", amount: 200 }),                              // cash
+      record({ customer_name: "Selvam", customer_id: 1, match_source: "fuzzy", amount: 200, payment_mode: "ONLINE" }),      // GPay
+    ];
+    await reachUpiStep([txn(38, { amount: "200", ...mappedTo(1, "Selvam") })], records);
+    await waitFor(() => expect(item(38)).toHaveAttribute("data-state", "paired"));
+    expect(within(rowEl(1)).getByTitle("Paid")).toBeInTheDocument();
+    expect(within(rowEl(0)).getByText("CSH")).toBeInTheDocument();
+  });
+
+  it("Undo on an auto-applied payment sticks: the row is restored and nothing re-applies it", async () => {
+    const { user } = await reachUpiStep([txn(39, { amount: "500", ...mappedTo(1, "Selvam") })]);
+    await waitFor(() => expect(item(39)).toHaveAttribute("data-state", "paired"));
+    await user.click(within(item(39)).getByRole("button", { name: /Undo/ }));
+    await flush();
+    expect(item(39)).not.toHaveAttribute("data-state", "paired");
+    expect(within(rowEl(0)).getByText("CSH")).toBeInTheDocument();             // exactly as the sheet said
+    expect(amountOf(0)).toBe("500");
+    expect(within(item(39)).getByRole("button", { name: /^Apply/ })).toBeInTheDocument();   // still available by hand
+    await user.click(within(item(39)).getByRole("button", { name: /^Apply/ }));
+    expect(item(39)).toHaveAttribute("data-state", "paired");                  // ... and the manual way still works
+  });
+
+  it("the auto-applied UPI id is already saved: Submit sends the records but no UPI mapping", async () => {
+    const { user } = await reachUpiStep([txn(40, { amount: "500", ...mappedTo(1, "Selvam") })]);
+    await waitFor(() => expect(item(40)).toHaveAttribute("data-state", "paired"));
+    await user.click(screen.getByRole("button", { name: /Save & Post/ }));
+    await waitFor(() => expect(ocr.submit).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(upi.applyPairings).not.toHaveBeenCalled();
+    const sent = ocr.submit.mock.calls[0][0].records as { customer_id: number; payment_mode: string; amount: number }[];
+    expect(sent.find((r) => r.customer_id === 1)).toMatchObject({ payment_mode: "ONLINE", amount: 500 });
+  });
+
+  it("a payment already used by a click is not applied again to another row", async () => {
+    const { user } = await reachUpiStep([txn(41, { amount: "300", sender_name: "KANNAN R", ...mappedTo(2, "Kannan") }), txn(42, { amount: "100" })]);
+    await waitFor(() => expect(item(41)).toHaveAttribute("data-state", "paired"));
+    await markOnline(user, 0);                                                  // Selvam is now waiting for a UPI payment
+    expect(item(41)).toHaveAttribute("data-state", "paired");                  // 41 stays with Kannan
+    expect(states().filter((s) => s === "highlight")).toHaveLength(1);         // only the free payment is offered
   });
 });
 // ── the step never moves on by itself (UP-07, UP-08) ──────────────────────────

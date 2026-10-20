@@ -36,6 +36,7 @@ export interface Pairing {
   kind: PairKind;                           // "click": picked from the highlight · "apply": the UPI id was already mapped
   needsSave: boolean;                       // the UPI id -> customer mapping must be saved at Submit
   replace: boolean;                         // the user confirmed re-pointing a UPI id that belonged to someone else
+  auto?: boolean;                           // applied by itself (the UPI id was already mapped to this customer), not by a click
 }
 
 export interface RowSnapshot {
@@ -86,7 +87,7 @@ export function applyPairing<R extends PairableRow>(
   state: PairingState<R>,
   txn: Pick<UpiTxnLike, "id" | "amount">,
   rowUid: string,
-  opts: { kind: PairKind; needsSave: boolean; replace?: boolean },
+  opts: { kind: PairKind; needsSave: boolean; replace?: boolean; auto?: boolean },
 ): PairingState<R> {
   const row = state.rows.find((r) => r.uid === rowUid);
   if (!row || state.pairings.some((p) => p.txnId === txn.id)) return state;     // unknown row, or this payment is already used
@@ -100,7 +101,7 @@ export function applyPairing<R extends PairableRow>(
     originals,
     rows: state.rows.map((r) =>
       r.uid === rowUid ? { ...r, payment_mode: "ONLINE" as const, is_paid: true, amount: first ? amount : r.amount + amount } : r),
-    pairings: [...state.pairings, { txnId: txn.id, rowUid, amount, kind: opts.kind, needsSave: opts.needsSave, replace: Boolean(opts.replace) }],
+    pairings: [...state.pairings, { txnId: txn.id, rowUid, amount, kind: opts.kind, needsSave: opts.needsSave, replace: Boolean(opts.replace), ...(opts.auto ? { auto: true } : {}) }],
   };
 }
 
@@ -216,6 +217,43 @@ export function findVpaOwner<R extends PairableRow>(
     }
   }
   return null;
+}
+
+// ── payments that apply themselves ────────────────────────────────────────────
+
+/**
+ * UPI payments that can be applied WITHOUT a click: the payment is already mapped to a customer (an earlier pairing saved its UPI id),
+ * dated the day of that customer's row, and its amount equals what the sheet says for the row. Nothing is guessed from names.
+ *  - the row must be the same customer + product, have no payment yet, and not be claimed by an earlier payment in this plan;
+ *  - a customer with a GPay (ONLINE) marked row: only those rows qualify (a customer can pay part in cash and part by GPay);
+ *    a customer with no ONLINE row: a CASH row with the matching amount qualifies (the notebook often does not say GPay);
+ *  - `skip`: payments already auto-applied once (an Undo must stick), never planned again.
+ */
+export function planAutoPairings<R extends PairableRow>(
+  state: PairingState<R>,
+  txns: UpiTxnLike[],
+  skip: ReadonlySet<number> = new Set(),
+): { txn: UpiTxnLike; rowUid: string }[] {
+  const used = consumedIds(state.pairings);
+  const claimed = new Set<string>();
+  const plan: { txn: UpiTxnLike; rowUid: string }[] = [];
+
+  for (const txn of txns) {
+    if (used.has(txn.id) || skip.has(txn.id)) continue;
+    if (txn.mapped_customer_id == null || !txn.mapped_customer_type) continue;
+    const product = txn.mapped_customer_type.toUpperCase();
+    const free = (r: R) => pairingsForRow(state.pairings, r.uid).length === 0 && !claimed.has(r.uid);
+
+    const sameDay = state.rows.filter((r) =>
+      r.customer_id === txn.mapped_customer_id && r.product_type === product && ddmmyyyyToIso(r.collection_date) === txn.transaction_date);
+    const online = sameDay.filter((r) => r.payment_mode === "ONLINE");
+    const pool = online.length ? online : sameDay;                                  // GPay-marked rows only, when there are any
+    const row = pool.find((r) => free(r) && Math.abs(extractedAmount(state.originals, r) - txnAmount(txn)) <= AMOUNT_TOLERANCE);
+    if (!row) continue;
+    claimed.add(row.uid);
+    plan.push({ txn, rowUid: row.uid });
+  }
+  return plan;
 }
 
 // ── matching hints ────────────────────────────────────────────────────────────
