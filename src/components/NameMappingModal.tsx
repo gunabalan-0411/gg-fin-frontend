@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Clock, Pencil, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Clock, Info, Pencil, Plus, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { nameMappingsApi } from "@/services/api";
 import { cn } from "@/utils";
 import type {
-  ConflictAction, FinanceType, MappingConflict, MappingItem, MappingKind, MappingPopupData,
+  ConflictAction, FinanceType, MappingConflict, MappingItem, MappingKind, MappingPopupData, MappingSimilar,
 } from "@/types";
 import {
   KIND_LABEL, KIND_MAX, addWord, editWord, failureMessage, isDirty, isRememberableText, newWords, removeWord,
@@ -43,7 +43,13 @@ const PRODUCT_BADGE: Record<FinanceType, string> = {
   IOP: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
 };
 
-function apiDetail(err: any): { code?: string; message?: string; conflicts?: MappingConflict[]; kind?: MappingKind; limit?: number } {
+/** A look-alike of ANOTHER customer must be confirmed; being close to the customer's own name is only a note. */
+const needsConfirm = (s: MappingSimilar) => s.matches.some((m) => !m.own);
+const pct = (score: number) => `${Number(score.toFixed(1))}%`;
+
+function apiDetail(err: any): {
+  code?: string; message?: string; conflicts?: MappingConflict[]; similar?: MappingSimilar[]; kind?: MappingKind; limit?: number;
+} {
   const d = err?.response?.data?.detail;
   if (d && typeof d === "object") return d;
   return { message: typeof d === "string" ? d : err?.message };
@@ -59,6 +65,8 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
   const [editing, setEditing] = useState<{ kind: MappingKind; index: number; value: string } | null>(null);
   const [conflicts, setConflicts] = useState<Record<string, MappingConflict>>({});
   const [resolutions, setResolutions] = useState<Record<string, ConflictAction>>({});
+  const [similar, setSimilar] = useState<Record<string, MappingSimilar>>({});         // words that look like a customer's name
+  const [confirmedSimilar, setConfirmedSimilar] = useState<Record<string, boolean>>({});   // ... and the ones the user chose to add anyway
   const [saving, setSaving] = useState(false);
 
   const limits: Record<MappingKind, number> = {
@@ -78,12 +86,15 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
   const refreshConflicts = useCallback(async (next: Record<MappingKind, string[]>, base: Record<MappingKind, string[]>) => {
     if (customerId == null) return;
     const items = KINDS.flatMap((k) => newWords(base[k], next[k]).map((word) => ({ kind: k, word })));
-    if (items.length === 0) { setConflicts({}); return; }
+    if (items.length === 0) { setConflicts({}); setSimilar({}); return; }
     try {
       const { data } = await nameMappingsApi.check({ finance_type: financeType, customer_id: customerId, items });
       const map: Record<string, MappingConflict> = {};
       data.conflicts.forEach((c) => { map[keyOf(c.kind, c.word)] = c; });
       setConflicts(map);
+      const sim: Record<string, MappingSimilar> = {};
+      (data.similar ?? []).forEach((s) => { sim[keyOf(s.kind, s.word)] = s; });
+      setSimilar(sim);
       setResolutions((prev) => {
         const out: Record<string, ConflictAction> = {};
         Object.keys(map).forEach((k) => { out[k] = prev[k] ?? "keep_both"; });
@@ -98,7 +109,7 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
   useEffect(() => {
     if (!open || customerId == null) return;
     let cancelled = false;
-    setLoading(true); setLoadError(null); setServer(null); setConflicts({}); setResolutions({});
+    setLoading(true); setLoadError(null); setServer(null); setConflicts({}); setResolutions({}); setSimilar({}); setConfirmedSimilar({});
     setInputs({ alias: "", ai_mismatch: "" }); setFieldError({}); setEditing(null);
     nameMappingsApi.get(financeType, customerId)
       .then(({ data }) => {
@@ -132,6 +143,10 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
       KINDS.forEach((k) => next[k].forEach((w) => { const key = keyOf(k, w); if (prev[key]) keep[key] = prev[key]; }));
       return keep;
     });
+    // same for look-alike warnings and their "add anyway" (an edited word is a different word: it is checked again)
+    const stillThere = (key: string) => KINDS.some((k) => next[k].some((w) => keyOf(k, w) === key));
+    setSimilar((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => stillThere(key))));
+    setConfirmedSimilar((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => stillThere(key))));
     refreshConflicts(next, serverWords);
   };
 
@@ -159,6 +174,9 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
 
   const dirty = KINDS.some((k) => isDirty(serverWords[k], drafts[k]));
   const overLimit = KINDS.some((k) => drafts[k].length > limits[k]);
+  // look-alikes of another customer that are still in the lists and have not been confirmed ("Add anyway") — Save waits for a choice
+  const draftSimilar = Object.values(similar).filter((s) => needsConfirm(s) && drafts[s.kind].includes(s.word));
+  const unconfirmedCount = draftSimilar.filter((s) => !confirmedSimilar[keyOf(s.kind, s.word)]).length;
 
   // ── Save ─────────────────────────────────────────────────────────────────────────────────────────────────
   const save = async () => {
@@ -171,17 +189,25 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
       const { data } = await nameMappingsApi.save({
         finance_type: financeType, customer_id: customerId,
         aliases: drafts.alias, mismatches: drafts.ai_mismatch, resolutions: resList,
+        confirmed_similar: draftSimilar
+          .filter((s) => confirmedSimilar[keyOf(s.kind, s.word)])
+          .map((s) => ({ kind: s.kind, word: s.word })),
       });
       toast.success("Names saved");
       onSaved?.(data);
       onClose();
     } catch (err: any) {
       const d = apiDetail(err);
-      if (d.code === "conflict" && d.conflicts) {
+      if ((d.code === "conflict" && d.conflicts) || d.code === "similar") {
         const map: Record<string, MappingConflict> = {};
-        d.conflicts.forEach((c) => { map[keyOf(c.kind, c.word)] = c; });
+        (d.conflicts ?? []).forEach((c) => { map[keyOf(c.kind, c.word)] = c; });
         setConflicts((p) => ({ ...p, ...map }));
-        toast.error("Some names are already mapped to another customer — choose what to do");
+        const sim: Record<string, MappingSimilar> = {};
+        (d.similar ?? []).forEach((s) => { sim[keyOf(s.kind, s.word)] = s; });
+        setSimilar((p) => ({ ...p, ...sim }));
+        toast.error(d.code === "similar"
+          ? "Some names look like an existing customer — choose Add anyway or Cancel"
+          : "Some names are already mapped to another customer — choose what to do");
       } else if (d.code === "limit_exceeded" && d.kind) {
         setFieldError((p) => ({ ...p, [d.kind!]: d.message }));
         toast.error(d.message ?? "Limit reached");
@@ -229,6 +255,51 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
               {label}
             </Button>
           ))}
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-2.5" onClick={() => doRemove(kind, index)}>Cancel</Button>
+        </div>
+      </div>
+    );
+  };
+
+  // A word that looks like the NAME of an existing customer (90%+): warn, with Add anyway / Cancel. Close to the customer's OWN name is just a note.
+  const renderSimilar = (kind: MappingKind, word: string, index: number) => {
+    const key = keyOf(kind, word);
+    const s = similar[key];
+    if (!s) return null;
+    const others = s.matches.filter((m) => !m.own);
+    const own = s.matches.find((m) => m.own);
+    if (others.length === 0) {
+      return (
+        <p data-testid="similar-own" className="mt-1.5 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+          <Info className="mt-px h-3 w-3 flex-shrink-0" />
+          <span>Very close to this customer’s own name ({pct(own!.score)}) — it is matched anyway.</span>
+        </p>
+      );
+    }
+    const chosen = Boolean(confirmedSimilar[key]);
+    return (
+      <div data-testid="similar" className="mt-2 space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5">
+        <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 flex-shrink-0" />
+          <span>
+            Looks like an existing customer:{" "}
+            {others.map((m, i) => (
+              <span key={m.customer_id}>{i > 0 && ", "}<b className="font-semibold">{m.customer_name}</b> ({pct(m.score)} match)</span>
+            ))}
+            .{own ? " It is also close to this customer’s own name." : ""}
+          </span>
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant={chosen ? "default" : "outline"}
+            aria-pressed={chosen}
+            className="h-7 px-2.5"
+            onClick={() => setConfirmedSimilar((p) => ({ ...p, [key]: !p[key] }))}
+          >
+            {chosen ? "Will be added anyway ✓" : "Add anyway"}
+          </Button>
           <Button type="button" size="sm" variant="ghost" className="h-7 px-2.5" onClick={() => doRemove(kind, index)}>Cancel</Button>
         </div>
       </div>
@@ -311,6 +382,7 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
                   )}
                 </div>
                 {!isEditing && renderConflict(kind, word, i)}
+                {!isEditing && renderSimilar(kind, word, i)}
               </li>
             );
           })}
@@ -392,9 +464,14 @@ export function NameMappingModal({ open, onClose, financeType, customerId, extra
             {KINDS.map(renderSection)}
           </div>
 
+          {unconfirmedCount > 0 && (
+            <p data-testid="similar-hint" className="text-xs text-amber-600 dark:text-amber-400">
+              Choose “Add anyway” or “Cancel” for {unconfirmedCount === 1 ? "the highlighted name" : `the ${unconfirmedCount} highlighted names`} before saving.
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button type="button" onClick={save} disabled={!dirty || saving || overLimit}>{saving ? "Saving…" : "Save"}</Button>
+            <Button type="button" onClick={save} disabled={!dirty || saving || overLimit || unconfirmedCount > 0}>{saving ? "Saving…" : "Save"}</Button>
           </div>
         </div>
       )}

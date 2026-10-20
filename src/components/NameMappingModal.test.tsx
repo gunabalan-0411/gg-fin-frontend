@@ -102,7 +102,7 @@ describe("saving happens only on Save (R-14)", () => {
 
     await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
     expect(api.save).toHaveBeenCalledWith({
-      finance_type: "EDI", customer_id: 5, aliases: ["Kannan K"], mismatches: ["Kannam"], resolutions: [],
+      finance_type: "EDI", customer_id: 5, aliases: ["Kannan K"], mismatches: ["Kannam"], resolutions: [], confirmed_similar: [],
     });
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
@@ -314,5 +314,175 @@ describe("one-click add of the extracted text (R-18 helper)", () => {
     setup({ extractedName: "Kanaan" });
     await loaded();
     expect(screen.getByTestId("quick-add")).toBeDisabled();
+  });
+});
+
+describe("a word that looks like an existing customer name (SN-02, SN-06, SN-07)", () => {
+  const look = (word: string, over: Record<string, unknown> = {}) => ({
+    kind: "ai_mismatch" as const, word,
+    matches: [{ customer_id: 9, customer_name: "Selvam Kumar", score: 93.3, own: false, ...over }],
+  });
+  const checkWith = (similar: unknown[]) => api.check.mockResolvedValue({ data: { conflicts: [], similar } });
+
+  it("warns under the word, naming the customer and the match, with Add anyway and Cancel", async () => {
+    checkWith([look("Selvam Kumaar")]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    const box = await screen.findByTestId("similar");
+    expect(box).toHaveTextContent("Looks like an existing customer: Selvam Kumar (93.3% match)");
+    expect(within(box).getByRole("button", { name: "Add anyway" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(box).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
+  it("Save waits for a choice: disabled with a hint until Add anyway is pressed, then the word is sent as confirmed", async () => {
+    checkWith([look("Selvam Kumaar")]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    await screen.findByTestId("similar");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByTestId("similar-hint")).toHaveTextContent("Choose “Add anyway” or “Cancel” for the highlighted name");
+
+    await user.click(within(screen.getByTestId("similar")).getByRole("button", { name: "Add anyway" }));
+    expect(screen.getByRole("button", { name: /Will be added anyway/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByTestId("similar-hint")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
+    expect(api.save.mock.calls[0][0].confirmed_similar).toEqual([{ kind: "ai_mismatch", word: "Selvam Kumaar" }]);
+    expect(api.save.mock.calls[0][0].mismatches).toEqual(["Selvam Kumaar"]);
+  });
+
+  it("pressing Add anyway twice takes the choice back", async () => {
+    checkWith([look("Selvam Kumaar")]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    const box = await screen.findByTestId("similar");
+    await user.click(within(box).getByRole("button", { name: "Add anyway" }));
+    await user.click(within(box).getByRole("button", { name: /Will be added anyway/ }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("Cancel removes the word, the panel and the hint; nothing is left to save", async () => {
+    checkWith([look("Selvam Kumaar")]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    await user.click(within(await screen.findByTestId("similar")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Selvam Kumaar")).toBeNull();
+    expect(screen.queryByTestId("similar")).toBeNull();
+    expect(screen.queryByTestId("similar-hint")).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();            // nothing changed
+  });
+
+  it("two look-alikes need two choices", async () => {
+    checkWith([look("Selvam Kumaar"), look("Selvam Kumar K")]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    await addTo(user, "ai_mismatch", "Selvam Kumar K");
+    await waitFor(() => expect(screen.getAllByTestId("similar")).toHaveLength(2));
+    expect(screen.getByTestId("similar-hint")).toHaveTextContent("the 2 highlighted names");
+    await user.click(within(screen.getAllByTestId("similar")[0]).getByRole("button", { name: "Add anyway" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await user.click(within(screen.getAllByTestId("similar")[1]).getByRole("button", { name: "Add anyway" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("a word close to the customer's OWN name is only a note: no panel, no choice, Save stays available", async () => {
+    checkWith([look("Kanan", { customer_id: 5, customer_name: "Kannan", score: 90.9, own: true })]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Kanan");
+    expect(await screen.findByTestId("similar-own")).toHaveTextContent("Very close to this customer’s own name (90.9%)");
+    expect(screen.queryByTestId("similar")).toBeNull();
+    expect(screen.queryByTestId("similar-hint")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.save).toHaveBeenCalled());
+    expect(api.save.mock.calls[0][0].confirmed_similar).toEqual([]);
+  });
+
+  it("close to both another customer and its own name: warns, and says so", async () => {
+    api.check.mockResolvedValue({ data: { conflicts: [], similar: [{
+      kind: "ai_mismatch", word: "Kannan K",
+      matches: [{ customer_id: 9, customer_name: "Kannan Kumar", score: 91, own: false }, { customer_id: 5, customer_name: "Kannan", score: 92, own: true }],
+    }] } });
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Kannan K");
+    const box = await screen.findByTestId("similar");
+    expect(box).toHaveTextContent("Kannan Kumar (91% match)");
+    expect(box).toHaveTextContent("also close to this customer’s own name");
+  });
+
+  it("editing a flagged word drops its warning and its Add anyway, then checks the new text", async () => {
+    checkWith([look("Selvam Kumaar")]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    await user.click(within(await screen.findByTestId("similar")).getByRole("button", { name: "Add anyway" }));
+
+    checkWith([]);                                                                   // the edited text is fine
+    await user.click(section("ai_mismatch").getByRole("button", { name: "Edit Selvam Kumaar" }));
+    const edit = section("ai_mismatch").getByRole("textbox", { name: "Edit Selvam Kumaar" });
+    await user.clear(edit); await user.type(edit, "Selvm{Enter}");
+    await waitFor(() => expect(screen.queryByTestId("similar")).toBeNull());
+    expect(api.check).toHaveBeenLastCalledWith({ finance_type: "EDI", customer_id: 5, items: [{ kind: "ai_mismatch", word: "Selvm" }] });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.save).toHaveBeenCalled());
+    expect(api.save.mock.calls[0][0].confirmed_similar).toEqual([]);                 // the old confirmation did not carry over
+  });
+
+  it("removing a confirmed word and adding it again asks again (the old Add anyway is forgotten)", async () => {
+    checkWith([look("Selvam Kumaar")]);
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    await user.click(within(await screen.findByTestId("similar")).getByRole("button", { name: "Add anyway" }));
+    await user.click(section("ai_mismatch").getByRole("button", { name: "Delete Selvam Kumaar" }));
+    await addTo(user, "ai_mismatch", "Selvam Kumaar");
+    expect(await screen.findByRole("button", { name: "Add anyway" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("a look-alike the server finds on Save (409 similar) is shown for a decision", async () => {
+    api.save.mockRejectedValue({ response: { data: { detail: { code: "similar", message: "x", conflicts: [], similar: [look("Zed")] } } } });
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Zed");                                         // the pre-check found nothing
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByTestId("similar")).toHaveTextContent("Selvam Kumar");
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("look like an existing customer"));
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("opens with the word already added and the warning shown when launched from 'Remember this'", async () => {
+    checkWith([look("Selvam Kumaar")]);
+    setup({ prefill: { kind: "ai_mismatch", word: "Selvam Kumaar" }, notice: "“Selvam Kumaar” looks like the existing customer Selvam Kumar." });
+    expect(await screen.findByTestId("similar")).toHaveTextContent("Selvam Kumar");
+    expect(section("ai_mismatch").getByText("Selvam Kumaar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("an exact conflict and a look-alike on the same word both show", async () => {
+    api.check.mockResolvedValue({ data: {
+      conflicts: [{ kind: "ai_mismatch", word: "Zed", customers: [{ mapping_id: 8, customer_id: 9, customer_name: "Beta" }] }],
+      similar: [look("Zed")],
+    } });
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "ai_mismatch", "Zed");
+    expect(await screen.findByTestId("conflict")).toHaveTextContent("Beta");
+    expect(screen.getByTestId("similar")).toBeInTheDocument();
+  });
+
+  it("an older server that sends no `similar` list changes nothing", async () => {
+    api.check.mockResolvedValue({ data: { conflicts: [] } });
+    const { user } = setup();
+    await loaded();
+    await addTo(user, "alias", "Plain");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(screen.queryByTestId("similar")).toBeNull();
   });
 });

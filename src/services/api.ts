@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, RememberResult,
+  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -279,9 +279,9 @@ export const nameMappingsApi = {
   /** Popup contents for the customer a row is assigned to. */
   get: (finance_type: FinanceType, customer_id: number) =>
     api.get<MappingPopupData>("/name-mappings", { params: { finance_type, customer_id } }),
-  /** Which of these words already belong to ANOTHER active customer? */
+  /** Which of these words already belong to ANOTHER active customer, and which look (90%+) like a customer name? */
   check: (body: { finance_type: FinanceType; customer_id: number; items: { kind: MappingKind; word: string }[] }) =>
-    api.post<{ conflicts: MappingConflict[] }>("/name-mappings/check", body),
+    api.post<{ conflicts: MappingConflict[]; similar: MappingSimilar[] }>("/name-mappings/check", body),
   /** The popup's Save: replaces the customer's alias / AI-mismatch lists. */
   save: (body: {
     finance_type: FinanceType;
@@ -289,6 +289,7 @@ export const nameMappingsApi = {
     aliases: string[];
     mismatches: string[];
     resolutions: MappingResolution[];
+    confirmed_similar: { kind: MappingKind; word: string }[];     // look-alike words the user chose to "Add anyway"
   }) => api.put<MappingPopupData>("/name-mappings/customer", body),
   /** One-click "Remember this" (AI-mismatch only). */
   remember: (body: { finance_type: FinanceType; customer_id: number; word: string }) =>

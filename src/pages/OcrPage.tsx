@@ -1406,6 +1406,13 @@ export default function OcrPage() {
           prefill: { kind: "ai_mismatch", word },
           notice: `“${word}” is already mapped to another customer — choose what to do, then Save.`,
         });
+      } else if (data.status === "similar") {
+        const who = data.similar?.[0]?.matches.find((m) => !m.own)?.customer_name;
+        setMappingModal({
+          row,
+          prefill: { kind: "ai_mismatch", word },
+          notice: `“${word}” looks like the existing customer ${who ?? "name"} — choose Add anyway or Cancel, then Save.`,
+        });
       }
     } catch (err: any) {
       const d = err?.response?.data?.detail;

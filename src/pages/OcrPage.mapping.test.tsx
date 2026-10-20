@@ -198,6 +198,19 @@ describe("Remember this (FE-07, R-18)", () => {
     expect(await screen.findByTestId("conflict")).toHaveTextContent("Beta");
   });
 
+  it("on a look-alike of another customer's name it opens the popup with the word added and the warning shown (SN-05)", async () => {
+    const similar = [{ kind: "ai_mismatch", word: "Qwerty", matches: [{ customer_id: 9, customer_name: "Qwertyuiop", score: 92, own: false }] }];
+    nm.remember.mockResolvedValue({ data: { status: "similar", word: "Qwerty", similar } });
+    nm.get.mockResolvedValue({ data: { customer: { id: 2, name: "Kannan", finance_type: "EDI" }, aliases: [], mismatches: [], limits: { alias: 3, ai_mismatch: 10 } } });
+    nm.check.mockResolvedValue({ data: { conflicts: [], similar } });
+    const { user } = await reachReviewStep();
+    await pickKannanForRowC(user);
+    await user.click(within(await screen.findByTestId("remember-chip")).getByRole("button", { name: /^Remember/ }));
+    expect(await screen.findByRole("status")).toHaveTextContent("looks like the existing customer Qwertyuiop");
+    expect(await screen.findByTestId("similar")).toHaveTextContent("Qwertyuiop (92% match)");
+    expect(nm.save).not.toHaveBeenCalled();                                          // nothing was saved silently
+  });
+
   it("can be dismissed", async () => {
     const { user } = await reachReviewStep();
     await pickKannanForRowC(user);

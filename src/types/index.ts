@@ -219,6 +219,13 @@ export interface MappingConflict {
 
 export type ConflictAction = "keep_both" | "move";
 
+/** A new word that looks (90%+) like the name of an existing customer. `own`: it is the customer being edited. */
+export interface MappingSimilar {
+  kind: MappingKind;
+  word: string;
+  matches: { customer_id: number; customer_name: string; score: number; own: boolean }[];
+}
+
 export interface MappingResolution {
   kind: MappingKind;
   word: string;
@@ -226,8 +233,9 @@ export interface MappingResolution {
 }
 
 export interface RememberResult {
-  status: "added" | "exists" | "limit_reached" | "conflict";
+  status: "added" | "exists" | "limit_reached" | "conflict" | "similar";
   word: string;
   limit?: number;
   conflicts?: MappingConflict[];
+  similar?: MappingSimilar[];
 }
