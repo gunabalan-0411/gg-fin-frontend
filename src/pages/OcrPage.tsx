@@ -36,8 +36,8 @@ import { Button } from "@/components/ui/Button";
 import { buildOcrTrainingRows, ocrFormData, trainingErrorMessage } from "@/utils/trainingData";
 import { gmailSyncError, gmailSyncOk } from "@/utils/upiSync";
 import {
-  applyPairing, consumedIds, dropPairingsForRow, extractedAmount, isSatisfied, matchLabel, matchTags, reconcile, remainingAmount,
-  removePairing, rowForMappedTxn, type PairKind, type Pairing, type PairingState, type RowSnapshot,
+  applyPairing, consumedIds, dropPairingsForRow, extractedAmount, findVpaOwner, isSatisfied, matchLabel, matchTags, reconcile, remainingAmount,
+  removePairing, rowForMappedTxn, type PairKind, type Pairing, type PairingState, type RowSnapshot, type SavedVpa, type VpaOwner,
 } from "@/utils/upiPairing";
 import { CustomerCombobox, type ComboboxPick, type Suggestion } from "@/components/ocr/CustomerCombobox";
 import { NameMappingModal } from "@/components/NameMappingModal";
@@ -1085,7 +1085,8 @@ export default function OcrPage() {
   const [pairings, setPairings] = useState<Pairing[]>([]);
   const [pairingOriginals, setPairingOriginals] = useState<Record<string, RowSnapshot>>({});
   const [upiTargetUid, setUpiTargetUid] = useState<string | null>(null);   // the row marked paid online the highlighted UPI transactions are for
-  const [remapConfirm, setRemapConfirm] = useState<{ txn: UpiTxn; rowUid: string } | null>(null);
+  const [remapConfirm, setRemapConfirm] = useState<{ txn: UpiTxn; rowUid: string; owner: VpaOwner } | null>(null);
+  const [savedVpas, setSavedVpas] = useState<SavedVpa[]>([]);               // the saved UPI id -> customer list, to spot a clash while pairing
   const [syncingGmail, setSyncingGmail] = useState(false);
   // Training data -> Google Drive: ON by default, decided when Submit is pressed; back to ON for every new file
   const [trainingOn, setTrainingOn] = useState(true);
@@ -1243,6 +1244,10 @@ export default function OcrPage() {
       setPageUpiTxns((prev) => ({ ...prev, [targetPage]: data.data ?? [] }));
     } catch {}
     finally { setLoadingUpi(false); }
+    try {
+      const { data } = await upiApi.listVpaMappings();
+      setSavedVpas(data.data ?? []);
+    } catch {}                                                                // without it only the clashes the transaction itself shows are caught
   }, []);
 
   const handleExtract = async () => {
@@ -1569,10 +1574,10 @@ export default function OcrPage() {
     txn.mapped_customer_id === row.customer_id && (txn.mapped_customer_type ?? "").toLowerCase() === row.product_type.toLowerCase();
 
   /** Pair a transaction with a row: the row becomes Online + Paid (a second payment the same day is ADDED); the highlight ends once the sheet amount is covered. */
-  const pairTxn = (txn: UpiTxn, rowUid: string, kind: PairKind, replace = false) => {
+  const pairTxn = (txn: UpiTxn, rowUid: string, kind: PairKind, replace = false, saveId = true) => {
     const row = rows.find((r) => r.uid === rowUid);
     if (!row) return;
-    const needsSave = kind === "click" && !sameCustomer(txn, row);
+    const needsSave = saveId && kind === "click" && !sameCustomer(txn, row);
     const next = applyPairing<Row>({ rows, pairings, originals: pairingOriginals }, txn, rowUid, { kind, needsSave, replace });
     if (next.pairings === pairings) return;                                   // that transaction is already used
     pushHistory();
@@ -1594,8 +1599,12 @@ export default function OcrPage() {
   const pickUpiTxn = (txn: UpiTxn) => {
     if (!targetRow) return;
     if (!targetRow.customer_id) { toast.error("Pick a customer for this row first"); return; }
-    if (txn.mapped_customer_id != null && !sameCustomer(txn, targetRow)) {      // that UPI id belongs to someone else — ask first
-      setRemapConfirm({ txn, rowUid: targetRow.uid });
+    // that UPI id already belongs to someone else (saved, or paired with them earlier on this page) — ask now, not after Submit
+    const owner = findVpaOwner<Row>(txn, targetRow, {
+      saved: savedVpas, rows, pairings, txnById: (id) => Object.values(pageUpiTxns).flat().find((t) => t.id === id),
+    });
+    if (owner) {
+      setRemapConfirm({ txn, rowUid: targetRow.uid, owner });
       return;
     }
     pairTxn(txn, targetRow.uid, "click");
@@ -1691,18 +1700,23 @@ export default function OcrPage() {
 
   /** Re-pointing a UPI id that is saved for another customer needs the user's OK first. */
   const remapModalEl = remapConfirm && (() => {
-    const t = remapConfirm.txn;
+    const { txn: t, owner } = remapConfirm;
     const row = rows.find((r) => r.uid === remapConfirm.rowUid);
     return (
-      <Modal open onClose={() => setRemapConfirm(null)} title="Re-point this UPI id?">
+      <Modal open onClose={() => setRemapConfirm(null)} title="This UPI id belongs to another customer">
         <p data-testid="remap-text" className="text-sm leading-relaxed text-muted-foreground">
-          The UPI id <span className="font-mono text-foreground">{t.sender_vpa || t.sender_name}</span> is saved for{" "}
-          <span className="font-medium text-foreground">{t.mapped_customer_name}</span> ({(t.mapped_customer_type ?? "").toUpperCase()}).
+          The UPI id <span className="font-mono text-foreground">{t.sender_vpa || t.sender_name}</span>{" "}
+          {owner.source === "page" ? "was already paired with" : "is saved for"}{" "}
+          <span className="font-medium text-foreground">{owner.customerName}</span> ({owner.customerType.toUpperCase()}).
           Save it for <span className="font-medium text-foreground">{row?.customer_name}</span> instead? Earlier payments from it stay where they are.
         </p>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => setRemapConfirm(null)}>Cancel</Button>
-          <Button type="button" onClick={() => { pairTxn(t, remapConfirm.rowUid, "click", true); setRemapConfirm(null); }}>Re-point</Button>
+          <Button type="button" variant="outline" data-testid="remap-keep"
+            onClick={() => { pairTxn(t, remapConfirm.rowUid, "click", false, false); setRemapConfirm(null); }}>
+            Pair, keep the UPI id for {owner.customerName}
+          </Button>
+          <Button type="button" data-testid="remap-move" onClick={() => { pairTxn(t, remapConfirm.rowUid, "click", true); setRemapConfirm(null); }}>Re-point</Button>
         </div>
       </Modal>
     );

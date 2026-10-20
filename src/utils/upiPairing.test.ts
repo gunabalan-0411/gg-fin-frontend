@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPairing, consumedIds, ddmmyyyyToIso, dropPairingsForRow, extractedAmount, isSatisfied, matchLabel, matchTags, namesMatch,
+  applyPairing, consumedIds, ddmmyyyyToIso, dropPairingsForRow, extractedAmount, findVpaOwner, isSatisfied, matchLabel, matchTags, namesMatch,
   pairedTotal, reconcile, remainingAmount, removePairing, rowForMappedTxn,
   type PairableRow, type PairingState, type UpiTxnLike,
 } from "./upiPairing";
@@ -184,5 +184,56 @@ describe("ddmmyyyyToIso", () => {
     expect(ddmmyyyyToIso("17-10-2026")).toBe("2026-10-17");
     expect(ddmmyyyyToIso("2026-10-17")).toBe("");
     expect(ddmmyyyyToIso("")).toBe("");
+  });
+});
+
+describe("findVpaOwner — who already owns the UPI id (clash caught while pairing)", () => {
+  const owner = (t: UpiTxnLike, r: PairableRow, over: Partial<Parameters<typeof findVpaOwner>[2]> = {}) =>
+    findVpaOwner(t, r, { saved: [], rows: [r], pairings: [], txnById: () => undefined, ...over });
+
+  it("nobody owns it: no clash", () => {
+    expect(owner(txn(), row())).toBeNull();
+  });
+
+  it("the transaction is already mapped to another customer", () => {
+    const o = owner(txn({ mapped_customer_id: 9, mapped_customer_type: "edi", mapped_customer_name: "Old Owner" }), row());
+    expect(o).toMatchObject({ customerId: 9, customerName: "Old Owner", source: "saved" });
+  });
+
+  it("the transaction is mapped to THIS customer: no clash", () => {
+    expect(owner(txn({ mapped_customer_id: 1, mapped_customer_type: "edi", mapped_customer_name: "Selvam" }), row())).toBeNull();
+  });
+
+  it("an older transaction carries no customer, but the UPI id is saved for another one (case-insensitive)", () => {
+    const o = owner(txn({ sender_vpa: "Selvam@UPI" }), row(), { saved: [{ upi_vpa: "selvam@upi", customer_id: 7, customer_type: "edi", customer_name: "Other" }] });
+    expect(o).toMatchObject({ customerId: 7, customerName: "Other", source: "saved" });
+  });
+
+  it("saved for the SAME customer, or for the other product, is no clash", () => {
+    expect(owner(txn(), row(), { saved: [{ upi_vpa: "selvam@upi", customer_id: 1, customer_type: "edi", customer_name: "Selvam" }] })).toBeNull();
+    expect(owner(txn(), row(), { saved: [{ upi_vpa: "selvam@upi", customer_id: 7, customer_type: "iop", customer_name: "Other" }] })).toBeNull();
+  });
+
+  it("the same UPI id paired with another customer earlier on this page", () => {
+    const other = row({ uid: "r2", customer_id: 2, customer_name: "Kannan" });
+    const first = txn({ id: 10, sender_vpa: "shared@upi" });
+    const second = txn({ id: 11, sender_vpa: "SHARED@upi" });
+    const pairings = [{ txnId: 10, rowUid: "r2", amount: 100, kind: "click" as const, needsSave: true, replace: false }];
+    const o = owner(second, row(), { rows: [row(), other], pairings, txnById: (id) => (id === 10 ? first : undefined) });
+    expect(o).toMatchObject({ customerId: 2, customerName: "Kannan", source: "page" });
+  });
+
+  it("an earlier page pairing that will not save the id (user kept it elsewhere) or is for the same customer is no clash", () => {
+    const other = row({ uid: "r2", customer_id: 2, customer_name: "Kannan" });
+    const first = txn({ id: 10, sender_vpa: "shared@upi" });
+    const second = txn({ id: 11, sender_vpa: "shared@upi" });
+    const base = { txnId: 10, rowUid: "r2", amount: 100, kind: "click" as const, replace: false };
+    const ctx = (needsSave: boolean) => ({ rows: [row(), other], pairings: [{ ...base, needsSave }], txnById: (id: number) => (id === 10 ? first : undefined) });
+    expect(owner(second, row(), ctx(false))).toBeNull();
+    expect(owner(second, other, ctx(true))).toBeNull();
+  });
+
+  it("a transaction without a UPI id can only clash through its own mapping", () => {
+    expect(owner(txn({ sender_vpa: null }), row(), { saved: [{ upi_vpa: "", customer_id: 7, customer_type: "edi" }] })).toBeNull();
   });
 });

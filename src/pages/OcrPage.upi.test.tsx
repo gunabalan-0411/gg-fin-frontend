@@ -16,7 +16,7 @@ vi.mock("@/services/api", () => {
   const ok = (data: unknown = {}) => vi.fn().mockResolvedValue({ data });
   return {
     ocrApi: { upload: vi.fn(), getPage: vi.fn(), extract: vi.fn(), submit: vi.fn() },
-    upiApi: { list: vi.fn(), fuzzySuggest: ok({ data: [] }), applyPairings: vi.fn(), gmailSync: vi.fn() },
+    upiApi: { list: vi.fn(), listVpaMappings: vi.fn(), fuzzySuggest: ok({ data: [] }), applyPairings: vi.fn(), gmailSync: vi.fn() },
     driveApi: { status: ok({ connected: true, email: "owner@example.com" }) },
     trainingDataApi: { saveOcr: vi.fn(), saveVoice: vi.fn() },
     expensesApi: { create: ok() },
@@ -31,7 +31,7 @@ import { ocrApi, trainingDataApi, upiApi } from "@/services/api";
 import OcrPage from "./OcrPage";
 
 const ocr = ocrApi as unknown as Record<"upload" | "getPage" | "extract" | "submit", ReturnType<typeof vi.fn>>;
-const upi = upiApi as unknown as Record<"list" | "applyPairings" | "gmailSync", ReturnType<typeof vi.fn>>;
+const upi = upiApi as unknown as Record<"list" | "listVpaMappings" | "applyPairings" | "gmailSync", ReturnType<typeof vi.fn>>;
 const training = trainingDataApi as unknown as Record<"saveOcr", ReturnType<typeof vi.fn>>;
 
 const record = (over: Record<string, unknown>) => ({
@@ -87,6 +87,7 @@ beforeEach(() => {
   ocr.upload.mockResolvedValue({ data: { session_id: "s1", total_pages: 1 } });
   ocr.getPage.mockResolvedValue({ data: { page_image_b64: "AAAA" } });
   ocr.submit.mockResolvedValue({ data: { submitted: 3, mapping_usage: 0 } });
+  upi.listVpaMappings.mockResolvedValue({ data: { data: [] } });
   upi.applyPairings.mockResolvedValue({ data: { paired: 1, created: 1, replaced: 0, unchanged: 0, stamped: 1, skipped: [] } });
   training.saveOcr.mockResolvedValue({ data: { saved: 3, folder: "fintech/ocr/2026-10-17", files: [] } });
 });
@@ -264,6 +265,86 @@ describe("a UPI id that belongs to someone else (UP-06)", () => {
   });
 });
 
+describe("a UPI id clash is settled while pairing, not after Submit (UP-11)", () => {
+  // txn 14 (p14@upi) has no customer on it, but the saved UPI id list says it belongs to customer 9 "Old Owner"
+  const saved = [{ id: 1, upi_vpa: "p14@upi", customer_id: 9, customer_type: "edi", customer_name: "Old Owner" }];
+
+  it("a UPI id saved for another customer (older transaction, no customer on it) asks at the click, naming the owner and offering both ways out", async () => {
+    upi.listVpaMappings.mockResolvedValue({ data: { data: saved } });
+    const { user } = await reachUpiStep();
+    await markOnline(user, 0);
+    await pick(user, "PAYER 14");
+    const text = await screen.findByTestId("remap-text");
+    expect(text).toHaveTextContent(/p14@upi/);
+    expect(text).toHaveTextContent(/is saved for\s*Old Owner/);
+    expect(screen.getByTestId("remap-keep")).toHaveTextContent("Pair, keep the UPI id for Old Owner");
+    expect(screen.getByRole("button", { name: "Re-point" })).toBeInTheDocument();
+    expect(item(14)).toHaveAttribute("data-state", "highlight");               // nothing is paired until the user chooses
+  });
+
+  it("'Pair, keep the UPI id for …' pairs the payment but leaves the saved UPI id alone: nothing to warn about at Submit", async () => {
+    upi.listVpaMappings.mockResolvedValue({ data: { data: saved } });
+    const { user } = await reachUpiStep();
+    await markOnline(user, 0);
+    await pick(user, "PAYER 14");
+    await user.click(await screen.findByTestId("remap-keep"));
+    expect(item(14)).toHaveAttribute("data-state", "paired");
+    expect(within(rowEl(0)).getByText("ONL")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Save & Post/ }));
+    await waitFor(() => expect(ocr.submit).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(upi.applyPairings).not.toHaveBeenCalled();                         // no mapping change, so no "not saved" warning either
+    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining("not saved"), expect.anything());
+  });
+
+  it("'Re-point' moves the saved UPI id to this customer (replace=true, sent at Submit)", async () => {
+    upi.listVpaMappings.mockResolvedValue({ data: { data: saved } });
+    const { user } = await reachUpiStep();
+    await markOnline(user, 0);
+    await pick(user, "PAYER 14");
+    await user.click(await screen.findByRole("button", { name: "Re-point" }));
+    await user.click(screen.getByRole("button", { name: /Save & Post/ }));
+    await waitFor(() => expect(upi.applyPairings).toHaveBeenCalledTimes(1));
+    expect(upi.applyPairings).toHaveBeenCalledWith([{ txn_id: 14, customer_id: 1, customer_type: "edi", customer_name: "Selvam", replace: true }]);
+  });
+
+  it("without the clash the click pairs at once, as before", async () => {
+    upi.listVpaMappings.mockResolvedValue({ data: { data: [{ id: 1, upi_vpa: "p14@upi", customer_id: 1, customer_type: "edi", customer_name: "Selvam" }] } });
+    const { user } = await reachUpiStep();
+    await markOnline(user, 0);
+    await pick(user, "PAYER 14");
+    expect(screen.queryByTestId("remap-text")).toBeNull();
+    expect(item(14)).toHaveAttribute("data-state", "paired");
+  });
+
+  it("the same UPI id used for two different customers on one page is caught at the second click", async () => {
+    const twin = [
+      txn(20, { amount: "500", sender_name: "FAMILY", sender_vpa: "family@upi" }),
+      txn(21, { amount: "300", sender_name: "FAMILY", sender_vpa: "family@upi" }),
+    ];
+    const { user } = await reachUpiStep(twin);
+    await markOnline(user, 0);                                                // Selvam 500
+    await user.click(item(20));
+    expect(screen.queryByTestId("remap-text")).toBeNull();                    // first use: just pairs
+    await user.click(within(rowEl(1)).getByTestId("upi-waiting"));            // Kannan, 300
+    await user.click(item(21));
+    const text = await screen.findByTestId("remap-text");
+    expect(text).toHaveTextContent(/was already paired with\s*Selvam/);
+    await user.click(screen.getByTestId("remap-keep"));                       // Kannan's payment counts, the id stays with Selvam
+    expect(item(21)).toHaveAttribute("data-state", "paired");
+    await user.click(screen.getByRole("button", { name: /Save & Post/ }));
+    await waitFor(() => expect(upi.applyPairings).toHaveBeenCalledTimes(1));
+    expect(upi.applyPairings).toHaveBeenCalledWith([{ txn_id: 20, customer_id: 1, customer_type: "edi", customer_name: "Selvam", replace: false }]);
+  });
+
+  it("if the saved list cannot be loaded the page still works (only the clashes the transaction itself shows are caught)", async () => {
+    upi.listVpaMappings.mockRejectedValue(new Error("500"));
+    const { user } = await reachUpiStep();
+    await markOnline(user, 0);
+    await pick(user, "PAYER 14");
+    expect(item(14)).toHaveAttribute("data-state", "paired");
+  });
+});
 // ── the step never moves on by itself (UP-07, UP-08) ──────────────────────────
 
 describe("continuing from the UPI step", () => {

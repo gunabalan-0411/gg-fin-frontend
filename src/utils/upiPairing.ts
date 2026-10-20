@@ -157,6 +157,67 @@ export function rowForMappedTxn<R extends PairableRow>(rows: R[], txn: UpiTxnLik
   return pool.find((r) => pairingsForRow(pairings, r.uid).length === 0) ?? pool[0];
 }
 
+// ── who owns a UPI id ─────────────────────────────────────────────────────────
+
+/** A saved UPI id -> customer mapping (a row of the UPI id table). */
+export interface SavedVpa {
+  upi_vpa: string;
+  customer_id: number;
+  customer_type: string;                    // "edi" | "iop"
+  customer_name?: string | null;
+}
+
+export interface VpaOwner {
+  customerId: number;
+  customerType: string;
+  customerName: string;
+  /** "saved": the UPI id is already saved for that customer · "page": paired with that customer earlier on this page */
+  source: "saved" | "page";
+}
+
+const vpaKey = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
+
+/**
+ * The customer that already owns this transaction's UPI id when it is NOT the row's customer — i.e. what would make the
+ * server refuse to save the mapping at Submit. Looked at while pairing, so the user can decide right there:
+ *  1. the transaction is already mapped to someone else,
+ *  2. the UPI id is saved for someone else (older transactions carry no customer, so this needs the saved list),
+ *  3. the same UPI id was paired with another customer of the same product earlier on this page.
+ */
+export function findVpaOwner<R extends PairableRow>(
+  txn: UpiTxnLike,
+  row: R,
+  ctx: { saved: SavedVpa[]; rows: R[]; pairings: Pairing[]; txnById: (id: number) => UpiTxnLike | undefined },
+): VpaOwner | null {
+  const product = row.product_type.toLowerCase();
+
+  if (txn.mapped_customer_id != null && !(txn.mapped_customer_id === row.customer_id && (txn.mapped_customer_type ?? "").toLowerCase() === product)) {
+    return {
+      customerId: txn.mapped_customer_id, customerType: (txn.mapped_customer_type ?? "").toLowerCase(),
+      customerName: txn.mapped_customer_name ?? "another customer", source: "saved",
+    };
+  }
+
+  const vpa = vpaKey(txn.sender_vpa);
+  if (!vpa) return null;
+
+  const saved = ctx.saved.find((m) => vpaKey(m.upi_vpa) === vpa && m.customer_type.toLowerCase() === product && m.customer_id !== row.customer_id);
+  if (saved) {
+    return { customerId: saved.customer_id, customerType: product, customerName: saved.customer_name || "another customer", source: "saved" };
+  }
+
+  for (const p of ctx.pairings) {
+    if (!p.needsSave || p.txnId === txn.id) continue;
+    const other = ctx.txnById(p.txnId);
+    const otherRow = ctx.rows.find((r) => r.uid === p.rowUid);
+    if (!other || !otherRow || vpaKey(other.sender_vpa) !== vpa) continue;
+    if (otherRow.product_type.toLowerCase() === product && otherRow.customer_id != null && otherRow.customer_id !== row.customer_id) {
+      return { customerId: otherRow.customer_id, customerType: product, customerName: otherRow.customer_name, source: "page" };
+    }
+  }
+  return null;
+}
+
 // ── matching hints ────────────────────────────────────────────────────────────
 
 function tokens(s: string | null | undefined): string[] {
