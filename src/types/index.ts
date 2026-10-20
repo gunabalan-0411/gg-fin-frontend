@@ -239,3 +239,20 @@ export interface RememberResult {
   conflicts?: MappingConflict[];
   similar?: MappingSimilar[];
 }
+// ── Note Pad ───────────────────────────────────────────────────────────────
+export interface NotePageSummary {
+  id: number;
+  title: string;
+  version: number;
+  size: number;            // bytes of Markdown
+  updated_at: string;
+}
+
+export interface NotePage {
+  id: number;
+  title: string;
+  content: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}

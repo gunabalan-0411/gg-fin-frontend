@@ -50,7 +50,7 @@ describe("left menu — groups and order (MN-01)", () => {
     const hrefs = (id: string) => within(groupEl(id)).getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(hrefs("home")).toEqual(["/dashboard"]);
     expect(hrefs("manage")).toEqual(["/customers", "/expenses", "/debts"]);
-    expect(hrefs("daily")).toEqual(["/daily-print", "/ocr", "/voice", "/transactions"]);
+    expect(hrefs("daily")).toEqual(["/daily-print", "/ocr", "/voice", "/transactions", "/notepad"]);
     expect(hrefs("mappings")).toEqual(["/upi", "/namemap"]);
     expect(hrefs("advanced")).toEqual(["/sql"]);
   });
@@ -58,7 +58,7 @@ describe("left menu — groups and order (MN-01)", () => {
   it("the visible names (Collections once, Mapping Configs shown as Customer Groupings)", () => {
     renderMenu();
     expect(mainLinks().map(labelOf)).toEqual([
-      "Dashboard", "Customers", "Account Adjustments", "Capital", "Daily Print", "OCR Entry", "Voice Entry", "Collections",
+      "Dashboard", "Customers", "Account Adjustments", "Capital", "Daily Print", "OCR Entry", "Voice Entry", "Collections", "Note Pad",
       "UPI Transactions", "Customer Groupings", "SQL Console", "Settings",
     ]);
     expect(screen.getAllByText("Collections")).toHaveLength(1);
@@ -88,7 +88,7 @@ describe("every page exactly once, URLs unchanged (MN-02)", () => {
   it("lists each page once", () => {
     const paths = ALL_NAV_ITEMS.map((i) => i.to);
     expect(new Set(paths).size).toBe(paths.length);
-    expect(paths).toHaveLength(12);
+    expect(paths).toHaveLength(13);
   });
 
   it("covers exactly the pages the app routes to — none missing, none extra", () => {
@@ -100,7 +100,7 @@ describe("every page exactly once, URLs unchanged (MN-02)", () => {
 
   it("the URLs are the same ones as before", () => {
     expect(ALL_NAV_ITEMS.map((i) => i.to).sort()).toEqual([
-      "/customers", "/dashboard", "/daily-print", "/debts", "/expenses", "/namemap", "/ocr", "/settings", "/sql", "/transactions", "/upi", "/voice",
+      "/customers", "/dashboard", "/daily-print", "/debts", "/expenses", "/namemap", "/notepad", "/ocr", "/settings", "/sql", "/transactions", "/upi", "/voice",
     ].sort());
   });
 });
@@ -108,7 +108,7 @@ describe("every page exactly once, URLs unchanged (MN-02)", () => {
 describe("daily work order, no step numbers (MN-03)", () => {
   it("lists the daily routine in order and shows no number chips anywhere", () => {
     renderMenu();
-    expect([...within(groupEl("daily")).getAllByRole("link")].map(labelOf)).toEqual(["Daily Print", "OCR Entry", "Voice Entry", "Collections"]);
+    expect([...within(groupEl("daily")).getAllByRole("link")].map(labelOf)).toEqual(["Daily Print", "OCR Entry", "Voice Entry", "Collections", "Note Pad"]);
     expect(screen.queryAllByTestId("nav-step")).toHaveLength(0);
     for (const item of ALL_NAV_ITEMS) expect(item).not.toHaveProperty("step");
   });
@@ -317,7 +317,7 @@ describe("mobile drawer and bottom bar (MN-07)", () => {
     expect(screen.getByRole("button", { name: "Close menu" })).toBeInTheDocument();
     await userEvent.setup().click(screen.getByTestId("nav-customers"));
     expect(onClose).toHaveBeenCalled();
-    expect(mainLinks()).toHaveLength(12);
+    expect(mainLinks()).toHaveLength(13);
   });
 
   it("the bottom icon bar is unchanged", () => {

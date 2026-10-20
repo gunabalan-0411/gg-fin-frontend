@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, RememberResult,
+  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -298,6 +298,16 @@ export const nameMappingsApi = {
   suggest: (finance_type: FinanceType, query: string) =>
     api.post<{ candidates: MappingCandidate[] }>("/name-mappings/suggest", { finance_type, query }),
   resync: () => api.post<{ repointed: number; alias_rows: number; mismatch_rows: number }>("/name-mappings/resync"),
+};
+
+// ── Note Pad (Markdown pages) ──────────────────────────────────────────────
+export const notesApi = {
+  list: () => api.get<NotePageSummary[]>("/notes"),
+  get: (id: number) => api.get<NotePage>(`/notes/${id}`),
+  create: (body: { title?: string; content?: string }) => api.post<NotePage>("/notes", body),
+  /** `version` = the version the editor was based on; the server answers 409 `stale` when someone saved in between. */
+  update: (id: number, body: { version: number; title?: string; content?: string }) => api.patch<NotePage>(`/notes/${id}`, body),
+  remove: (id: number) => api.delete(`/notes/${id}`),
 };
 
 // ── Setup (no auth required) ───────────────────────────────────────────────

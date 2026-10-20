@@ -6,7 +6,7 @@
 // no second navigation bar inside the page.
 import {
   LayoutDashboard, Users, ArrowLeftRight, Receipt, Mic, ScanText, Settings, BookText, Wallet, Landmark, Database, Printer,
-  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key,
+  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen,
   type LucideIcon,
 } from "lucide-react";
 
@@ -75,6 +75,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/ocr", icon: ScanText, label: "OCR Entry" },
       { to: "/voice", icon: Mic, label: "Voice Entry" },
       { to: "/transactions", icon: ArrowLeftRight, label: "Collections" },
+      { to: "/notepad", icon: NotebookPen, label: "Note Pad" },
     ],
   },
   {
