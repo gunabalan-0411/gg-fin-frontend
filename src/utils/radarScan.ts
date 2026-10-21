@@ -17,7 +17,9 @@ export interface ScanTiming {
   fadeOutMs: number;
 }
 
-export const DEFAULT_TIMING: ScanTiming = { sweepMs: 2600, pauseMs: 450, flashMs: 220, glowMs: 3200, lagFrac: 0.008, fadeOutMs: 450 };
+// The pace (ms). The whole motion is slowed to a quarter of the speed it first had (sweep 2.6 s -> 10.4 s, rest 0.45 s -> 1.8 s, glow 3.2 s ->
+// 12.8 s), so it looks the same, only calmer. The quick ping (flashMs) and the fade-out when the reading ends keep their pace: they are not motion.
+export const DEFAULT_TIMING: ScanTiming = { sweepMs: 10_400, pauseMs: 1_800, flashMs: 220, glowMs: 12_800, lagFrac: 0.008, fadeOutMs: 450 };
 
 export const cycleMs = (c: ScanTiming) => c.sweepMs + c.pauseMs;
 

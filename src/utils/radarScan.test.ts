@@ -116,8 +116,15 @@ describe("which characters are lit at a moment (RS-05)", () => {
   it("an empty page has nothing to light", () => expect(litBlobs([], 1000, 1234)).toEqual([]));
 
   it("a custom timing changes the pace", () => {
-    const slow = { ...C, sweepMs: 10_000 };
-    expect(litBlobs(blobs, 1000, 2600, slow)).toHaveLength(1);
-    expect(litBlobs(blobs, 1000, 2600)).toHaveLength(3);
+    const fast = { ...C, sweepMs: 1000 };
+    expect(litBlobs(blobs, 1000, 2600, fast)).toHaveLength(3);                      // a quick sweep has long since passed all three
+    expect(litBlobs(blobs, 1000, 2600)).toHaveLength(1);                            // at the default (slow) pace only the first has been passed
+  });
+
+  it("the default pace is a quarter of the earlier speed: sweep 10.4 s, rest 1.8 s, glow 12.8 s", () => {
+    expect([C.sweepMs, C.pauseMs, C.glowMs]).toEqual([10_400, 1_800, 12_800]);
+    expect(C.sweepMs / 2600).toBe(4);
+    expect(C.glowMs / 3200).toBe(4);
+    expect(linePosition(5_200)).toBeCloseTo(0.5, 5);                                // half way down after 5.2 s
   });
 });
