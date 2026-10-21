@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
+  CarryForwardResult, CarryPreview, FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -304,6 +304,15 @@ export const nameMappingsApi = {
   suggest: (finance_type: FinanceType, query: string) =>
     api.post<{ candidates: MappingCandidate[] }>("/name-mappings/suggest", { finance_type, query }),
   resync: () => api.post<{ repointed: number; alias_rows: number; mismatch_rows: number }>("/name-mappings/resync"),
+  /** Re-loan: the alias / AI-mismatch names stored under a customer's name — open or closed (the popup refuses closed ones). */
+  carryPreview: (finance_type: FinanceType, customer_id: number) =>
+    api.get<CarryPreview>("/name-mappings/carry-forward", { params: { finance_type, customer_id } }),
+  /** Re-loan: carry a closed account's names to the open account that replaces it (copies under the new name when it differs). */
+  carryForward: (body: { finance_type: FinanceType; from_customer_id: number; to_customer_id: number; aliases: boolean; mismatches: boolean }) =>
+    api.post<CarryForwardResult>("/name-mappings/carry-forward", body),
+  /** Undo of the above: remove exactly the words it added. */
+  undoCarryForward: (body: { finance_type: FinanceType; customer_id: number; aliases: string[]; mismatches: string[] }) =>
+    api.post<{ removed: { alias: number; ai_mismatch: number } }>("/name-mappings/carry-forward/undo", body),
 };
 
 // ── Note Pad (Markdown pages) ──────────────────────────────────────────────

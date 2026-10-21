@@ -211,6 +211,21 @@ export interface MappingPopupData {
   limits: { alias: number; ai_mismatch: number };
 }
 
+/** Re-loan: the names stored under a customer's name (any customer, open or closed). */
+export interface CarryPreview {
+  customer: { id: number; name: string | null; is_closed: boolean; finance_type: FinanceType };
+  aliases: string[];
+  mismatches: string[];
+}
+
+/** What carrying a closed account's names to its replacement added (so Undo can take exactly that back). */
+export interface CarryForwardResult {
+  same_name: boolean;                       // same name: they follow by themselves, nothing was copied
+  alias: string[];
+  ai_mismatch: string[];
+  skipped: { alias: number; ai_mismatch: number };
+}
+
 export interface MappingConflict {
   kind: MappingKind;
   word: string;

@@ -2,6 +2,7 @@
  * "Use existing UPI ids" on the Copy (Duplicate) form — in BOTH places that use it: the Customers tab and the OCR
  * "Customer" step. Covers CP-01 … CP-04: shown only when a CLOSED account is copied and the copy is saved as OPEN (and it
  * has saved UPI ids), ON by default, the ids move after the new account is created, and Undo / Redo move them back / again.
+ * (Copying an account that is still OPEN, alias / misread names and closing the old account: CustomersPage.carry.test.tsx.)
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -18,16 +19,18 @@ vi.mock("@/services/api", () => {
       updateEdi: ok(), updateIop: ok(), deleteEdi: ok(), deleteIop: ok(), transliterate: ok({ tamil: "" }),
     },
     upiApi: { listVpaMappings: vi.fn(), moveVpaMappings: vi.fn() },
+    nameMappingsApi: { carryPreview: vi.fn(), carryForward: vi.fn(), undoCarryForward: vi.fn() },
   };
 });
 
 import toast from "react-hot-toast";
-import { customersApi, upiApi } from "@/services/api";
+import { customersApi, nameMappingsApi, upiApi } from "@/services/api";
 import CustomersPage from "@/pages/CustomersPage";
 import { CustomerStepOverlay } from "@/components/CustomerStepOverlay";
 
 const cust = customersApi as unknown as Record<"listEdi" | "nextEdiId" | "createEdi" | "deleteEdi", ReturnType<typeof vi.fn>>;
 const upi = upiApi as unknown as Record<"listVpaMappings" | "moveVpaMappings", ReturnType<typeof vi.fn>>;
+const names = nameMappingsApi as unknown as Record<"carryPreview" | "carryForward", ReturnType<typeof vi.fn>>;
 
 const account = (over: Record<string, unknown> = {}) => ({
   customer_id: 5, customer_name: "Selvam", customer_name_ta: "செல்வம்", tamil_name: "செல்வம்", customer_segment_id: 1,
@@ -66,6 +69,7 @@ beforeEach(() => {
   (customersApi as any).listIop.mockResolvedValue({ data: { data: [], total: 0 } });
   upi.listVpaMappings.mockResolvedValue({ data: { data: [vpa(1), vpa(2)] } });
   upi.moveVpaMappings.mockResolvedValue({ data: { moved: 2 } });
+  names.carryPreview.mockResolvedValue({ data: { customer: { id: 5, name: "Selvam", is_closed: true, finance_type: "EDI" }, aliases: [], mismatches: [] } });   // no names here: UPI ids only
 });
 
 describe.each(SCREENS)("Use existing UPI ids — %s", (_name, make) => {
@@ -84,22 +88,14 @@ describe.each(SCREENS)("Use existing UPI ids — %s", (_name, make) => {
     await reopen(user);
     const box = await screen.findByTestId("reuse-upi");
     expect(within(box).getByRole("switch", { name: "Use existing UPI ids" })).toHaveAttribute("aria-checked", "true");
-    expect(within(box).getByTestId("reuse-upi-hint")).toHaveTextContent("2 saved UPI ids of the closed account will follow this account");
+    expect(within(box).getByTestId("reuse-upi-hint")).toHaveTextContent("2 saved UPI ids of the old account will follow this account");
     expect(upi.listVpaMappings).toHaveBeenCalledWith({ customer_id: 5, customer_type: "edi" });
     await user.click(within(box).getByRole("switch", { name: "Use existing UPI ids" }));
-    expect(within(box).getByTestId("reuse-upi-hint")).toHaveTextContent(/stay with the closed account/);
+    expect(within(box).getByTestId("reuse-upi-hint")).toHaveTextContent(/stay with the old account/);
   });
 
-  it("is never shown for a copy of an OPEN account, nor when the closed account has no saved UPI ids", async () => {
+  it("is not shown when the closed account has no saved UPI ids", async () => {
     const user = userEvent.setup();
-    cust.listEdi.mockResolvedValue({ data: { data: [account({ is_closed: false })], total: 1 } });
-    const first = renderScreen(make);
-    await openCopy(user);
-    expect(screen.queryByTestId("reuse-upi")).toBeNull();
-    expect(upi.listVpaMappings).not.toHaveBeenCalled();
-    first.unmount();
-
-    cust.listEdi.mockResolvedValue({ data: { data: [account()], total: 1 } });
     upi.listVpaMappings.mockResolvedValue({ data: { data: [] } });
     renderScreen(make);
     await openCopy(user);
@@ -144,6 +140,7 @@ describe.each(SCREENS)("Use existing UPI ids — %s", (_name, make) => {
     const user = userEvent.setup();
     renderScreen(make);
     await openCopy(user);
+    await waitFor(() => expect(saveButton()).toBeEnabled());
     await user.click(saveButton());
     await waitFor(() => expect(cust.createEdi).toHaveBeenCalledTimes(1));
     expect(cust.createEdi.mock.calls[0][0]).toMatchObject({ is_closed: true });

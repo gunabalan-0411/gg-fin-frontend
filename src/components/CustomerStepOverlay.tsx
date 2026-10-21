@@ -13,13 +13,14 @@ import {
   CustomerFormModal, CustomerDetailModal, DeleteConfirmModal,
   CustomerCardMobile, CustomerRow, PAGE_SIZE, SortDir,
 } from "@/pages/CustomersPage";
-import { moveUpiIds, type CustomerSaveOptions } from "@/utils/customerUpiIds";
+import { CloseOldAccountModal } from "@/components/customers/CloseOldAccountModal";
+import { newCarryRun, runCarry, undoCarry, type CarryRun, type CustomerSaveOptions } from "@/utils/customerCarry";
 import type { EdiCustomer, IopCustomer, ProductType } from "@/types";
 import toast from "react-hot-toast";
 
 type CustAction =
-  // upiFrom: the closed account whose UPI ids were moved to this new one ("Use existing UPI ids"), so Undo / Redo can move them back / again
-  | { type: "create"; id: number; product: ProductType; data: object; upiFrom?: number }
+  // carry: what the new account inherited from the old one (UPI ids, alias / misread names, closing the old account), so Undo / Redo can reverse / repeat it
+  | { type: "create"; id: number; product: ProductType; data: object; carry?: CarryRun }
   | { type: "update"; id: number; product: ProductType; prev: object; next: object }
   | { type: "delete"; customer: EdiCustomer | IopCustomer; product: ProductType };
 
@@ -44,6 +45,8 @@ export function CustomerStepOverlay({
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<EdiCustomer | IopCustomer | null>(null);
   const [duplicateSource, setDuplicateSource] = useState<EdiCustomer | IopCustomer | null>(null);
+  const [closeOldOnSave, setCloseOldOnSave] = useState(false);                          // the user chose to close the old (open) account when the copy is saved
+  const [askClose, setAskClose] = useState<EdiCustomer | IopCustomer | null>(null);     // "Close the old account?" is open for this customer
   const [detailCustomer, setDetailCustomer] = useState<EdiCustomer | IopCustomer | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{
     id: number; name: string; customer: EdiCustomer | IopCustomer;
@@ -76,32 +79,35 @@ export function CustomerStepOverlay({
 
   const handleSave = (formData: object, options?: CustomerSaveOptions) => {
     const id = (formData as any).customer_id ?? (editing as EdiCustomer | null)?.customer_id;
-    const upiFrom = options?.reuseUpiIdsFrom;
+    const carry = options?.carry ? newCarryRun(options.carry) : undefined;
     if (editing) {
       setUndoStack((p) => [...p.slice(-29), { type: "update", id, product, prev: { ...editing }, next: formData }]);
       setRedoStack([]);
       updateMutation.mutate({ id: (editing as EdiCustomer).customer_id, data: formData });
     } else {
-      setUndoStack((p) => [...p.slice(-29), { type: "create", id, product, data: formData, upiFrom }]);
+      setUndoStack((p) => [...p.slice(-29), { type: "create", id, product, data: formData, carry }]);
       setRedoStack([]);
       createMutation.mutate(formData, {
-        // "Use existing UPI ids": once the new account exists, the closed account's UPI ids follow it
+        // re-loan: once the new account exists, the old one is closed and its UPI ids / names follow it
         onSuccess: async () => {
-          if (upiFrom == null) return;
-          try {
-            const moved = await moveUpiIds(product, upiFrom, Number(id));
-            if (moved > 0) toast.success(`${moved} UPI id${moved !== 1 ? "s" : ""} moved to the new account`);
-          } catch {
-            toast.error("Account created, but its UPI ids could not be moved");
-          }
+          if (!carry) return;
+          await runCarry(product, Number(id), carry);
+          qc.invalidateQueries({ queryKey: ["customers", product] });
         },
       });
     }
     setShowForm(false);
     setEditing(null);
     setDuplicateSource(null);
+    setCloseOldOnSave(false);
     qc.invalidateQueries({ queryKey: ["customers", product] });
   };
+
+  const openCopy = (c: EdiCustomer | IopCustomer, closeOld: boolean) => {
+    setEditing(null); setDuplicateSource(c); setCloseOldOnSave(closeOld); setAskClose(null); setShowForm(true);
+  };
+  // a closed account is copied straight away; one that is still open first asks whether to close it (a re-loan closes the old account)
+  const requestDuplicate = (c: EdiCustomer | IopCustomer) => { if (c.is_closed) openCopy(c, false); else setAskClose(c); };
 
   const handleDeleteConfirm = (resequence: boolean) => {
     if (!confirmDelete) return;
@@ -114,7 +120,7 @@ export function CustomerStepOverlay({
   const applyAction = useCallback(async (action: CustAction) => {
     if (action.type === "create") {
       await (action.product === "edi" ? customersApi.createEdi(action.data) : customersApi.createIop(action.data));
-      if (action.upiFrom != null) await moveUpiIds(action.product, action.upiFrom, action.id);      // the UPI ids follow it again
+      if (action.carry) await runCarry(action.product, action.id, action.carry);                    // the old account closes / its UPI ids and names follow again
     } else if (action.type === "update") {
       await (action.product === "edi" ? customersApi.updateEdi(action.id, action.next) : customersApi.updateIop(action.id, action.next));
     } else {
@@ -124,9 +130,9 @@ export function CustomerStepOverlay({
 
   const reverseAction = useCallback(async (action: CustAction) => {
     if (action.type === "create") {
-      // the UPI ids go back to the closed account first — deleting the new one would leave them pointing at nothing
-      if (action.upiFrom != null) await moveUpiIds(action.product, action.id, action.upiFrom);
-      await (action.product === "edi" ? customersApi.deleteEdi(action.id) : customersApi.deleteIop(action.id));
+      // the names and UPI ids go back to the old account and it is reopened first — deleting the new one would leave them pointing at nothing
+      await undoCarry(action.product, action.id, action.carry,
+        () => (action.product === "edi" ? customersApi.deleteEdi(action.id) : customersApi.deleteIop(action.id)));
     } else if (action.type === "update") {
       await (action.product === "edi" ? customersApi.updateEdi(action.id, action.prev) : customersApi.updateIop(action.id, action.prev));
     } else {
@@ -312,8 +318,8 @@ export function CustomerStepOverlay({
                   customer={c}
                   product={product}
                   onNameClick={() => setDetailCustomer(c)}
-                  onEdit={() => { setEditing(c); setDuplicateSource(null); setShowForm(true); }}
-                  onDuplicate={() => { setEditing(null); setDuplicateSource(c); setShowForm(true); }}
+                  onEdit={() => { setEditing(c); setDuplicateSource(null); setCloseOldOnSave(false); setShowForm(true); }}
+                  onDuplicate={() => requestDuplicate(c)}
                   onDelete={() => setConfirmDelete({ id: c.customer_id, name: c.customer_name ?? `#${c.customer_id}`, customer: c })}
                 />
               ))
@@ -371,8 +377,8 @@ export function CustomerStepOverlay({
                       customer={c}
                       product={product}
                       onNameClick={() => setDetailCustomer(c)}
-                      onEdit={() => { setEditing(c); setDuplicateSource(null); setShowForm(true); }}
-                      onDuplicate={() => { setEditing(null); setDuplicateSource(c); setShowForm(true); }}
+                      onEdit={() => { setEditing(c); setDuplicateSource(null); setCloseOldOnSave(false); setShowForm(true); }}
+                      onDuplicate={() => requestDuplicate(c)}
                       onDelete={() => setConfirmDelete({ id: c.customer_id, name: c.customer_name ?? `#${c.customer_id}`, customer: c })}
                     />
                   ))
@@ -411,11 +417,18 @@ export function CustomerStepOverlay({
       {/* ── Sub-modals (rendered above overlay) ── */}
       <CustomerFormModal
         open={showForm}
-        onClose={() => { setShowForm(false); setEditing(null); setDuplicateSource(null); }}
+        onClose={() => { setShowForm(false); setEditing(null); setDuplicateSource(null); setCloseOldOnSave(false); }}
         product={product}
         initial={editing}
         duplicateFrom={duplicateSource}
+        closeOldOnSave={closeOldOnSave}
         onSave={handleSave}
+      />
+      <CloseOldAccountModal
+        customer={askClose}
+        onYes={() => askClose && openCopy(askClose, true)}
+        onNo={() => askClose && openCopy(askClose, false)}
+        onCancel={() => setAskClose(null)}
       />
       {detailCustomer && (
         <CustomerDetailModal

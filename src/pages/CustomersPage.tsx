@@ -14,9 +14,10 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import {
   useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer,
 } from "@/hooks/useCustomers";
-import { customersApi, upiApi } from "@/services/api";
+import { customersApi, nameMappingsApi, upiApi } from "@/services/api";
 import { Switch } from "@/components/ui/Switch";
-import { moveUpiIds, type CustomerSaveOptions } from "@/utils/customerUpiIds";
+import { CloseOldAccountModal } from "@/components/customers/CloseOldAccountModal";
+import { newCarryRun, runCarry, undoCarry, type CarryOptions, type CarryRun, type CustomerSaveOptions } from "@/utils/customerCarry";
 import toast from "react-hot-toast";
 import { formatCurrency } from "@/utils";
 import type { ProductType, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction } from "@/types";
@@ -25,8 +26,8 @@ export const PAGE_SIZE = 20;
 export type SortDir = "asc" | "desc";
 
 type HistoryEntry =
-  // upiFrom: the closed account whose UPI ids were moved to this new one ("Use existing UPI ids"), so Undo / Redo can move them back / again
-  | { type: "create"; formData: object; customerId: number; product: ProductType; upiFrom?: number }
+  // carry: what the new account inherited from the old one (UPI ids, alias / misread names, closing the old account), so Undo / Redo can reverse / repeat it
+  | { type: "create"; formData: object; customerId: number; product: ProductType; carry?: CarryRun }
   | { type: "update"; id: number; before: object; after: object; product: ProductType }
   | { type: "delete"; customer: EdiCustomer | IopCustomer; resequence: boolean; product: ProductType };
 
@@ -42,6 +43,8 @@ export default function CustomersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<EdiCustomer | IopCustomer | null>(null);
   const [duplicateSource, setDuplicateSource] = useState<EdiCustomer | IopCustomer | null>(null);
+  const [closeOldOnSave, setCloseOldOnSave] = useState(false);                          // the user chose to close the old (open) account when the copy is saved
+  const [askClose, setAskClose] = useState<EdiCustomer | IopCustomer | null>(null);     // "Close the old account?" is open for this customer
   const [sortBy, setSortBy] = useSessionState("customers.sortBy", "customer_id");
   const [sortDir, setSortDir] = useSessionState<SortDir>("customers.sortDir", "asc");
   const [balanceFilter, setBalanceFilter] = useSessionState("customers.balanceFilter", false);
@@ -80,8 +83,12 @@ export default function CustomersPage() {
     return sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
   };
 
-  const handleEdit = (c: EdiCustomer | IopCustomer) => { setEditing(c); setDuplicateSource(null); setShowForm(true); };
-  const handleDuplicate = (c: EdiCustomer | IopCustomer) => { setEditing(null); setDuplicateSource(c); setShowForm(true); };
+  const handleEdit = (c: EdiCustomer | IopCustomer) => { setEditing(c); setDuplicateSource(null); setCloseOldOnSave(false); setShowForm(true); };
+  const openCopy = (c: EdiCustomer | IopCustomer, closeOld: boolean) => {
+    setEditing(null); setDuplicateSource(c); setCloseOldOnSave(closeOld); setAskClose(null); setShowForm(true);
+  };
+  // a closed account is copied straight away; one that is still open first asks whether to close it (a re-loan closes the old account)
+  const handleDuplicate = (c: EdiCustomer | IopCustomer) => { if (c.is_closed) openCopy(c, false); else setAskClose(c); };
   const handleDeleteClick = (id: number, name: string) => {
     const customer = customers.find((c) => c.customer_id === id);
     if (!customer) return;
@@ -96,32 +103,29 @@ export default function CustomersPage() {
   };
   const handleSave = (formData: object, options?: CustomerSaveOptions) => {
     const customerId = Number((formData as Record<string, string>).customer_id);
-    const upiFrom = options?.reuseUpiIdsFrom;
+    const carry = options?.carry ? newCarryRun(options.carry) : undefined;
     if (editing) {
       const id = (editing as EdiCustomer).customer_id;
       setUndoStack((prev) => [...prev.slice(-2), { type: "update", id, before: { ...editing }, after: formData, product }]);
     } else {
-      setUndoStack((prev) => [...prev.slice(-2), { type: "create", formData, customerId, product, upiFrom }]);
+      setUndoStack((prev) => [...prev.slice(-2), { type: "create", formData, customerId, product, carry }]);
     }
     setRedoStack([]);
     if (editing) updateMutation.mutate({ id: (editing as EdiCustomer).customer_id, data: formData });
     else {
       createMutation.mutate(formData, {
-        // "Use existing UPI ids": once the new account exists, the closed account's UPI ids follow it
+        // re-loan: once the new account exists, the old one is closed and its UPI ids / names follow it
         onSuccess: async () => {
-          if (upiFrom == null) return;
-          try {
-            const moved = await moveUpiIds(product, upiFrom, customerId);
-            if (moved > 0) toast.success(`${moved} UPI id${moved !== 1 ? "s" : ""} moved to the new account`);
-          } catch {
-            toast.error("Account created, but its UPI ids could not be moved");
-          }
+          if (!carry) return;
+          await runCarry(product, customerId, carry);
+          qc.invalidateQueries({ queryKey: ["customers", product] });
         },
       });
     }
     setShowForm(false);
     setEditing(null);
     setDuplicateSource(null);
+    setCloseOldOnSave(false);
   };
 
   const handleUndo = async () => {
@@ -131,10 +135,9 @@ export default function CustomersPage() {
     setRedoStack((prev) => [...prev.slice(-2), entry]);
     try {
       if (entry.type === "create") {
-        // the UPI ids go back to the closed account first — deleting the new one would leave them pointing at nothing
-        if (entry.upiFrom != null) await moveUpiIds(entry.product, entry.customerId, entry.upiFrom);
+        // the names and UPI ids go back to the old account and it is reopened first — deleting the new one would leave them pointing at nothing
         const fn = entry.product === "edi" ? customersApi.deleteEdi : customersApi.deleteIop;
-        await fn(entry.customerId, false);
+        await undoCarry(entry.product, entry.customerId, entry.carry, () => fn(entry.customerId, false));
       } else if (entry.type === "update") {
         const fn = entry.product === "edi" ? customersApi.updateEdi : customersApi.updateIop;
         await fn(entry.id, entry.before);
@@ -157,7 +160,7 @@ export default function CustomersPage() {
       if (entry.type === "create") {
         const fn = entry.product === "edi" ? customersApi.createEdi : customersApi.createIop;
         await fn(entry.formData);
-        if (entry.upiFrom != null) await moveUpiIds(entry.product, entry.upiFrom, entry.customerId);   // and the UPI ids follow it again
+        if (entry.carry) await runCarry(entry.product, entry.customerId, entry.carry);                  // and the old account closes / its UPI ids and names follow again
       } else if (entry.type === "update") {
         const fn = entry.product === "edi" ? customersApi.updateEdi : customersApi.updateIop;
         await fn(entry.id, entry.after);
@@ -357,11 +360,18 @@ export default function CustomersPage() {
 
       <CustomerFormModal
         open={showForm}
-        onClose={() => { setShowForm(false); setEditing(null); setDuplicateSource(null); }}
+        onClose={() => { setShowForm(false); setEditing(null); setDuplicateSource(null); setCloseOldOnSave(false); }}
         product={product}
         initial={editing}
         duplicateFrom={duplicateSource}
+        closeOldOnSave={closeOldOnSave}
         onSave={handleSave}
+      />
+      <CloseOldAccountModal
+        customer={askClose}
+        onYes={() => askClose && openCopy(askClose, true)}
+        onNo={() => askClose && openCopy(askClose, false)}
+        onCancel={() => setAskClose(null)}
       />
 
       {detailCustomer && (
@@ -769,18 +779,21 @@ export function DeleteConfirmModal({ name, onSimpleDelete, onResequenceDelete, o
 }
 
 // ── Add/Edit Modal ────────────────────────────────────────────────────────────
-export function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, onSave }: {
+export function CustomerFormModal({ open, onClose, product, initial, duplicateFrom, closeOldOnSave = false, onSave }: {
   open: boolean;
   onClose: () => void;
   product: ProductType;
   initial: EdiCustomer | IopCustomer | null;
   duplicateFrom?: EdiCustomer | IopCustomer | null;
+  closeOldOnSave?: boolean;          // the copy is of an account that is still open and the user chose to close it when this is saved
   onSave: (data: object, options?: CustomerSaveOptions) => void;
 }) {
   const [form, setForm] = useState<Record<string, string>>({});
   const [nextId, setNextId] = useState<number | null>(null);
   const [tamilLoading, setTamilLoading] = useState(false);
   const [reuseUpi, setReuseUpi] = useState(true);                // "Use existing UPI ids" — ON by default
+  const [reuseAliases, setReuseAliases] = useState(true);          // "Use existing alias names" — ON by default
+  const [reuseMismatches, setReuseMismatches] = useState(true);    // "Use existing AI-misread names" — ON by default
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: _segmentsRaw } = useQuery<{ segment_id: number; name: string }[]>({
@@ -794,17 +807,36 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
   });
   const segments = Array.isArray(_segmentsRaw) ? _segmentsRaw : [];
 
-  // "Use existing UPI ids": only when a CLOSED account is copied and the copy is saved as OPEN (= the account is re-opened)
-  // and the closed account actually has saved UPI ids.
-  const copyOfClosed = Boolean(duplicateFrom?.is_closed);
-  const { data: closedUpiIds } = useQuery({
+  // Re-loan: a copy inherits the OLD account's UPI ids, alias names and AI-misread names - only when the old account is (or, on Save, is being)
+  // CLOSED and the copy is saved as OPEN. A copy of an account that stays open inherits none of them (two open accounts cannot share them).
+  const sourceClosed = Boolean(duplicateFrom?.is_closed);
+  const willClose = Boolean(duplicateFrom) && !sourceClosed && closeOldOnSave;           // the user said "Yes, close it": closed when this is saved
+  const keepsOpen = Boolean(duplicateFrom) && !sourceClosed && !closeOldOnSave;          // "No, keep it open"
+  const canInherit = sourceClosed || willClose;
+  const inheritOn = open && !initial && canInherit;
+  const { data: oldUpiIds, isLoading: upiLoading } = useQuery({
     queryKey: ["vpa-mappings", product, duplicateFrom?.customer_id],
     queryFn: async () => (await upiApi.listVpaMappings({ customer_id: duplicateFrom!.customer_id, customer_type: product })).data.data,
-    enabled: open && copyOfClosed && !initial,
+    enabled: inheritOn,
+    gcTime: 0,
   });
-  const upiIdCount = closedUpiIds?.length ?? 0;
-  const formClosed = (form.is_closed ?? String(copyOfClosed)) === "true";   // until the form is prefilled, it is the source's state
-  const showReuseUpi = open && !initial && copyOfClosed && !formClosed && upiIdCount > 0;
+  const { data: oldNames, isLoading: namesLoading } = useQuery({
+    queryKey: ["carry-preview", product, duplicateFrom?.customer_id],
+    queryFn: async () => (await nameMappingsApi.carryPreview(product === "edi" ? "EDI" : "IOP", duplicateFrom!.customer_id)).data,
+    enabled: inheritOn,
+    gcTime: 0,
+  });
+  const upiIdCount = oldUpiIds?.length ?? 0;
+  const aliasCount = oldNames?.aliases.length ?? 0;
+  const mismatchCount = oldNames?.mismatches.length ?? 0;
+  const formClosed = (form.is_closed ?? String(sourceClosed)) === "true";   // until the form is prefilled, it is the source's state
+  const showInherit = inheritOn && !formClosed;
+  const showUpi = showInherit && upiIdCount > 0;
+  const showAliases = showInherit && aliasCount > 0;
+  const showMismatches = showInherit && mismatchCount > 0;
+  // names are stored by NAME: with the same name they follow the open account by themselves (cannot be switched off), with another name they are copied
+  const sameName = (form.customer_name ?? duplicateFrom?.customer_name ?? "") === (duplicateFrom?.customer_name ?? "");
+  const loadingInherit = inheritOn && (upiLoading || namesLoading);                      // Save waits, so the switches are known before saving
 
   useEffect(() => {
     if (open && !initial) {
@@ -830,7 +862,9 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       setForm({});
       setNextId(null);
     }
-    setReuseUpi(true);                                         // every time the form opens, "Use existing UPI ids" starts ON
+    setReuseUpi(true);                                         // every time the form opens, the inherit switches start ON
+    setReuseAliases(true);
+    setReuseMismatches(true);
   }, [open, initial, duplicateFrom, product]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -891,7 +925,18 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       if (data[k]) data[k] = Number(data[k]);
     });
     if (data.is_closed !== undefined) data.is_closed = data.is_closed === "true" || data.is_closed === true;
-    onSave(data, showReuseUpi && reuseUpi && duplicateFrom ? { reuseUpiIdsFrom: duplicateFrom.customer_id } : undefined);
+    let carry: CarryOptions | undefined;
+    if (duplicateFrom && canInherit) {
+      carry = {
+        fromCustomerId: duplicateFrom.customer_id,
+        closeOld: willClose,
+        upi: showUpi && reuseUpi,
+        aliases: showAliases && (sameName || reuseAliases),
+        mismatches: showMismatches && (sameName || reuseMismatches),
+      };
+      if (!carry.closeOld && !carry.upi && !carry.aliases && !carry.mismatches) carry = undefined;
+    }
+    onSave(data, carry ? { carry } : undefined);
   };
 
   const getVal = (key: string) => {
@@ -1029,19 +1074,68 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
             );
           })()}
 
-          {showReuseUpi && (
-            <div className="col-span-2 pt-1" data-testid="reuse-upi">
-              <label className="flex w-full items-center gap-3 text-left">
-                <Switch checked={reuseUpi} onCheckedChange={setReuseUpi} aria-label="Use existing UPI ids" />
-                <div>
-                  <p className="text-sm font-medium text-foreground leading-none">Use existing UPI ids</p>
-                  <p className="text-xs text-muted-foreground mt-0.5" data-testid="reuse-upi-hint">
-                    {reuseUpi
-                      ? `${upiIdCount} saved UPI id${upiIdCount !== 1 ? "s" : ""} of the closed account will follow this account`
-                      : "The UPI ids stay with the closed account; this account starts with none"}
-                  </p>
+          {duplicateFrom && !initial && (willClose || keepsOpen) && (
+            <p
+              data-testid={willClose ? "carry-close-note" : "carry-keep-note"}
+              className="col-span-2 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground"
+            >
+              {willClose
+                ? <>Saving this account also <span className="font-medium text-foreground">closes the old account #{duplicateFrom.customer_id}</span>.</>
+                : "The old account stays open, so its UPI ids, alias names and AI-misread names stay with it; this account starts without them."}
+            </p>
+          )}
+
+          {(showUpi || showAliases || showMismatches) && (
+            <div className="col-span-2 space-y-3 pt-1" data-testid="carry-forward">
+              {showUpi && (
+                <div data-testid="reuse-upi">
+                  <label className="flex w-full items-center gap-3 text-left">
+                    <Switch checked={reuseUpi} onCheckedChange={setReuseUpi} aria-label="Use existing UPI ids" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground leading-none">Use existing UPI ids</p>
+                      <p className="text-xs text-muted-foreground mt-0.5" data-testid="reuse-upi-hint">
+                        {reuseUpi
+                          ? `${upiIdCount} saved UPI id${upiIdCount !== 1 ? "s" : ""} of the old account will follow this account`
+                          : "The UPI ids stay with the old account; this account starts with none"}
+                      </p>
+                    </div>
+                  </label>
                 </div>
-              </label>
+              )}
+              {showAliases && (
+                <div data-testid="reuse-alias">
+                  <label className="flex w-full items-center gap-3 text-left">
+                    <Switch checked={sameName || reuseAliases} disabled={sameName} onCheckedChange={setReuseAliases} aria-label="Use existing alias names" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground leading-none">Use existing alias names</p>
+                      <p className="text-xs text-muted-foreground mt-0.5" data-testid="reuse-alias-hint">
+                        {sameName
+                          ? `Same name — the ${aliasCount} alias name${aliasCount !== 1 ? "s follow" : " follows"} this account automatically`
+                          : reuseAliases
+                            ? `${aliasCount} alias name${aliasCount !== 1 ? "s" : ""} of the old account will be copied to this account`
+                            : "This account starts with no alias names"}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
+              {showMismatches && (
+                <div data-testid="reuse-mismatch">
+                  <label className="flex w-full items-center gap-3 text-left">
+                    <Switch checked={sameName || reuseMismatches} disabled={sameName} onCheckedChange={setReuseMismatches} aria-label="Use existing AI-misread names" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground leading-none">Use existing AI-misread names</p>
+                      <p className="text-xs text-muted-foreground mt-0.5" data-testid="reuse-mismatch-hint">
+                        {sameName
+                          ? `Same name — the ${mismatchCount} AI-misread name${mismatchCount !== 1 ? "s follow" : " follows"} this account automatically`
+                          : reuseMismatches
+                            ? `${mismatchCount} AI-misread name${mismatchCount !== 1 ? "s" : ""} of the old account will be copied to this account`
+                            : "This account starts with no AI-misread names"}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1050,7 +1144,7 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
         {field("remarks", "Remarks", true)}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit" disabled={loadingInherit}>Save</Button>
         </div>
       </form>
     </Modal>
