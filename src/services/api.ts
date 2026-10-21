@@ -245,6 +245,9 @@ export const upiApi = {
   applyPairings: (pairings: UpiPairing[]) =>
     api.post<{ paired: number; created: number; replaced: number; unchanged: number; stamped: number; skipped: { txn_id: number; reason: string }[] }>(
       "/upi/vpa-mappings/apply-pairings", { pairings }),
+  // "Unlink" on a mapped transaction: its UPI id stops pointing at the customer (saved mapping deleted, links cleared)
+  unlinkVpa: (txnId: number) =>
+    api.post<{ removed_mappings: number; cleared: number; upi_vpa: string | null }>("/upi/vpa-mappings/unlink", { txn_id: txnId }),
   // "Use existing UPI ids": move a closed account's UPI ids to its re-opened copy (and back, for undo)
   moveVpaMappings: (body: { customer_type: string; from_customer_id: number; to_customer_id: number }) =>
     api.post<{ moved: number }>("/upi/vpa-mappings/move", body),

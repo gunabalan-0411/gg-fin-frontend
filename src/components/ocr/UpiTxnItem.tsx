@@ -1,9 +1,9 @@
 // One UPI transaction in the OCR page's UPI list (desktop column and mobile list share it).
-//  - idle        : plain; an already-mapped transaction offers "Apply"
+//  - idle        : plain; an already-mapped transaction offers "Apply" and "Unlink" (the UPI id stops pointing at that customer)
 //  - highlighted : a customer was just marked paid online -> rotating dotted outline + a small "matches" text; click to pick it
 //  - paired      : used by a customer row -> struck through, shows the customer (and "Auto" when it applied itself), "Undo"
 // There is deliberately NO strike-out button: a transaction is struck out only by being paired.
-import { CheckCircle, RotateCcw } from "lucide-react";
+import { CheckCircle, RotateCcw, Unlink } from "lucide-react";
 import { cn } from "@/utils";
 import type { UpiTxnLike } from "@/utils/upiPairing";
 
@@ -19,11 +19,12 @@ export interface UpiTxnItemProps<T extends UpiItemTxn = UpiItemTxn> {
   onPick: (txn: T) => void;
   onApply: (txn: T) => void;
   onUndo: (txn: T) => void;
+  onUnlink?: (txn: T) => void;               // a mapped, unpaired transaction offers "Unlink" (its UPI id stops pointing at the customer)
 }
 
 const inr = (n: string | number) => `₹${Number(n).toLocaleString("en-IN")}`;
 
-export function UpiTxnItem<T extends UpiItemTxn>({ txn, variant, paired, highlighted, tag, canApply, onPick, onApply, onUndo }: UpiTxnItemProps<T>) {
+export function UpiTxnItem<T extends UpiItemTxn>({ txn, variant, paired, highlighted, tag, canApply, onPick, onApply, onUndo, onUnlink }: UpiTxnItemProps<T>) {
   const desktop = variant === "desktop";
   const mapped = txn.mapped_customer_id != null;
   const sender = txn.sender_name || txn.sender_vpa || "—";
@@ -117,6 +118,23 @@ export function UpiTxnItem<T extends UpiItemTxn>({ txn, variant, paired, highlig
           <CheckCircle className="h-2.5 w-2.5" />Apply
         </button>
       ) : null}
+
+      {!paired && mapped && onUnlink && (
+        <button
+          type="button"
+          data-testid="upi-unlink"
+          onClick={(e) => { e.stopPropagation(); onUnlink(txn); }}
+          title={`Unlink ${txn.mapped_customer_name ?? "the customer"} from this UPI id`}
+          aria-label={`Unlink ${txn.mapped_customer_name ?? "the customer"} from ${sender}`}
+          className={cn(
+            "flex-shrink-0 flex items-center gap-0.5 rounded text-[10px] font-medium border transition-colors",
+            "text-muted-foreground bg-muted/60 hover:bg-destructive/10 hover:text-destructive border-border/60 hover:border-destructive/30",
+            desktop ? "p-1.5" : "px-1.5 py-0.5",
+          )}
+        >
+          <Unlink className={desktop ? "h-3 w-3" : "h-2.5 w-2.5"} />{!desktop && "Unlink"}
+        </button>
+      )}
     </div>
   );
 }

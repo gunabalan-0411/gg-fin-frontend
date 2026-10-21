@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearLinks, sharesLink, withoutSavedVpa,
   applyPairing, consumedIds, ddmmyyyyToIso, dropPairingsForRow, extractedAmount, findVpaOwner, isSatisfied, matchLabel, matchTags, namesMatch, planAutoPairings,
   pairedTotal, reconcile, remainingAmount, removePairing, rowForMappedTxn,
   type PairableRow, type PairingState, type UpiTxnLike,
@@ -310,5 +311,60 @@ describe("planAutoPairings — mapped payments that apply themselves (AU-01 … 
     expect(s.rows[0]).toMatchObject({ payment_mode: "ONLINE", is_paid: true, amount: 500 });
     const manual = applyPairing(state([row()]), mapped(), "r1", { kind: "apply", needsSave: false });
     expect(manual.pairings[0].auto).toBeUndefined();
+  });
+});
+
+describe("unlinking a UPI id — what loses its customer (UL-03, UL-04)", () => {
+  const link = { mapped_customer_id: 7, mapped_customer_type: "iop", mapped_customer_name: "sathiskumar" };
+  const target = txn({ id: 40, sender_vpa: "Parthi@UPI", ...link });
+  const list = [
+    target,
+    txn({ id: 41, sender_vpa: "parthi@upi", ...link }),                                                       // same id (any case), same link
+    txn({ id: 42, sender_vpa: "parthi@upi", mapped_customer_id: 8, mapped_customer_type: "iop", mapped_customer_name: "Other" }),   // earlier owner
+    txn({ id: 43, sender_vpa: "parthi@upi", mapped_customer_id: 7, mapped_customer_type: "edi", mapped_customer_name: "Same no., other product" }),
+    txn({ id: 44, sender_vpa: "other@upi", ...link }),                                                        // other UPI id of the same customer
+    txn({ id: 45, sender_vpa: "parthi@upi" }),                                                                // not linked
+  ];
+
+  it("the transaction itself and the id's payments linked to the same customer + product — nothing else", () => {
+    expect(list.filter((t) => sharesLink(t, target)).map((t) => t.id)).toEqual([40, 41]);
+  });
+
+  it("a transaction with no UPI id loses only its own link", () => {
+    const lone = txn({ id: 50, sender_vpa: null, ...link });
+    const twin = txn({ id: 51, sender_vpa: null, ...link });
+    expect([lone, twin].filter((t) => sharesLink(t, lone)).map((t) => t.id)).toEqual([50]);
+  });
+
+  it("an unlinked target shares nothing", () => {
+    expect(list.some((t) => sharesLink(t, txn({ id: 45, sender_vpa: "parthi@upi" })))).toBe(false);
+  });
+
+  it("clearLinks clears customer, product and name on those, leaves the rest as the same objects", () => {
+    const out = clearLinks(list, target);
+    expect(out[0]).toMatchObject({ id: 40, mapped_customer_id: null, mapped_customer_type: null, mapped_customer_name: null, sender_vpa: "Parthi@UPI", amount: "500" });
+    expect(out[1]).toMatchObject({ id: 41, mapped_customer_id: null });
+    for (const i of [2, 3, 4, 5]) expect(out[i]).toBe(list[i]);
+    expect(list[0].mapped_customer_id).toBe(7);                                                              // the input is not mutated
+  });
+});
+
+describe("unlinking a UPI id — the saved list (UL-05)", () => {
+  const saved = [
+    { upi_vpa: "parthi@upi", customer_id: 7, customer_type: "iop", customer_name: "sathiskumar" },
+    { upi_vpa: "parthi@upi", customer_id: 7, customer_type: "edi", customer_name: "same no., other product" },
+    { upi_vpa: "other@upi", customer_id: 7, customer_type: "iop", customer_name: "sathiskumar" },
+    { upi_vpa: "parthi@upi", customer_id: 9, customer_type: "iop", customer_name: "someone else" },
+  ];
+  const target = txn({ id: 40, sender_vpa: " Parthi@UPI ", mapped_customer_id: 7, mapped_customer_type: "IOP", mapped_customer_name: "sathiskumar" });
+
+  it("drops only that UPI id's entry for that customer + product", () => {
+    expect(withoutSavedVpa(saved, target).map((m) => `${m.upi_vpa}/${m.customer_id}/${m.customer_type}`))
+      .toEqual(["parthi@upi/7/edi", "other@upi/7/iop", "parthi@upi/9/iop"]);
+  });
+
+  it("changes nothing for a transaction with no UPI id or no link", () => {
+    expect(withoutSavedVpa(saved, txn({ sender_vpa: null, mapped_customer_id: 7, mapped_customer_type: "iop" }))).toBe(saved);
+    expect(withoutSavedVpa(saved, txn({ sender_vpa: "parthi@upi" }))).toBe(saved);
   });
 });

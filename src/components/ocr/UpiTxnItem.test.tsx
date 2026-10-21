@@ -101,6 +101,55 @@ describe("UpiTxnItem — paired (UP-04)", () => {
   });
 });
 
+describe("UpiTxnItem — Unlink (UL-01)", () => {
+  const mapped = txn({ mapped_customer_id: 7, mapped_customer_type: "iop", mapped_customer_name: "sathiskumar" });
+
+  it("a mapped transaction has an Unlink button naming the customer; clicking it unlinks and does nothing else", async () => {
+    const onUnlink = vi.fn();
+    const { user, onApply, onPick } = setup({ txn: mapped, canApply: true, onUnlink });
+    const btn = screen.getByRole("button", { name: "Unlink sathiskumar from SELVAM K" });
+    expect(btn).toHaveAttribute("title", "Unlink sathiskumar from this UPI id");
+    await user.click(btn);
+    expect(onUnlink).toHaveBeenCalledWith(mapped);
+    expect(onApply).not.toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^Apply/ })).toBeInTheDocument();             // Apply is still there next to it
+  });
+
+  it("inside a highlighted item it unlinks — it does not also pick", async () => {
+    const onUnlink = vi.fn();
+    const { user, onPick } = setup({ txn: mapped, highlighted: true, onUnlink });
+    await user.click(screen.getByTestId("upi-unlink"));
+    expect(onUnlink).toHaveBeenCalledTimes(1);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("is absent for an unlinked transaction, a paired one, and when the page gives no handler", () => {
+    const onUnlink = vi.fn();
+    const { rerender, onPick, onApply, onUndo } = setup({ txn: txn(), onUnlink });
+    expect(screen.queryByTestId("upi-unlink")).toBeNull();                                    // not linked
+    rerender(<UpiTxnItem txn={mapped} variant="desktop" paired={{ customerName: "Selvam" }} onPick={onPick} onApply={onApply} onUndo={onUndo} onUnlink={onUnlink} />);
+    expect(screen.queryByTestId("upi-unlink")).toBeNull();                                    // paired: Undo instead
+    expect(screen.getByRole("button", { name: /Undo/ })).toBeInTheDocument();
+    rerender(<UpiTxnItem txn={mapped} variant="desktop" onPick={onPick} onApply={onApply} onUndo={onUndo} />);
+    expect(screen.queryByTestId("upi-unlink")).toBeNull();                                    // no handler
+  });
+
+  it("desktop shows a compact icon, mobile an icon with the word", () => {
+    const onUnlink = vi.fn();
+    const { rerender, onPick, onApply, onUndo } = setup({ txn: mapped, onUnlink });
+    expect(screen.getByTestId("upi-unlink")).toHaveTextContent("");
+    expect(screen.getByTestId("upi-unlink").querySelector("svg")).not.toBeNull();
+    rerender(<UpiTxnItem txn={mapped} variant="mobile" onPick={onPick} onApply={onApply} onUndo={onUndo} onUnlink={onUnlink} />);
+    expect(screen.getByTestId("upi-unlink")).toHaveTextContent("Unlink");
+  });
+
+  it("falls back to 'the customer' when the name is missing", () => {
+    setup({ txn: txn({ mapped_customer_id: 7, mapped_customer_type: "iop", mapped_customer_name: null }), onUnlink: vi.fn() });
+    expect(screen.getByRole("button", { name: "Unlink the customer from SELVAM K" })).toBeInTheDocument();
+  });
+});
+
 describe("UpiTxnItem — mobile", () => {
   it("renders as a card and still has the highlight, tag and Undo", () => {
     setup({ variant: "mobile", highlighted: true, tag: "Name matches" });

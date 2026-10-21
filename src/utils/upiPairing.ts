@@ -219,6 +219,36 @@ export function findVpaOwner<R extends PairableRow>(
   return null;
 }
 
+// ── unlinking a UPI id ────────────────────────────────────────────────────────
+
+/**
+ * Does `t` lose its customer link when `target` is unlinked? Mirrors the server: the target itself, and every payment from the
+ * same UPI id still linked to the SAME customer + product (a payment linked to someone else is history of that account).
+ */
+export function sharesLink(t: UpiTxnLike, target: UpiTxnLike): boolean {
+  if (target.mapped_customer_id == null) return false;
+  if (t.id === target.id) return true;
+  const vpa = vpaKey(target.sender_vpa);
+  return vpa !== "" && vpaKey(t.sender_vpa) === vpa
+    && t.mapped_customer_id === target.mapped_customer_id
+    && (t.mapped_customer_type ?? "").toLowerCase() === (target.mapped_customer_type ?? "").toLowerCase();
+}
+
+/** The transactions as they look once `target` is unlinked. */
+export function clearLinks<T extends UpiTxnLike>(txns: T[], target: UpiTxnLike): T[] {
+  return txns.map((t) => (sharesLink(t, target)
+    ? { ...t, mapped_customer_id: null, mapped_customer_type: null, mapped_customer_name: null }
+    : t));
+}
+
+/** The saved UPI id list once `target`'s UPI id no longer points at its customer. */
+export function withoutSavedVpa(saved: SavedVpa[], target: UpiTxnLike): SavedVpa[] {
+  const vpa = vpaKey(target.sender_vpa);
+  if (!vpa || target.mapped_customer_id == null) return saved;
+  return saved.filter((m) => !(vpaKey(m.upi_vpa) === vpa && m.customer_id === target.mapped_customer_id
+    && m.customer_type.toLowerCase() === (target.mapped_customer_type ?? "").toLowerCase()));
+}
+
 // ── payments that apply themselves ────────────────────────────────────────────
 
 /**

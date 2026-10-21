@@ -34,10 +34,10 @@ import { UpiTxnItem } from "@/components/ocr/UpiTxnItem";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { buildOcrTrainingRows, ocrFormData, trainingErrorMessage } from "@/utils/trainingData";
-import { gmailSyncError, gmailSyncOk } from "@/utils/upiSync";
+import { gmailSyncError, gmailSyncOk, unlinkError } from "@/utils/upiSync";
 import {
   applyPairing, consumedIds, dropPairingsForRow, extractedAmount, findVpaOwner, isSatisfied, matchLabel, matchTags, reconcile, remainingAmount,
-  planAutoPairings, removePairing, rowForMappedTxn, type PairKind, type Pairing, type PairingState, type RowSnapshot, type SavedVpa, type VpaOwner,
+  planAutoPairings, removePairing, rowForMappedTxn, clearLinks, sharesLink, withoutSavedVpa, type PairKind, type Pairing, type PairingState, type RowSnapshot, type SavedVpa, type VpaOwner,
 } from "@/utils/upiPairing";
 import { CustomerCombobox, type ComboboxPick, type Suggestion } from "@/components/ocr/CustomerCombobox";
 import { NameMappingModal } from "@/components/NameMappingModal";
@@ -1091,6 +1091,7 @@ export default function OcrPage() {
   const [upiTargetUid, setUpiTargetUid] = useState<string | null>(null);   // the row marked paid online the highlighted UPI transactions are for
   const [remapConfirm, setRemapConfirm] = useState<{ txn: UpiTxn; rowUid: string; owner: VpaOwner } | null>(null);
   const [savedVpas, setSavedVpas] = useState<SavedVpa[]>([]);               // the saved UPI id -> customer list, to spot a clash while pairing
+  const [unlinkConfirm, setUnlinkConfirm] = useState<{ txn: UpiTxn; busy: boolean } | null>(null);   // "Unlink" asked on a mapped transaction
   const [syncingGmail, setSyncingGmail] = useState(false);
   // Training data -> Google Drive: ON by default, decided when Submit is pressed; back to ON for every new file
   const [trainingOn, setTrainingOn] = useState(true);
@@ -1654,6 +1655,27 @@ export default function OcrPage() {
     toast(`Reverted ${row?.customer_name ?? "the row"}`);
   };
 
+  /** "Unlink" on a mapped transaction: asks first, because it also drops the saved UPI id and the link on the id's other payments. */
+  const unlinkUpiTxn = (txn: UpiTxn) => setUnlinkConfirm({ txn, busy: false });
+
+  const confirmUnlink = async () => {
+    if (!unlinkConfirm || unlinkConfirm.busy) return;
+    const { txn } = unlinkConfirm;
+    setUnlinkConfirm({ txn, busy: true });
+    try {
+      await upiApi.unlinkVpa(txn.id);
+      setPageUpiTxns((prev) => Object.fromEntries(Object.entries(prev).map(([page, list]) => [page, clearLinks(list, txn)])));
+      setSavedVpas((prev) => withoutSavedVpa(prev, txn));
+      toast.success(`Unlinked ${txn.mapped_customer_name ?? "the customer"} from ${txn.sender_vpa || txn.sender_name || "this UPI id"}`);
+      setUnlinkConfirm(null);
+    } catch (err) {
+      const { message, stale } = unlinkError(err);
+      toast.error(message);
+      if (stale) { setUnlinkConfirm(null); fetchUpiForDates(allExtractedDates, pageIndex); }       // it changed elsewhere: show what is saved now
+      else setUnlinkConfirm({ txn, busy: false });
+    }
+  };
+
   // UPI payments that are ALREADY mapped to a customer apply themselves: same day as the customer's row, same amount as the sheet,
   // no click (an earlier pairing saved the UPI id). Re-checked whenever rows or payments change (e.g. the customer is chosen later);
   // each payment is applied at most once, so an Undo is never undone. Nothing is guessed from names.
@@ -1708,7 +1730,7 @@ export default function OcrPage() {
       highlighted,
       tag: highlighted && targetRow ? matchLabel(matchTags(txn, targetRow, pairingOriginals, pairings)) : null,
       canApply: !paired && rowForMappedTxn<Row>(rows, txn, pairings) !== undefined,
-      onPick: pickUpiTxn, onApply: applyUpiTxn, onUndo: undoUpiTxn,
+      onPick: pickUpiTxn, onApply: applyUpiTxn, onUndo: undoUpiTxn, onUnlink: unlinkUpiTxn,
     };
   };
 
@@ -1761,6 +1783,33 @@ export default function OcrPage() {
             Pair, keep the UPI id for {owner.customerName}
           </Button>
           <Button type="button" data-testid="remap-move" onClick={() => { pairTxn(t, remapConfirm.rowUid, "click", true); setRemapConfirm(null); }}>Re-point</Button>
+        </div>
+      </Modal>
+    );
+  })();
+
+  /** Unlinking a UPI id needs the user's OK first: it is saved, and it reaches the id's other payments. */
+  const unlinkModalEl = unlinkConfirm && (() => {
+    const { txn: t, busy } = unlinkConfirm;
+    const all = Object.values(pageUpiTxns).flat();
+    const others = all.filter((x) => x.id !== t.id && sharesLink(x, t));
+    const applied = others.concat(t).filter((x) => pairingByTxn.has(x.id)).length;
+    const who = t.mapped_customer_name ?? "this customer";
+    return (
+      <Modal open onClose={() => { if (!busy) setUnlinkConfirm(null); }} title="Unlink this UPI id?">
+        <p data-testid="unlink-text" className="text-sm leading-relaxed text-muted-foreground">
+          The UPI id <span className="font-mono text-foreground">{t.sender_vpa || t.sender_name}</span> will no longer point to{" "}
+          <span className="font-medium text-foreground">{who}</span> ({(t.mapped_customer_type ?? "").toUpperCase()}).
+          {" "}Its next payments will not be linked to anyone until you pair them again.
+          {others.length > 0 && <> {others.length} other payment{others.length === 1 ? "" : "s"} from it on this page lose the link too.</>}
+          {applied > 0 && <> {applied} of them {applied === 1 ? "is" : "are"} already applied to a row and stay{applied === 1 ? "s" : ""} applied — Undo {applied === 1 ? "it" : "them"} if that is wrong.</>}
+          {" "}Records already submitted do not change.
+        </p>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" data-testid="unlink-cancel" disabled={busy} onClick={() => setUnlinkConfirm(null)}>Cancel</Button>
+          <Button type="button" variant="destructive" data-testid="unlink-confirm" disabled={busy} onClick={confirmUnlink}>
+            {busy ? "Unlinking…" : "Unlink"}
+          </Button>
         </div>
       </Modal>
     );
@@ -2075,6 +2124,7 @@ export default function OcrPage() {
           onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
         {mappingModalEl}
         {remapModalEl}
+        {unlinkModalEl}
         {showDateConfirm && pendingExtracted.length > 0 && (
           <DateConfirmModal pendingRows={pendingExtracted}
             onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
@@ -2792,6 +2842,7 @@ export default function OcrPage() {
         onClose={() => setShowAddModal(false)} onAdd={addManualRow} fetchSuggestions={fetchCustomerSuggestions} />
       {mappingModalEl}
       {remapModalEl}
+      {unlinkModalEl}
       {showDateConfirm && pendingExtracted.length > 0 && (
         <DateConfirmModal pendingRows={pendingExtracted}
           onConfirm={handleDateConfirmed} onCancel={() => { setShowDateConfirm(false); setPendingExtracted([]); }} />
