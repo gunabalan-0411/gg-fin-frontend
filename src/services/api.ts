@@ -222,7 +222,9 @@ export const voiceApi = {
     });
   },
   submit: (entries: object[], collection_date: string, product: string) =>
-    api.post("/voice/submit", entries, { params: { collection_date, product } }),
+    api.post<{ submitted: number; principal_added?: number }>("/voice/submit", entries, { params: { collection_date, product } }),
+  /** Live check of the IOP rows split into principal + interest (same rules as the OCR page). Saves nothing. */
+  splitCheck: (records: any[]) => api.post<{ rows: IopSplitCheck[] }>("/ocr/iop-split-check", { records }),
   detectOnline: (transcription: string, product: string) =>
     api.post<{ customer_ids: number[] }>("/voice/detect-online", { transcription, product }),
 };

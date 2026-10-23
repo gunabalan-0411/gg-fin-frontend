@@ -2,7 +2,7 @@ import React from "react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useSessionState } from "@/hooks/useSessionState";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Loader2, Wallet, Users, HardDrive, RefreshCw } from "lucide-react";
+import { Mic, MicOff, CheckCircle, Send, ChevronRight, ChevronDown, ChevronUp, Clock, Wifi, Zap, ArrowUpToLine, Search, X, Play, Pause, Strikethrough, AlertTriangle, Loader2, Wallet, Users, HardDrive, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { voiceApi, customersApi, trainingDataApi, upiApi } from "@/services/api";
 import { TrainingDataToggle } from "@/components/TrainingDataToggle";
@@ -15,7 +15,9 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCustomers } from "@/hooks/useCustomers";
 import { DatePicker } from "@/components/ui/DatePicker";
-import type { ProductType, VoiceEntry, VoiceAlternative, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction } from "@/types";
+import { IopSplitPanel, SplitToggle } from "@/components/ocr/IopSplitPanel";
+import { checkRecords, isSplit, localSplitIssue, principalOf, type SplitRow } from "@/utils/iopSplit";
+import type { ProductType, VoiceEntry, VoiceAlternative, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction, IopSplitCheck } from "@/types";
 
 
 // One recording kept in the browser until Submit (training data → Google Drive; the server never stores it).
@@ -30,7 +32,11 @@ type TableRow = {
   balance?: number;
   transaction_id?: number;
   customer_segment_id?: number;
+  principal?: number;       // IOP: the part of `amount` (what was collected) that is principal; the interest is the rest
 };
+
+/** A table row in the shape the IOP split logic reads. */
+const splitRowOf = (r: TableRow): SplitRow => ({ product_type: "IOP", is_paid: r.is_paid, amount: Number(r.amount) || 0, principal: r.principal, customer_id: r.customer_id });
 
 type AnyTxn = EdiTransaction | IopTransaction;
 
@@ -39,6 +45,13 @@ export default function VoicePage() {
   const [date, setDate] = useSessionState("voice.date", toISODate(new Date()));
   const [recording, setRecording] = useState(false);
   const isMobile = useIsMobile();
+  // The voice panel (mic, mode, model) can be minimised to a thin bar so the table gets the room; remembered on this device.
+  const [micMin, setMicMin] = useState<boolean>(() => { try { return localStorage.getItem("gg_voice_panel_min") === "1"; } catch { return false; } });
+  const toggleMicMin = () => setMicMin((v) => {
+    const next = !v;
+    try { localStorage.setItem("gg_voice_panel_min", next ? "1" : "0"); } catch { /* the choice just is not remembered */ }
+    return next;
+  });
   const [upiExpanded, setUpiExpanded] = useState(false);
   const [showGoTop, setShowGoTop] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -49,6 +62,8 @@ export default function VoicePage() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [rows, setRows] = useState<TableRow[]>([]);
+  const [splitOpen, setSplitOpen] = useState<Set<number>>(new Set());                         // IOP rows (by customer) whose principal / interest panel is open
+  const [splitChecks, setSplitChecks] = useState<Record<number, IopSplitCheck>>({});          // the server's check of those splits, by customer
   const [micMode, setMicMode] = useState<"transaction" | "online">("transaction");
   const [queueDisplayMode, setQueueDisplayMode] = useState<"transaction" | "online">("transaction");
   const [pinnedCustomerId, setPinnedCustomerId] = useState<number | null>(null);
@@ -189,10 +204,12 @@ export default function VoicePage() {
         const txn = txnMap.get(c.customer_id);
         const mode = ((txn as any)?.payment_mode ?? "CASH") as "CASH" | "ONLINE";
         const balance = Number((c as EdiCustomer | IopCustomer).outstanding_balance ?? 0);
+        const principal = product === "iop" ? Number((txn as IopTransaction | undefined)?.principal_amount) || 0 : 0;
         return {
           customer_id: c.customer_id,
           customer_name: c.customer_name ?? String(c.customer_id),
-          amount: txn ? String(txn.amount) : "0",
+          amount: txn ? String(Number(txn.amount) + principal) : "0",
+          principal: principal || undefined,
           payment_mode: mode,
           is_paid: mode === "CASH",
           balance,
@@ -201,8 +218,37 @@ export default function VoicePage() {
         };
       })
     );
+    setSplitOpen(new Set());
+    setSplitChecks({});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, date, txnsLoading, custsLoading, hasTxns]);
+
+  const toggleSplit = (customerId: number) =>
+    setSplitOpen((prev) => { const next = new Set(prev); if (next.has(customerId)) next.delete(customerId); else next.add(customerId); return next; });
+  const patchRow = (rowIdx: number, patch: Partial<TableRow>) =>
+    setRows((prev) => { const next = [...prev]; next[rowIdx] = { ...next[rowIdx], ...patch }; return next; });
+
+  // IOP rows split into principal + interest: ask the server (debounced) for the balance before / after and for anything it would refuse.
+  // It looks at every IOP row with an amount, as the server saves them all together.
+  const dd_mm_yyyy = date.split("-").reverse().join("-");
+  const splitKey = product === "iop"
+    ? JSON.stringify(rows.map((r) => [r.customer_id, r.is_paid, r.amount, r.payment_mode, r.principal ?? 0, splitOpen.has(r.customer_id)])) : "";
+  useEffect(() => {
+    const iopRows = product === "iop" ? rows.filter((r) => Number(r.amount) > 0) : [];
+    if (!iopRows.some((r) => splitOpen.has(r.customer_id) || isSplit(splitRowOf(r)))) { setSplitChecks((c) => (Object.keys(c).length ? {} : c)); return; }
+    let live = true;
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await voiceApi.splitCheck(checkRecords(iopRows.map((r) => ({
+          ...splitRowOf(r), collection_date: dd_mm_yyyy, payment_mode: r.payment_mode, customer_name: r.customer_name,
+        }))));
+        if (!live) return;
+        setSplitChecks(Object.fromEntries(data.rows.map((c) => [iopRows[c.index].customer_id, c])));
+      } catch { /* the check is a convenience: the submit still enforces it */ }
+    }, 450);
+    return () => { live = false; clearTimeout(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splitKey, dd_mm_yyyy]);
 
   // Keep queuePausedRef in sync with state so interval closures read current value
   const _setQueuePaused = (v: boolean) => {
@@ -517,23 +563,47 @@ export default function VoicePage() {
   const handleSubmitAll = async () => {
     const nonZero = rows.filter((r) => Number(r.amount) > 0);
     if (!nonZero.length) { toast.error("No amounts entered"); return; }
+    if (product === "iop") {
+      // a split that cannot be saved (the page's own check, then the server's) stops the submit and opens its panel
+      for (const r of nonZero) {
+        const sr = splitRowOf(r);
+        const message = localSplitIssue(sr) ?? (isSplit(sr) ? splitChecks[r.customer_id]?.error ?? null : null);
+        if (message) {
+          setSplitOpen((prev) => new Set(prev).add(r.customer_id));
+          toast.error(`${r.customer_name}: ${message}`);
+          return;
+        }
+      }
+    }
     setSubmitting(true);
     try {
-      await voiceApi.submit(
-        nonZero.map((r) => ({ customer_id: r.customer_id, amount: Number(r.amount), payment_mode: r.payment_mode })),
+      const { data } = await voiceApi.submit(
+        nonZero.map((r) => ({
+          customer_id: r.customer_id, amount: Number(r.amount), payment_mode: r.payment_mode,
+          ...(product === "iop" ? { principal_amount: principalOf(splitRowOf(r)) } : {}),   // IOP: the part of the amount that is principal
+        })),
         date,
         product
       );
-      toast.success(`${nonZero.length} transactions saved`);
+      const added = data?.principal_added ?? 0;
+      toast.success(`${nonZero.length} transactions saved${added ? ` · ₹${Math.round(added).toLocaleString("en-IN")} principal added` : ""}`);
       qc.invalidateQueries({ queryKey: ["transactions", product, date] });
+      if (product === "iop") qc.invalidateQueries({ queryKey: ["customers", "iop"] });      // the balances moved
 
       // Training data → Google Drive. The records are already saved above, so this never blocks or fails the submit.
       const recordings = recordingsRef.current;
       recordingsRef.current = [];
       if (trainingOn) void uploadTrainingData(recordings, rows);
       setTrainingOn(true);                                         // a new work session starts with the toggle ON again
-    } catch {
-      toast.error("Submit failed");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      if (detail?.code === "bad_principal") {           // the server refused a split: nothing was saved
+        const bad = (detail.rows ?? []).map((x: { index: number }) => nonZero[x.index]?.customer_id).filter(Boolean) as number[];
+        setSplitOpen((prev) => new Set([...prev, ...bad]));
+        toast.error(detail.message ?? "A principal amount is not allowed");
+      } else {
+        toast.error("Submit failed");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -721,7 +791,39 @@ export default function VoicePage() {
         </div>
 
         {/* ── Mic hero card ────────────────────────────────────────────────── */}
-        <div className="rounded-2xl border border-border bg-card/60 flex flex-col items-center gap-3 py-5 px-4">
+        <div className={`rounded-2xl border border-border bg-card/60 flex flex-col items-center px-4 ${micMin ? "gap-2 py-2.5" : "gap-3 py-5"}`}>
+          <div className="flex w-full items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-[.1em] text-muted-foreground/60">Voice</span>
+            <button
+              type="button"
+              data-testid="voice-panel-toggle"
+              aria-expanded={!micMin}
+              aria-label={micMin ? "Expand voice panel" : "Minimise voice panel"}
+              onClick={toggleMicMin}
+              className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {micMin ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </button>
+          </div>
+          {micMin && (
+            <div data-testid="voice-panel-min" className="flex w-full items-center gap-2">
+              <span className={`h-2 w-2 flex-shrink-0 rounded-full ${recording ? "animate-pulse bg-red-500" : loading ? "animate-pulse bg-amber-500" : modelStatus?.loaded ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+              <span className="flex-1 truncate text-xs text-muted-foreground">
+                {recording ? `Recording… ${countdown}s — tap to stop` : loading ? "Transcribing…" : micMode === "online" ? "Online Payers" : "Transaction"}
+              </span>
+              <button
+                type="button"
+                data-testid="voice-min-mic"
+                onClick={recording ? stopRecording : startRecording}
+                disabled={loading}
+                aria-label={recording ? "Stop recording" : "Start recording"}
+                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-2 disabled:opacity-50 ${recording ? "border-red-500 bg-red-500/10 text-red-500" : "border-primary/60 bg-primary/10 text-foreground/70"}`}
+              >
+                {recording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+              </button>
+            </div>
+          )}
+          {!micMin && (<>
           {/* Mode toggle */}
           <div className="flex rounded-lg border border-border overflow-hidden w-full">
             {(["transaction", "online"] as const).map((m) => (
@@ -859,6 +961,7 @@ export default function VoicePage() {
               {micMode === "transaction" ? "Say name + amount → entry" : "Say name + amount → marks online"}
             </p>
           )}
+          </>)}
         </div>
 
         {/* ── Active queue entry ───────────────────────────────────────────── */}
@@ -1103,7 +1206,13 @@ export default function VoicePage() {
                               }`}>
                               {r.is_paid ? "Paid" : "Unpaid"}
                             </button>
+                            {product === "iop" && <SplitToggle row={splitRowOf(r)} open={splitOpen.has(r.customer_id)} onToggle={() => toggleSplit(r.customer_id)} />}
                           </div>
+                          {product === "iop" && splitOpen.has(r.customer_id) && (
+                            <div className="mt-2">
+                              <IopSplitPanel row={splitRowOf(r)} check={splitChecks[r.customer_id]} onChange={(patch) => patchRow(r.rowIdx, { principal: patch.principal, amount: String(patch.amount) })} />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1171,7 +1280,7 @@ export default function VoicePage() {
             <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center">
               <span className="font-mono text-[10px] font-semibold text-background">gf</span>
             </div>
-            <span className="text-foreground/80">Voice Entry</span>
+            <span className="text-foreground/80">Type / Voice Entry</span>
           </div>
           <div className="flex items-center gap-1.5 pl-3 border-l border-border text-[13px] text-muted-foreground min-w-0">
             <span>Collections</span>
@@ -1212,7 +1321,37 @@ export default function VoicePage() {
                 <span className="text-[10px] font-semibold uppercase tracking-[.1em] text-muted-foreground/60">Voice Cockpit</span>
                 <div className="flex-1 h-px bg-border" />
                 <span className="text-[10px] font-mono text-muted-foreground/40">tally-asr</span>
+                <button
+                  type="button"
+                  data-testid="voice-panel-toggle"
+                  aria-expanded={!micMin}
+                  aria-label={micMin ? "Expand voice panel" : "Minimise voice panel"}
+                  title={micMin ? "Expand voice panel" : "Minimise voice panel"}
+                  onClick={toggleMicMin}
+                  className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  {micMin ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+                </button>
               </div>
+              {micMin && (
+                <div data-testid="voice-panel-min" className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+                  <span className={`h-2 w-2 flex-shrink-0 rounded-full ${recording ? "animate-pulse bg-red-500" : loading ? "animate-pulse bg-amber-500" : modelStatus?.loaded ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+                  <span className="flex-1 truncate text-[12px] text-muted-foreground">
+                    {recording ? `Recording… ${countdown}s` : loading ? "Transcribing…" : micMode === "online" ? "Online Payers" : "Transaction"}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="voice-min-mic"
+                    onClick={recording ? stopRecording : startRecording}
+                    disabled={loading}
+                    aria-label={recording ? "Stop recording" : "Start recording"}
+                    className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${recording ? "border-red-500 bg-red-500/10 text-red-500" : "border-primary/60 bg-primary/10 text-foreground/70 hover:bg-primary/20"}`}
+                  >
+                    {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </button>
+                </div>
+              )}
+              {!micMin && (<>
               {/* Mode select */}
               <div className="grid grid-cols-2 gap-1.5 mb-4">
                 {(["transaction", "online"] as const).map((m) => (
@@ -1384,6 +1523,7 @@ export default function VoicePage() {
                   </div>
                 )}
               </div>
+              </>)}
             </div>
 
             {/* Section: Transcription + Queue */}
@@ -1584,18 +1724,18 @@ export default function VoicePage() {
           <div className="flex flex-col flex-1 overflow-hidden min-w-0">
 
             {/* ── Stats strip ── */}
-            <div className="grid gap-2 px-4 py-3 border-b border-border bg-background flex-shrink-0"
-              style={{ gridTemplateColumns: "1.4fr repeat(4, 1fr)" }}>
+            <div data-testid="voice-stats" className="grid gap-1.5 px-4 py-2 border-b border-border bg-background flex-shrink-0"
+              style={{ gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))" }}>
               {/* Today total */}
-              <div className="relative bg-card border border-border/60 rounded-xl px-3 py-2.5 overflow-hidden"
+              <div data-testid="voice-stat" className="relative bg-card border border-border/60 rounded-lg px-2.5 py-1.5 overflow-hidden"
                 style={{ background: "radial-gradient(120% 60% at 100% 0%, color-mix(in oklab, hsl(var(--primary)) 45%, transparent) 0%, transparent 60%), hsl(var(--card))" }}>
-                <div className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted-foreground/70 mb-0.5">₹ Today</div>
-                <div className="font-mono text-[22px] font-medium leading-none tracking-tight text-foreground">{formatCurrency(combinedTotal)}</div>
-                <div className="text-[10.5px] text-emerald-700 dark:text-emerald-400 mt-1">↑ {nonZeroCount} with amount</div>
-                <div className="absolute right-2.5 top-2.5 opacity-70">
+                <div className="text-[9px] font-semibold uppercase tracking-[.08em] text-muted-foreground/70 mb-px">₹ Today</div>
+                <div className="font-mono text-[16px] font-medium leading-none tracking-tight text-foreground">{formatCurrency(combinedTotal)}</div>
+                <div className="text-[9.5px] text-emerald-700 dark:text-emerald-400 mt-0.5">↑ {nonZeroCount} with amount</div>
+                <div className="absolute right-2 top-1.5 opacity-70">
                   {(() => {
                     const pts = [3.8, 4.2, 3.6, 4.6, 5.1, 4.9, 5.4];
-                    const w = 52, h = 22, pad = 1;
+                    const w = 32, h = 14, pad = 1;
                     const min = Math.min(...pts), max = Math.max(...pts), range = max - min || 1;
                     const stepX = (w - pad * 2) / (pts.length - 1);
                     const xy = pts.map((v, i) => [pad + i * stepX, h - pad - ((v - min) / range) * (h - pad * 2)]);
@@ -1606,10 +1746,10 @@ export default function VoicePage() {
               </div>
               {/* EDI, IOP, GPay, Cash */}
               {statChips.map(({ label, value, color, bg }) => (
-                <div key={label} className={`bg-card border border-border/60 rounded-xl px-3 py-2.5 ${bg}`}>
-                  <div className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted-foreground/70 mb-0.5">{label}</div>
-                  <div className={`font-mono text-[18px] font-medium leading-none tracking-tight ${color}`}>{formatCurrency(value)}</div>
-                  <div className="text-[10.5px] text-muted-foreground/60 mt-1">
+                <div key={label} data-testid="voice-stat" className={`bg-card border border-border/60 rounded-lg px-2.5 py-1.5 ${bg}`}>
+                  <div className="text-[9px] font-semibold uppercase tracking-[.08em] text-muted-foreground/70 mb-px">{label}</div>
+                  <div className={`font-mono text-[15px] font-medium leading-none tracking-tight ${color}`}>{formatCurrency(value)}</div>
+                  <div className="text-[9.5px] text-muted-foreground/60 mt-0.5">
                     {label === "GPay" || label === "Cash"
                       ? `${combinedTotal ? Math.round((value / combinedTotal) * 100) : 0}% of total`
                       : label === "EDI" ? `${ediTxns.length} customers` : `${iopTxns.length} customers`}
@@ -1677,7 +1817,7 @@ export default function VoicePage() {
                         <div className="bg-card border border-border rounded-xl overflow-hidden">
                           {[...Array(4)].map((_, i) => (
                             <div key={i} className="grid items-center gap-3 px-3 py-3 border-b border-border/50 last:border-0 animate-pulse"
-                              style={{ gridTemplateColumns: "40px 1fr 80px 130px 96px 30px" }}>
+                              style={{ gridTemplateColumns: "40px 1fr 80px 130px 96px 56px" }}>
                               {[...Array(6)].map((_, j) => <div key={j} className="h-4 bg-secondary rounded" />)}
                             </div>
                           ))}
@@ -1714,7 +1854,7 @@ export default function VoicePage() {
                           <div className="bg-card border border-border rounded-xl overflow-hidden">
                             {/* ctable header */}
                             <div className="grid text-[10.5px] font-medium uppercase tracking-[.06em] text-muted-foreground bg-secondary/60 border-b border-border"
-                              style={{ gridTemplateColumns: "40px 1fr 80px 130px 96px 30px" }}>
+                              style={{ gridTemplateColumns: "40px 1fr 80px 130px 96px 56px" }}>
                               <div className="px-3 py-2" />
                               <div className="px-3 py-2">Customer</div>
                               <div className="px-3 py-2 text-right">Balance</div>
@@ -1728,12 +1868,13 @@ export default function VoicePage() {
                               const isOnlineHighlight = isHighlighted && activeQueueModeRef.current === "online";
                               const hasAmt = Number(r.amount) > 0;
                               return (
-                                <div key={r.customer_id}
+                                <React.Fragment key={r.customer_id}>
+                                <div
                                   ref={(el) => { if (el) rowRefs.current.set(r.customer_id, el as any); else rowRefs.current.delete(r.customer_id); }}
                                   className={`grid items-center border-b border-border/50 last:border-0 transition-colors ${
                                     isHighlighted ? isOnlineHighlight ? "bg-sky-500/12" : "bg-primary/15" : "hover:bg-secondary/40"
                                   }`}
-                                  style={{ gridTemplateColumns: "40px 1fr 80px 130px 96px 30px" }}>
+                                  style={{ gridTemplateColumns: "40px 1fr 80px 130px 96px 56px" }}>
                                   <div className="px-3 py-2.5">
                                     <span className="text-[10.5px] font-mono text-muted-foreground/40">{String(r.rowIdx + 1).padStart(2, "0")}</span>
                                   </div>
@@ -1775,12 +1916,19 @@ export default function VoicePage() {
                                       }`}
                                     />
                                   </div>
-                                  <div className="flex items-center justify-center py-2.5">
+                                  <div className="flex items-center justify-center gap-1 py-2.5">
                                     {progressCustomerId === r.customer_id && (
                                       <CircularProgress value={progressValue} size={22} color={activeQueueModeRef.current === "online" ? "blue" : "emerald"} />
                                     )}
+                                    {product === "iop" && <SplitToggle compact row={splitRowOf(r)} open={splitOpen.has(r.customer_id)} onToggle={() => toggleSplit(r.customer_id)} />}
                                   </div>
                                 </div>
+                                {product === "iop" && splitOpen.has(r.customer_id) && (
+                                  <div className="border-b border-border/50 bg-secondary/30 px-3 py-2 last:border-0">
+                                    <IopSplitPanel row={splitRowOf(r)} check={splitChecks[r.customer_id]} onChange={(patch) => patchRow(r.rowIdx, { principal: patch.principal, amount: String(patch.amount) })} />
+                                  </div>
+                                )}
+                                </React.Fragment>
                               );
                             })}
                           </div>

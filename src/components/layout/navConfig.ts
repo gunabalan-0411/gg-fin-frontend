@@ -80,7 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/daily-print", icon: Printer, label: "Daily Print" },
       { to: "/ocr", icon: ScanText, label: "OCR Entry" },
-      { to: "/voice", icon: Mic, label: "Voice Entry" },
+      { to: "/voice", icon: Mic, label: "Type / Voice Entry" },
       { to: "/transactions", icon: ArrowLeftRight, label: "Collections" },
       { to: "/notepad", icon: NotebookPen, label: "Note Pad" },
     ],

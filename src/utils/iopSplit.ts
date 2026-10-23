@@ -36,13 +36,26 @@ export function localSplitIssue(r: SplitRow): string | null {
 
 const whole = (n: number) => Math.round(n * 100) / 100;
 
-/** The row patch when the principal is typed: the interest follows. */
-export const patchForPrincipal = (value: string): { principal: number } => ({ principal: value.trim() === "" ? 0 : whole(Number(value) || 0) });
+/** The row as it was when the user started typing in a box (so the result never depends on the keystrokes before). */
+export interface SplitBase { amount: number; principal: number }
 
-/** The row patch when the interest is typed: the principal is what is left of the amount. */
-export const patchForInterest = (r: Pick<SplitRow, "amount">, value: string): { principal: number } => {
+/**
+ * Principal typed. Normally the amount collected is split (principal + interest = amount, the interest follows). But a principal larger
+ * than the amount collected cannot be part of it - the amount was the interest and the principal is paid ON TOP: the amount grows
+ * to interest + principal (Rs 200 interest + Rs 8,000 principal = Rs 8,200), never a negative interest.
+ */
+export const patchForPrincipal = (value: string, base: SplitBase): { principal: number; amount: number } => {
+  const principal = value.trim() === "" ? 0 : whole(Number(value) || 0);
+  if (principal <= base.amount) return { principal, amount: base.amount };
+  const interest = Math.max(0, base.amount - base.principal);
+  return { principal, amount: whole(interest + principal) };
+};
+
+/** Interest typed: the principal is what is left of the amount; an interest larger than the amount is paid on top of the principal. */
+export const patchForInterest = (value: string, base: SplitBase): { principal: number; amount: number } => {
   const interest = value.trim() === "" ? 0 : Number(value) || 0;
-  return { principal: whole((Number(r.amount) || 0) - interest) };
+  if (interest <= base.amount) return { principal: whole(base.amount - interest), amount: base.amount };
+  return { principal: base.principal, amount: whole(base.principal + interest) };
 };
 
 /** What the server's live check needs for every IOP row with a customer (rows without a split still matter: they share the balance). */

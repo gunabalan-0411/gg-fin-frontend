@@ -28,17 +28,18 @@ describe("principal and interest of a row (IS-F1)", () => {
 
 describe("typing one box fills the other (IS-F2)", () => {
   it("principal typed -> principal set, interest follows", () => {
-    expect(patchForPrincipal("9500")).toEqual({ principal: 9500 });
-    expect(patchForPrincipal("")).toEqual({ principal: 0 });
-    expect(patchForPrincipal("abc")).toEqual({ principal: 0 });
-    expect(patchForPrincipal("9500.456")).toEqual({ principal: 9500.46 });
+    const b = { amount: 10000, principal: 0 };
+    expect(patchForPrincipal("9500", b)).toEqual({ principal: 9500, amount: 10000 });
+    expect(patchForPrincipal("", b)).toEqual({ principal: 0, amount: 10000 });
+    expect(patchForPrincipal("abc", b)).toEqual({ principal: 0, amount: 10000 });
+    expect(patchForPrincipal("9500.456", b)).toEqual({ principal: 9500.46, amount: 10000 });
   });
 
   it("interest typed -> the principal is what is left of the amount", () => {
-    expect(patchForInterest({ amount: 10000 }, "500")).toEqual({ principal: 9500 });
-    expect(patchForInterest({ amount: 10000 }, "")).toEqual({ principal: 10000 });          // no interest: all principal
-    expect(patchForInterest({ amount: 10000 }, "10000")).toEqual({ principal: 0 });
-    expect(patchForInterest({ amount: 10000 }, "12000")).toEqual({ principal: -2000 });      // too much interest shows as an error, not silently clamped
+    const b = { amount: 10000, principal: 0 };
+    expect(patchForInterest("500", b)).toEqual({ principal: 9500, amount: 10000 });
+    expect(patchForInterest("", b)).toEqual({ principal: 10000, amount: 10000 });           // no interest: all principal
+    expect(patchForInterest("10000", b)).toEqual({ principal: 0, amount: 10000 });
   });
 });
 
@@ -83,5 +84,36 @@ describe("the live check (IS-F4)", () => {
     expect(wantsCheck(row())).toBe(false);
     expect(wantsCheck({ ...row({ customer_id: null }), split_open: true })).toBe(false);
     expect(wantsCheck({ ...row({ product_type: "EDI" }), split_open: true })).toBe(false);
+  });
+});
+
+describe("a principal or interest bigger than the amount is paid ON TOP (never a negative interest)", () => {
+  it("amount 200 (the interest), principal 8000 typed -> amount 8200, interest 200, principal 8000", () => {
+    const patch = patchForPrincipal("8000", { amount: 200, principal: 0 });
+    expect(patch).toEqual({ principal: 8000, amount: 8200 });
+    const row: SplitRow = { product_type: "IOP", is_paid: true, amount: patch.amount, principal: patch.principal };
+    expect(interestOf(row)).toBe(200);
+    expect(localSplitIssue(row)).toBeNull();
+  });
+
+  it("the answer depends only on where the typing started, not on the digits typed before (8, 80, 800, 8000)", () => {
+    const start = { amount: 200, principal: 0 };
+    expect(patchForPrincipal("8", start)).toEqual({ principal: 8, amount: 200 });           // still fits: a split of the 200
+    expect(patchForPrincipal("80", start)).toEqual({ principal: 80, amount: 200 });
+    expect(patchForPrincipal("800", start)).toEqual({ principal: 800, amount: 1000 });
+    expect(patchForPrincipal("8000", start)).toEqual({ principal: 8000, amount: 8200 });
+  });
+
+  it("when the principal is changed again the interest stays what it was", () => {
+    expect(patchForPrincipal("9000", { amount: 8200, principal: 8000 })).toEqual({ principal: 9000, amount: 9200 });
+    expect(patchForPrincipal("5000", { amount: 8200, principal: 8000 })).toEqual({ principal: 5000, amount: 8200 });   // fits: the 8,200 is split again
+  });
+
+  it("an interest bigger than the amount is paid on top of the principal", () => {
+    expect(patchForInterest("12000", { amount: 10000, principal: 9500 })).toEqual({ principal: 9500, amount: 21500 });
+  });
+
+  it("emptying the principal box brings the amount back to the original", () => {
+    expect(patchForPrincipal("", { amount: 200, principal: 0 })).toEqual({ principal: 0, amount: 200 });
   });
 });

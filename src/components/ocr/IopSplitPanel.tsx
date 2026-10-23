@@ -1,6 +1,7 @@
 // IOP rows only: expand a row to say how much of the amount collected was PRINCIPAL and how much INTEREST
 // (e.g. ₹10,000 = ₹9,500 principal + ₹500 interest). The two always add up to the amount: type one and the other follows.
 // On Submit the interest is saved as the usual transaction and the principal is added to the customer's principal paid.
+import { useRef } from "react";
 import { Split } from "lucide-react";
 import { cn } from "@/utils";
 import { interestOf, isSplit, localSplitIssue, patchForInterest, patchForPrincipal, principalOf, type SplitRow } from "@/utils/iopSplit";
@@ -34,7 +35,7 @@ export function SplitToggle({ row, open, onToggle, compact = false }: { row: Spl
 export function IopSplitPanel({ row, check, onChange }: {
   row: SplitRow;
   check?: IopSplitCheck | null;                 // the server's check (balance before / after, why it would be refused)
-  onChange: (patch: { principal: number }) => void;
+  onChange: (patch: { principal: number; amount: number }) => void;       // the amount may grow: a principal paid on top of the interest
 }) {
   const amount = Number(row.amount) || 0;
   const principal = principalOf(row);
@@ -42,6 +43,11 @@ export function IopSplitPanel({ row, check, onChange }: {
   const issue = localSplitIssue(row) ?? check?.error ?? null;
   const unpaid = !row.is_paid;
   const noAmount = amount <= 0;
+  // what the row was when the user started typing in a box: each keystroke is worked out from THAT, so typing 8000 gives the same
+  // answer however the digits arrive (8, 80, 800, 8000)
+  const start = useRef<{ amount: number; principal: number } | null>(null);
+  const begin = () => { start.current = { amount, principal }; };
+  const base = () => start.current ?? { amount, principal };
 
   return (
     <div data-testid="split-panel" className={cn("rounded-lg border px-3 py-2.5 text-xs space-y-2", issue ? "border-red-500/40 bg-red-500/5" : "border-orange-500/25 bg-orange-500/5")}>
@@ -55,7 +61,8 @@ export function IopSplitPanel({ row, check, onChange }: {
               disabled={unpaid || noAmount}
               value={principal ? principal : ""}
               placeholder="0"
-              onChange={(e) => onChange(patchForPrincipal(e.target.value))}
+              onFocus={begin} onBlur={() => { start.current = null; }}
+              onChange={(e) => onChange(patchForPrincipal(e.target.value, base()))}
               className="w-24 bg-transparent text-sm font-semibold focus:outline-none disabled:opacity-50"
             />
           </span>
@@ -70,7 +77,8 @@ export function IopSplitPanel({ row, check, onChange }: {
               disabled={unpaid || noAmount}
               value={noAmount ? "" : interest}
               placeholder="0"
-              onChange={(e) => onChange(patchForInterest(row, e.target.value))}
+              onFocus={begin} onBlur={() => { start.current = null; }}
+              onChange={(e) => onChange(patchForInterest(e.target.value, base()))}
               className="w-24 bg-transparent text-sm font-semibold focus:outline-none disabled:opacity-50"
             />
           </span>

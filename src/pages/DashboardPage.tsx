@@ -9,6 +9,7 @@ import {
 } from "@/hooks/useDashboard";
 import { customersApi } from "@/services/api";
 import { FinanceModeToggle, PersonalDashboard } from "@/components/dashboard/PersonalDashboard";
+import { MonthlyTrendChart } from "@/components/dashboard/MonthlyTrendChart";
 import type {
   MonthlyProfit, LoanSummary,
   CustomerBrief, IopCalendarDay, IopRemindersResponse,
@@ -187,9 +188,9 @@ function HeroCard({ trend, prev }: { trend: MonthlyProfit; prev: MonthlyProfit |
   const isUp = mom >= 0;
 
   const wfCols = [
-    { sign: null as string | null, color: "hsl(var(--primary))", label: "IOP profit",
+    { sign: null as string | null, color: "var(--trend-iop)", label: "IOP profit",
       value: trend.iop_profit, pct: Math.round((trend.iop_profit / Math.max(revenue, 1)) * 100), barW: 100, neg: false, eq: false },
-    { sign: "+", color: "hsl(var(--accent))", label: "EDI profit",
+    { sign: "+", color: "var(--trend-edi)", label: "EDI profit",
       value: trend.edi_profit, pct: Math.round((trend.edi_profit / Math.max(revenue, 1)) * 100),
       barW: Math.round((trend.edi_profit / Math.max(trend.iop_profit, 1)) * 100), neg: false, eq: false },
     { sign: "=", color: "hsl(var(--muted-foreground))", label: "Revenue",
@@ -270,8 +271,8 @@ function HeroCard({ trend, prev }: { trend: MonthlyProfit; prev: MonthlyProfit |
 function CompositionCard({ trend }: { trend: MonthlyProfit }) {
   const revenue = trend.iop_profit + trend.edi_profit;
   const items = [
-    { label: "IOP", value: trend.iop_profit, color: "hsl(var(--primary))", pct: Math.round((trend.iop_profit / Math.max(revenue, 1)) * 100) },
-    { label: "EDI", value: trend.edi_profit, color: "hsl(var(--accent))", pct: Math.round((trend.edi_profit / Math.max(revenue, 1)) * 100) },
+    { label: "IOP", value: trend.iop_profit, color: "var(--trend-iop)", pct: Math.round((trend.iop_profit / Math.max(revenue, 1)) * 100) },
+    { label: "EDI", value: trend.edi_profit, color: "var(--trend-edi)", pct: Math.round((trend.edi_profit / Math.max(revenue, 1)) * 100) },
   ];
   const R = 52, SW = 18, C = 2 * Math.PI * R;
   let offset = 0;
@@ -342,129 +343,6 @@ function CompositionCard({ trend }: { trend: MonthlyProfit }) {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Trend Card ────────────────────────────────────────────────────────────────
-
-function TrendCard({ data }: { data: MonthlyProfit[] }) {
-  if (data.length < 2) return (
-    <div className="col-span-12 rounded-xl border border-border bg-card p-[18px_20px]">
-      <h3 className="text-foreground/70 font-medium" style={{ fontSize: 13 }}>Monthly trend</h3>
-      <p className="text-muted-foreground mt-1" style={{ fontSize: 12 }}>Not enough data yet.</p>
-    </div>
-  );
-
-  const W = 800, H = 250, PL = 56, PR = 20, PT = 16, PB = 42;
-  const w = W - PL - PR, h = H - PT - PB;
-  const maxY = Math.max(...data.flatMap((m) => [m.iop_profit, m.edi_profit, m.net_profit]), 1);
-  const sy = (v: number) => PT + h - (Math.max(0, v) / (maxY * 1.1)) * h;
-  const sx = (i: number) => PL + (i / Math.max(data.length - 1, 1)) * w;
-
-  const smoothPath = (pts: [number, number][]) => {
-    if (pts.length === 0) return "";
-    if (pts.length === 1) return `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
-    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
-    for (let i = 1; i < pts.length; i++) {
-      const [x0, y0] = pts[i - 1];
-      const [x1, y1] = pts[i];
-      const mx = ((x0 + x1) / 2).toFixed(1);
-      d += ` C ${mx},${y0.toFixed(1)} ${mx},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
-    }
-    return d;
-  };
-
-  const ticks = 4;
-  const gridY = Array.from({ length: ticks + 1 }, (_, i) => Math.round((maxY * i) / ticks));
-  const bot = (PT + h).toFixed(1);
-
-  const series = [
-    { key: "iop", vals: data.map((m, i) => [sx(i), sy(m.iop_profit)] as [number, number]), color: "hsl(var(--primary))", gradId: "dashIopG", gradOp: ".28", sw: 1.8 },
-    { key: "edi", vals: data.map((m, i) => [sx(i), sy(m.edi_profit)] as [number, number]), color: "hsl(var(--accent))", gradId: "dashEdiG", gradOp: ".32", sw: 1.8 },
-    { key: "net", vals: data.map((m, i) => [sx(i), sy(m.net_profit)] as [number, number]), color: "hsl(var(--pos))", gradId: null, gradOp: "0", sw: 2.5 },
-  ];
-
-  const legend = [
-    { key: "net", label: "Net profit", color: "hsl(var(--pos))", dash: true },
-    { key: "iop", label: "IOP",        color: "hsl(var(--primary))", dash: false },
-    { key: "edi", label: "EDI",        color: "hsl(var(--accent))",  dash: false },
-  ];
-
-  return (
-    <div className="col-span-12 rounded-xl border border-border bg-card p-[18px_20px]">
-      <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
-        <div>
-          <h3 className="text-foreground/70 font-medium" style={{ fontSize: 13, margin: 0 }}>Monthly trend</h3>
-          <div className="text-muted-foreground mt-0.5" style={{ fontFamily: "var(--font-mono, ui-monospace)", fontSize: 11 }}>Net · IOP · EDI profit over time</div>
-        </div>
-        <div className="flex gap-4 items-center">
-          {legend.map((s) => (
-            <span key={s.key} className="flex items-center gap-1.5 text-muted-foreground" style={{ fontSize: 11.5 }}>
-              <span style={{ display: "inline-block", width: 16, height: 2.5, background: s.color, borderRadius: 2, flexShrink: 0,
-                boxShadow: s.dash ? `0 0 4px ${s.color}` : "none" }} />
-              {s.label}
-            </span>
-          ))}
-        </div>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", height: "auto", display: "block" }}>
-        <defs>
-          {series.filter((s) => s.gradId).map((s) => (
-            <linearGradient key={s.gradId!} id={s.gradId!} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor={s.color} stopOpacity={s.gradOp} />
-              <stop offset="100%" stopColor={s.color} stopOpacity="0" />
-            </linearGradient>
-          ))}
-        </defs>
-
-        {/* Grid lines + Y labels */}
-        {gridY.map((v, i) => (
-          <g key={i}>
-            <line x1={PL} x2={W - PR} y1={sy(v)} y2={sy(v)}
-              stroke="hsl(var(--border))" strokeWidth={i === 0 ? 1 : 0.6} strokeDasharray={i === 0 ? "none" : "4 4"} />
-            <text x={PL - 8} y={sy(v) + 4} textAnchor="end" fontSize="10.5"
-              fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)">{fmtAxis(v)}</text>
-          </g>
-        ))}
-
-        {/* Area fills (IOP + EDI only) */}
-        {series.filter((s) => s.gradId).map((s) => {
-          const path = smoothPath(s.vals);
-          const x0 = s.vals[0][0].toFixed(1), xN = s.vals[s.vals.length - 1][0].toFixed(1);
-          return <path key={s.key + "-area"} d={`${path} L ${xN} ${bot} L ${x0} ${bot} Z`} fill={`url(#${s.gradId})`} />;
-        })}
-
-        {/* Smooth lines */}
-        {series.map((s) => (
-          <path key={s.key + "-line"} d={smoothPath(s.vals)}
-            stroke={s.color} strokeWidth={s.sw} fill="none"
-            strokeLinejoin="round" strokeLinecap="round" />
-        ))}
-
-        {/* Dots on every series */}
-        {series.map((s) =>
-          s.vals.map(([cx, cy], i) => (
-            <circle key={s.key + i} cx={cx} cy={cy} r={s.key === "net" ? 3.5 : 2.8}
-              fill="hsl(var(--card))" stroke={s.color} strokeWidth={s.key === "net" ? 2 : 1.6} />
-          ))
-        )}
-
-        {/* X axis month labels — format YYYY-MM → "Jan 26", rotated -30° */}
-        {data.map((m, i) => {
-          const [yyyy, mm] = m.month.split("-");
-          const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-          const label = `${MON[(parseInt(mm, 10) - 1) % 12]} ${yyyy.slice(-2)}`;
-          const cx = sx(i), cy = H - 10;
-          return (
-            <text key={i} x={cx} y={cy} textAnchor="end" fontSize="10.5"
-              fill="hsl(var(--muted-foreground))" fontFamily="var(--font-mono, ui-monospace)"
-              transform={`rotate(-30, ${cx}, ${cy})`}>
-              {label}
-            </text>
-          );
-        })}
-      </svg>
     </div>
   );
 }
@@ -1316,13 +1194,13 @@ function OfficeDashboard() {
   const prev = activeIdx > 0 ? monthlyTrends[activeIdx - 1] : null;
 
   const kpis = trend ? [
-    { lbl: "IOP profit", value: trend.iop_profit, pts: monthlyTrends.map((m) => m.iop_profit), color: "hsl(var(--primary))",
+    { lbl: "IOP profit", value: trend.iop_profit, pts: monthlyTrends.map((m) => m.iop_profit), color: "var(--trend-iop)",
       delta: prev ? momDelta(trend.iop_profit, prev.iop_profit) : "—", deltaLbl: "vs prev month", up: !prev || trend.iop_profit >= prev.iop_profit },
-    { lbl: "EDI profit", value: trend.edi_profit, pts: monthlyTrends.map((m) => m.edi_profit), color: "hsl(var(--accent))",
+    { lbl: "EDI profit", value: trend.edi_profit, pts: monthlyTrends.map((m) => m.edi_profit), color: "var(--trend-edi)",
       delta: prev ? momDelta(trend.edi_profit, prev.edi_profit) : "—", deltaLbl: "vs prev month", up: !prev || trend.edi_profit >= prev.edi_profit },
     { lbl: "Expenses", value: trend.expense, pts: monthlyTrends.map((m) => m.expense), color: "hsl(var(--warn))",
       delta: prev ? momDelta(trend.expense, prev.expense) : "—", deltaLbl: "vs prev month", up: !prev || trend.expense <= prev.expense },
-    { lbl: "Net profit", value: trend.net_profit, pts: monthlyTrends.map((m) => m.net_profit), color: "hsl(var(--pos))",
+    { lbl: "Net profit", value: trend.net_profit, pts: monthlyTrends.map((m) => m.net_profit), color: "var(--trend-net)",
       delta: prev ? momDelta(trend.net_profit, prev.net_profit) : "—", deltaLbl: "vs prev month", up: !prev || trend.net_profit >= prev.net_profit },
     { lbl: "Unclaimed", value: trend.unclaimed, pts: monthlyTrends.map((m) => m.unclaimed), color: "#10b981",
       delta: prev ? momDelta(trend.unclaimed, prev.unclaimed) : "—", deltaLbl: "vs prev month", up: !prev || trend.unclaimed >= prev.unclaimed },
@@ -1397,7 +1275,7 @@ function OfficeDashboard() {
             {kpis.map((kpi, i) => (
               <div key={i} className="col-span-6 xl:col-span-2"><KpiTile {...kpi} /></div>
             ))}
-            <TrendCard data={monthlyTrends} />
+            <MonthlyTrendChart data={monthlyTrends} />
             {loanLoading || !loanSummary ? (
               [...Array(3)].map((_, i) => <div key={i} className="col-span-12 xl:col-span-4 h-28 bg-muted rounded-xl animate-pulse" />)
             ) : (

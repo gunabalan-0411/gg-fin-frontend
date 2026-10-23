@@ -51,7 +51,8 @@ export interface IopTransaction {
   transaction_id: number;
   customer_id: number;
   collection_date: string;
-  amount: number;
+  amount: number;                       // the interest (what the transaction holds)
+  principal_amount?: number;            // the principal that came with it (already added to the customer's principal paid)
   payment_mode: string;
   payment_status: string;
 }

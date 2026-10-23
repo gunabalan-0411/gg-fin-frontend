@@ -118,11 +118,24 @@ describe("typing the split (IP-03)", () => {
     expect(principal()).toHaveValue(9700);
   });
 
-  it("the amount stays what was collected", async () => {
+  it("the amount stays what was collected while the principal fits in it", async () => {
     const { user } = await reachRows();
     await user.click(toggleOf(0)!);
     await user.type(principal(), "9500");
     expect(within(rowEl(0)).getByRole("spinbutton", { name: "" })).toHaveValue(10000);        // the row's amount box (no label)
+  });
+
+  it("a principal bigger than the amount is paid ON TOP: 10,000 + principal 12,000 = 22,000, interest stays 10,000, no error (IP-03c)", async () => {
+    const { user } = await reachRows();
+    await user.click(toggleOf(0)!);
+    await user.type(principal(), "12000");
+    expect(within(rowEl(0)).getByRole("spinbutton", { name: "" })).toHaveValue(22000);
+    expect(interest()).toHaveValue(10000);
+    expect(principal()).toHaveValue(12000);
+    expect(screen.queryByTestId("split-error")).toBeNull();
+    expect(screen.getByTestId("split-total")).toHaveTextContent("₹22,000");
+    await user.clear(principal());                                                            // emptying it brings the amount back
+    expect(within(rowEl(0)).getByRole("spinbutton", { name: "" })).toHaveValue(10000);
   });
 });
 
@@ -188,15 +201,18 @@ describe("saving (IP-05 ... IP-08)", () => {
     expect(submitted()[0]).toMatchObject({ is_paid: false, principal_amount: 0 });
   });
 
-  it("a principal above the amount is blocked by the page: nothing is sent, the panel is open and says why (IP-07)", async () => {
+  it("a principal above the amount (the amount lowered below it) is blocked by the page: nothing is sent, the panel is open and says why (IP-07)", async () => {
     const { user } = await reachRows();
     await user.click(toggleOf(0)!);
-    await user.type(principal(), "12000");
-    expect(screen.getByTestId("split-error")).toHaveTextContent("more than the amount collected ₹10,000");
+    await user.type(principal(), "9500");
+    const box = within(rowEl(0)).getByRole("spinbutton", { name: "" });
+    await user.clear(box);
+    await user.type(box, "9000");
+    expect(screen.getByTestId("split-error")).toHaveTextContent("more than the amount collected ₹9,000");
     await user.click(toggleOf(0)!);                                                            // even with the panel closed ...
     await savePost(user);
     expect(ocr.submit).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Ravi: The principal ₹12,000 is more than the amount collected ₹10,000"));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Ravi: The principal ₹9,500 is more than the amount collected ₹9,000"));
     expect(await screen.findByTestId("split-panel")).toBeInTheDocument();                       // ... it is opened again
   });
 

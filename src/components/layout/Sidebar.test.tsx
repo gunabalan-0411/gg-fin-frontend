@@ -58,7 +58,7 @@ describe("left menu — groups and order (MN-01)", () => {
   it("the visible names (Collections once, Mapping Configs shown as Customer Groupings)", () => {
     renderMenu();
     expect(mainLinks().map(labelOf)).toEqual([
-      "Dashboard", "Customers", "Account Adjustments", "Personal Finance", "Capital", "Daily Print", "OCR Entry", "Voice Entry", "Collections", "Note Pad",
+      "Dashboard", "Customers", "Account Adjustments", "Personal Finance", "Capital", "Daily Print", "OCR Entry", "Type / Voice Entry", "Collections", "Note Pad",
       "UPI Transactions", "Customer Groupings", "SQL Console", "Settings",
     ]);
     expect(screen.getAllByText("Collections")).toHaveLength(1);
@@ -108,7 +108,7 @@ describe("every page exactly once, URLs unchanged (MN-02)", () => {
 describe("daily work order, no step numbers (MN-03)", () => {
   it("lists the daily routine in order and shows no number chips anywhere", () => {
     renderMenu();
-    expect([...within(groupEl("daily")).getAllByRole("link")].map(labelOf)).toEqual(["Daily Print", "OCR Entry", "Voice Entry", "Collections", "Note Pad"]);
+    expect([...within(groupEl("daily")).getAllByRole("link")].map(labelOf)).toEqual(["Daily Print", "OCR Entry", "Type / Voice Entry", "Collections", "Note Pad"]);
     expect(screen.queryAllByTestId("nav-step")).toHaveLength(0);
     for (const item of ALL_NAV_ITEMS) expect(item).not.toHaveProperty("step");
   });

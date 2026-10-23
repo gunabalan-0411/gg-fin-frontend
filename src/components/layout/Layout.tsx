@@ -65,17 +65,17 @@ export default function Layout() {
         />
         {/* OCR: always mounted so PDF session, image, and records survive tab switches */}
         <div className={cn("flex-1 overflow-hidden min-h-0", !isOcr && "hidden")}>
-          <OcrPage />
+          <ErrorBoundary><OcrPage /></ErrorBoundary>
         </div>
 
         {/* Voice: always mounted so recording state survives tab switches */}
         <div className={cn("flex-1 overflow-hidden min-h-0", !isVoice && "hidden")}>
-          <VoicePage />
+          <ErrorBoundary><VoicePage /></ErrorBoundary>
         </div>
 
         {/* UPI: always mounted for cockpit fixed-height layout */}
         <div className={cn("flex-1 overflow-hidden min-h-0", !isUpi && "hidden")}>
-          <UpiPage />
+          <ErrorBoundary><UpiPage /></ErrorBoundary>
         </div>
 
         {/* All other routes — only rendered when not on /ocr, /voice, or /upi */}

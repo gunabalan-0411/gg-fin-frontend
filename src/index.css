@@ -49,6 +49,11 @@
     --pos:   140 17% 52%;   /* #6f9a7c  income green  */
     --neg:    15 39% 61%;   /* #c98370  expense red   */
     --warn:   37 64% 57%;   /* #d4a64f  warning amber */
+
+    /* Profit lines (Monthly trend, composition ring, KPI sparklines) - checked for colour-blind separation and contrast */
+    --trend-net: #17804a;   /* net profit: forest green */
+    --trend-iop: #2f8fb5;   /* IOP: blue */
+    --trend-edi: #b57d28;   /* EDI: ochre */
   }
 
   /* ─── Dark mode ───────────────────────────────────────────────────────── */
@@ -82,6 +87,10 @@
     --pos:  138 24% 64%;   /* #8eb89a */
     --neg:   18 47% 68%;   /* #d49b86 */
     --warn:  37 55% 60%;   /* #d4ad60 */
+
+    --trend-net: #3fa468;
+    --trend-iop: #3a8fc4;
+    --trend-edi: #b8842f;
   }
 }
 

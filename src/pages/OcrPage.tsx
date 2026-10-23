@@ -151,8 +151,29 @@ function confidenceTextClass(score: number) {
   return "text-red-500";
 }
 
-function ddmmyyyyToInput(dmy: string) {
-  const parts = dmy.split("-");
+/**
+ * The date the AI read, as dd-mm-yyyy - or "" when it found none (null, missing, "unknown", ...). The page only ever holds one of those
+ * two, so nothing downstream has to cope with null (a null date used to blank the whole page).
+ */
+function normDate(v: unknown): string {
+  if (typeof v !== "string") return "";
+  const t = v.trim().replace(/[/.]/g, "-");
+  let m = /^(\d{1,2})-(\d{1,2})-(\d{2}|\d{4})$/.exec(t);
+  if (m) {
+    const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    return valid(Number(m[1]), Number(m[2]), y) ? `${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}-${y}` : "";
+  }
+  m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t);                      // yyyy-mm-dd
+  if (m && valid(Number(m[3]), Number(m[2]), Number(m[1]))) return `${m[3].padStart(2, "0")}-${m[2].padStart(2, "0")}-${m[1]}`;
+  return "";
+}
+function valid(d: number, mo: number, y: number): boolean {
+  const dt = new Date(y, mo - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d;
+}
+
+function ddmmyyyyToInput(dmy?: string | null) {
+  const parts = (dmy ?? "").split("-");
   if (parts.length !== 3) return "";
   const [d, m, y] = parts;
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -165,8 +186,8 @@ function inputToDdmmyyyy(ymd: string) {
   return `${d}-${m}-${y}`;
 }
 
-function ddmmToYyyyMmDd(dmy: string): string {
-  const parts = dmy.split("-");
+function ddmmToYyyyMmDd(dmy?: string | null): string {
+  const parts = (dmy ?? "").split("-");
   if (parts.length !== 3) return "";
   const [d, m, y] = parts;
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
@@ -264,7 +285,7 @@ function RecordCard({
       <div className="flex items-center gap-1.5 flex-wrap">
         <input type="date" value={ddmmyyyyToInput(row.collection_date)}
           onChange={(e) => onUpdate(row.uid, { collection_date: inputToDdmmyyyy(e.target.value) })}
-          className="text-xs rounded-lg border border-border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20" />
+          className={`text-xs rounded-lg border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20 ${row.collection_date ? "border-border" : "border-red-500/60"}`} />
         <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", ...clearedCustomer(), principal: 0 })}
           className={`text-xs px-2 py-1 rounded-lg font-bold transition-colors ${
             row.product_type === "IOP"
@@ -348,7 +369,10 @@ function DateConfirmModal({
   onCancel: () => void;
 }) {
   const isMobile = useIsMobile();
-  const uniqueDates = [...new Set(pendingRows.map((r) => r.collection_date).filter(Boolean))].sort();
+  // "" = the records the AI found no date for: they share one card with a date field that must be filled in
+  const uniqueDates = [...new Set(pendingRows.map((r) => r.collection_date || ""))].sort();
+  const hasMissing = uniqueDates.includes("");
+  const realDates = uniqueDates.filter(Boolean).length;
 
   const [dateMap, setDateMap] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -362,6 +386,8 @@ function DateConfirmModal({
     return () => document.removeEventListener("keydown", handler);
   }, [onCancel]);
 
+  const missingChosen = !hasMissing || Boolean(dateMap[""]);
+
   const body = (
     <>
       {/* Header */}
@@ -372,9 +398,11 @@ function DateConfirmModal({
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold">Confirm Dates</p>
           <p className="text-[11px] text-muted-foreground">
-            {uniqueDates.length === 1
-              ? "Correct the date if the AI got it wrong."
-              : `AI found ${uniqueDates.length} dates — correct any that look wrong.`}
+            {realDates === 0
+              ? "The AI found no date on this page."
+              : realDates === 1
+                ? "Correct the date if the AI got it wrong."
+                : `AI found ${realDates} dates — correct any that look wrong.`}
           </p>
         </div>
       </div>
@@ -382,28 +410,38 @@ function DateConfirmModal({
       {/* Date list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {uniqueDates.map((origDate) => {
-          const count = pendingRows.filter((r) => r.collection_date === origDate).length;
-          const changed = dateMap[origDate] && dateMap[origDate] !== origDate;
+          const missing = origDate === "";
+          const count = pendingRows.filter((r) => (r.collection_date || "") === origDate).length;
+          const changed = !missing && dateMap[origDate] && dateMap[origDate] !== origDate;
+          const unset = missing && !dateMap[origDate];
           return (
-            <div key={origDate} className={`rounded-xl border p-3 transition-colors ${
-              changed ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-background"
+            <div key={origDate || "missing"} className={`rounded-xl border p-3 transition-colors ${
+              unset ? "border-red-500/40 bg-red-500/5" : changed ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-background"
             }`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-muted-foreground/60">
                   {count} record{count !== 1 ? "s" : ""}
                 </span>
+                {missing && <span className="text-[10px] font-semibold text-red-500">No date found</span>}
                 {changed && (
                   <span className="text-[10px] text-amber-500 font-medium">edited</span>
                 )}
               </div>
               <input
                 type="date"
+                data-testid={missing ? "date-missing" : undefined}
+                aria-label={missing ? "Date for the records with no date" : undefined}
                 value={ddmmyyyyToInput(dateMap[origDate] ?? origDate)}
                 onChange={(e) =>
                   setDateMap((prev) => ({ ...prev, [origDate]: inputToDdmmyyyy(e.target.value) }))
                 }
                 className="w-full text-sm font-mono rounded-lg border border-border px-3 py-2 bg-card focus:outline-none focus:ring-2 focus:ring-foreground/15"
               />
+              {missing && (
+                <p data-testid="date-missing-hint" className={`mt-2 text-[11px] ${unset ? "text-red-500" : "text-muted-foreground"}`}>
+                  {unset ? "Choose the date these records were collected on to continue." : "These records will be saved with this date."}
+                </p>
+              )}
             </div>
           );
         })}
@@ -413,7 +451,8 @@ function DateConfirmModal({
       <div className="flex flex-col gap-2 p-4 border-t border-border bg-secondary flex-shrink-0">
         <button
           onClick={() => onConfirm(dateMap)}
-          className="w-full py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors"
+          disabled={!missingChosen}
+          className="w-full py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Confirm Dates
         </button>
@@ -428,10 +467,10 @@ function DateConfirmModal({
   );
 
   if (isMobile) {
-    return <div className="fixed inset-0 z-50 flex flex-col bg-card">{body}</div>;
+    return <div data-testid="date-confirm" className="fixed inset-0 z-50 flex flex-col bg-card">{body}</div>;
   }
   return (
-    <div className="fixed right-0 top-0 bottom-0 z-40 flex flex-col bg-card border-l border-border shadow-2xl" style={{ width: 360 }}>
+    <div data-testid="date-confirm" className="fixed right-0 top-0 bottom-0 z-40 flex flex-col bg-card border-l border-border shadow-2xl" style={{ width: 360 }}>
       {body}
     </div>
   );
@@ -698,8 +737,8 @@ function OcrTableRow({
           type="date"
           value={ddmmyyyyToInput(row.collection_date)}
           onChange={(e) => onUpdate(row.uid, { collection_date: inputToDdmmyyyy(e.target.value) })}
-          className="text-[11.5px] font-mono bg-transparent border-0 outline-0 px-1.5 py-1 rounded w-full
-            hover:bg-muted focus:bg-card focus:shadow-[0_0_0_2px_hsl(var(--foreground))] transition-all"
+          className={`text-[11.5px] font-mono bg-transparent border-0 outline-0 px-1.5 py-1 rounded w-full
+            hover:bg-muted focus:bg-card focus:shadow-[0_0_0_2px_hsl(var(--foreground))] transition-all ${row.collection_date ? "" : "shadow-[0_0_0_1.5px_hsl(var(--neg))]"}`}
         />
       </td>
 
@@ -1193,6 +1232,7 @@ export default function OcrPage() {
         return {
           ...r,
           uid: mkUid(),
+          collection_date: normDate(r.collection_date),             // "" when the AI found no date: the next step asks for one
           product_type: ((r.product_type as string) || "EDI").toUpperCase() as "EDI" | "IOP",
           payment_mode: mode,
           is_paid: mode === "CASH",
@@ -1223,7 +1263,7 @@ export default function OcrPage() {
     setRows(updated);
     toast.success(`${updated.length} records extracted`);
     if (isMobile) setMobileTab("records");
-    const confirmedDates = [...new Set(updated.map((r: Row) => r.collection_date))];
+    const confirmedDates = [...new Set(updated.map((r: Row) => r.collection_date))].filter(Boolean);
     fetchUpiForDates(confirmedDates, pageIndex);
     setShowDateConfirm(false);
     setPendingExtracted([]);
@@ -1431,6 +1471,8 @@ export default function OcrPage() {
   const handleSubmit = async () => {
     const valid = rows.filter((r) => r.customer_id && r.amount > 0);
     if (!valid.length) { toast.error("No valid records — assign a customer to at least one row"); return; }
+    const undated = valid.find((r) => !r.collection_date);
+    if (undated) { toast.error(`${undated.customer_name || "A record"}: choose a date before saving`); return; }
     const problem = firstSplitProblem(valid);
     if (problem) {
       setSplitOpen((prev) => new Set(prev).add(problem.row.uid));
