@@ -2,20 +2,29 @@ import { useState } from "react";
 import { useSectionParam } from "@/hooks/useSectionParam";
 import { ACCOUNT_SECTIONS, type AccountSectionId } from "@/components/layout/navConfig";
 import { useIsMobile, useIsTablet } from "@/hooks/useBreakpoint";
-import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Receipt, AlertCircle, ShieldAlert } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Receipt, AlertCircle, ShieldAlert, Download, Settings2, ListTree, Rows3, Layers } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { DatePicker } from "@/components/ui/DatePicker";
-import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/hooks/useExpenses";
+import { useQuery } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense, type ExpenseScope } from "@/hooks/useExpenses";
+import { categoryLabel, splitCategories, useExpenseCategories, useExpensePersons } from "@/hooks/useExpenseGroups";
+import { PickCombobox } from "@/components/expenses/PickCombobox";
+import { ExpenseLineFields, lineCategoryId, newLine, type ExpenseLine } from "@/components/expenses/ExpenseLineFields";
+import { ExpenseSummaryView } from "@/components/expenses/ExpenseSummaryView";
+import { ManageExpenseGroupsModal } from "@/components/expenses/ManageExpenseGroupsModal";
+import { LegacyGroupModal } from "@/components/expenses/LegacyGroupModal";
+import { saveBlob } from "@/utils/download";
 import { useUnclaimedBalances, useCreateUnclaimedBalance, useDeleteUnclaimedBalance } from "@/hooks/useUnclaimedBalances";
 import type { UnclaimedBalance } from "@/hooks/useUnclaimedBalances";
 import { useDefaultedBalances, useCreateDefaultedBalance, useDeleteDefaultedBalance } from "@/hooks/useDefaultedBalances";
 import type { DefaultedBalance } from "@/hooks/useDefaultedBalances";
-import { unclaimedBalancesApi, defaultedBalancesApi } from "@/services/api";
+import { unclaimedBalancesApi, defaultedBalancesApi, expensesApi, personalApi } from "@/services/api";
 import { formatCurrency, formatDate } from "@/utils";
 import { cn } from "@/utils";
-import type { Expense } from "@/types";
+import type { Expense, ExpenseFilters } from "@/types";
 
 type Section = AccountSectionId;
 
@@ -68,16 +77,40 @@ export default function AccountAdjustmentsPage() {
 
 // ─── Expenses Section ─────────────────────────────────────────────────────────
 
-function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
+const catCell = (e: Expense) =>
+  e.top_name
+    ? <>{e.top_name}{e.sub_name && <span className="text-muted-foreground"> › {e.sub_name}</span>}</>
+    : <span className="italic text-muted-foreground/70">Ungrouped</span>;
+const personCell = (e: Expense) => e.person_name ?? <span className="italic text-muted-foreground/70">Not specified</span>;
+
+/** The expenses list / totals / export. scope "office" = the shared office expenses (Account Adjustments); "personal" = the logged-in
+ *  person's own expenses (Personal Finance): same screen, same categories, but "for whom" is optional and there are no old expenses to group. */
+export function ExpensesSection({ isMobile = false, scope = "office" }: { isMobile?: boolean; scope?: ExpenseScope }) {
+  const personal = scope === "personal";
   const [showForm, setShowForm]       = useState(false);
   const [editing, setEditing]         = useState<Expense | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Expense | null>(null);
   const [sortDir, setSortDir]         = useState<"asc" | "desc">("desc");
+  const [view, setView]               = useState<"list" | "summary">("list");
+  const [filters, setFilters]         = useState<ExpenseFilters>({});
+  const [showManage, setShowManage]   = useState(false);
+  const [showLegacy, setShowLegacy]   = useState(false);
 
-  const { data: expenses = [], isLoading } = useExpenses();
-  const createMutation = useCreateExpense();
-  const updateMutation = useUpdateExpense();
-  const deleteMutation = useDeleteExpense();
+  const params: ExpenseFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "")) as ExpenseFilters;
+  const { data: expenses = [], isLoading } = useExpenses(params, scope);
+  const { data: categories } = useExpenseCategories();
+  const { data: persons } = useExpensePersons();
+  const createMutation = useCreateExpense(scope);
+  const updateMutation = useUpdateExpense(scope);
+  const deleteMutation = useDeleteExpense(scope);
+
+  // how many old expenses still have no category (the totals query is shared with the "By category" view)
+  const { data: allTotals } = useQuery({
+    queryKey: ["expense-summary", { date_from: undefined, date_to: undefined, category_id: undefined, person_id: undefined }],
+    queryFn: async () => (await expensesApi.summary({})).data,
+    enabled: !personal,                                  // only the office expenses have old, ungrouped rows
+  });
+  const ungroupedCount = allTotals?.categories?.find((c) => c.ungrouped)?.count ?? 0;
 
   const sorted = [...(expenses as Expense[])].sort((a, b) => {
     const cmp = a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
@@ -85,6 +118,13 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
   });
 
   const total = (expenses as Expense[]).reduce((s, e) => s + Number(e.amount), 0);
+  const filtered = Object.keys(params).length > 0;
+
+  const categoryOptions = (() => {
+    const { tops, subsOf } = splitCategories(categories);
+    return tops.flatMap((t) => [t, ...subsOf(t.id)]).map((c) => ({ id: c.id, label: categoryLabel(categories, c.id) }));
+  })();
+  const set = (patch: Partial<ExpenseFilters>) => setFilters((f) => ({ ...f, ...patch }));
 
   const handleSave = (data: object) => {
     if (editing) updateMutation.mutate({ id: editing.id, data });
@@ -93,26 +133,75 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
     setEditing(null);
   };
 
+  const exportCsv = async (kind: "rows" | "summary") => {
+    try {
+      const res = await (personal ? personalApi : expensesApi).exportCsv(kind, params);
+      saveBlob(res.data, `${personal ? "personal_" : ""}${kind === "summary" ? "expenses_summary.csv" : "expenses.csv"}`);
+    } catch {
+      toast.error("Could not export the expenses");
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className={cn("font-bold text-foreground", isMobile ? "text-lg" : "text-xl")}>Expenses</h1>
+          <h1 className={cn("font-bold text-foreground", isMobile ? "text-lg" : "text-xl")}>{personal ? "Personal expenses" : "Expenses"}</h1>
           <p className="text-sm text-muted-foreground">
-            Total: <span className="text-red-400 font-semibold">{formatCurrency(total)}</span>
-            {" · "}{(expenses as Expense[]).length} records
+            Total: <span data-testid="expenses-total" className="text-red-400 font-semibold">{formatCurrency(total)}</span>
+            {" · "}{(expenses as Expense[]).length} records{filtered && " (filtered)"}
           </p>
         </div>
-        {!isMobile && (
-          <Button onClick={() => { setEditing(null); setShowForm(true); }}>
-            <Plus className="h-4 w-4 mr-1.5" /> Add Expense
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-border p-0.5">
+            {([["list", "List", Rows3], ["summary", "By category", Layers]] as const).map(([k, label, Icon]) => (
+              <button key={k} onClick={() => setView(k)} aria-pressed={view === k}
+                className={cn("flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors", view === k ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}>
+                <Icon className="h-3 w-3" />{label}
+              </button>
+            ))}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => exportCsv(view === "summary" ? "summary" : "rows")} title={view === "summary" ? "Export the totals by category" : "Export these expenses"}>
+            <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
           </Button>
-        )}
+          <Button variant="outline" size="sm" onClick={() => setShowManage(true)}>
+            <Settings2 className="h-3.5 w-3.5 mr-1" /> Categories
+          </Button>
+          {!isMobile && (
+            <Button onClick={() => { setEditing(null); setShowForm(true); }}>
+              <Plus className="h-4 w-4 mr-1.5" /> Add Expense
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Mobile: card list */}
-      {isMobile ? (
+      {/* Old expenses that still need a category */}
+      {ungroupedCount > 0 && (
+        <div data-testid="legacy-banner" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm">
+          <span className="text-amber-700 dark:text-amber-400">
+            <ListTree className="mr-1.5 inline h-4 w-4" />
+            {ungroupedCount} old expense{ungroupedCount === 1 ? " has" : "s have"} no category yet.
+          </span>
+          <Button size="sm" onClick={() => setShowLegacy(true)}>Group old expenses</Button>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div data-testid="expense-filters" className="grid grid-cols-2 gap-2 md:grid-cols-6">
+        <PickCombobox ariaLabel="Filter by category" placeholder="All categories" value={filters.category_id ?? null} options={categoryOptions} allowClear
+          onChange={(id) => set({ category_id: id ?? undefined })} className="col-span-2" />
+        <PickCombobox ariaLabel="Filter by person" placeholder="Everyone" value={filters.person_id ?? null} allowClear
+          options={(persons ?? []).map((p) => ({ id: p.id, label: p.name }))} onChange={(id) => set({ person_id: id ?? undefined })} />
+        <Input type="date" aria-label="From date" value={filters.date_from ?? ""} onChange={(e) => set({ date_from: e.target.value || undefined })} className="h-[30px] text-xs" />
+        <Input type="date" aria-label="To date" value={filters.date_to ?? ""} onChange={(e) => set({ date_to: e.target.value || undefined })} className="h-[30px] text-xs" />
+        <Input aria-label="Search notes" placeholder="Search notes…" value={filters.search ?? ""} onChange={(e) => set({ search: e.target.value || undefined })} className="h-[30px] text-xs" disabled={view === "summary"} />
+      </div>
+
+      {view === "summary" ? (
+        <ExpenseSummaryView filters={params} scope={scope} />
+      ) : isMobile ? (
+        /* Mobile: card list */
         isLoading ? (
           <div className="space-y-2">
             {[...Array(4)].map((_, i) => (
@@ -126,7 +215,7 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
         ) : sorted.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border py-16 flex flex-col items-center gap-2 text-muted-foreground/50">
             <Receipt className="h-8 w-8" />
-            <p className="text-sm">No expenses yet</p>
+            <p className="text-sm">{filtered ? "No expenses match these filters" : "No expenses yet"}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -146,6 +235,7 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
                       <span className="text-xs text-muted-foreground">{formatDate(e.date)}</span>
                     </div>
                     <p className="text-xl font-bold text-red-400">{formatCurrency(Number(e.amount))}</p>
+                    <p className="mt-1 text-xs text-foreground/80">{catCell(e)} · <span className="text-muted-foreground">{personCell(e)}</span></p>
                     {e.notes && <p className="text-xs text-muted-foreground mt-1 truncate">{e.notes}</p>}
                   </div>
                   <div className="flex gap-1 flex-shrink-0">
@@ -165,6 +255,10 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
                 </div>
               </div>
             ))}
+            <div data-testid="expenses-footer-total" className="flex items-center justify-between rounded-xl border border-border bg-secondary/50 px-4 py-3">
+              <span className="text-sm font-bold">Total expense · {sorted.length}</span>
+              <span className="font-bold text-red-400">{formatCurrency(total)}</span>
+            </div>
           </div>
         )
       ) : (
@@ -183,6 +277,8 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
                       Date {sortDir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                     </span>
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">For whom</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Notes</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">Actions</th>
@@ -192,15 +288,17 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
                 {isLoading ? (
                   [...Array(5)].map((_, i) => (
                     <tr key={i} className="border-b border-border/50">
-                      {[...Array(5)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>)}
+                      {[...Array(7)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>)}
                     </tr>
                   ))
                 ) : sorted.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">No expenses recorded</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">{filtered ? "No expenses match these filters" : "No expenses recorded"}</td></tr>
                 ) : sorted.map((e) => (
-                  <tr key={e.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                  <tr key={e.id} data-testid="expense-row" className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{e.id}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(e.date)}</td>
+                    <td className="px-4 py-3">{catCell(e)}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{personCell(e)}</td>
                     <td className="px-4 py-3 font-semibold text-red-400">{formatCurrency(Number(e.amount))}</td>
                     <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{e.notes ?? "—"}</td>
                     <td className="px-4 py-3">
@@ -216,6 +314,15 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
                   </tr>
                 ))}
               </tbody>
+              {!isLoading && sorted.length > 0 && (
+                <tfoot>
+                  <tr data-testid="expenses-footer-total" className="border-t-2 border-border bg-secondary/50">
+                    <td className="px-4 py-3 font-bold" colSpan={4}>Total expense · {sorted.length} {sorted.length === 1 ? "record" : "records"}</td>
+                    <td className="px-4 py-3 font-bold text-red-400">{formatCurrency(total)}</td>
+                    <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
@@ -237,7 +344,11 @@ function ExpensesSection({ isMobile = false }: { isMobile?: boolean }) {
         onClose={() => { setShowForm(false); setEditing(null); }}
         initial={editing}
         onSave={handleSave}
+        requirePerson={!personal}
       />
+
+      <ManageExpenseGroupsModal open={showManage} onClose={() => setShowManage(false)} />
+      {showLegacy && <LegacyGroupModal open onClose={() => setShowLegacy(false)} />}
 
       <DeleteConfirmDialog
         open={!!confirmDelete}
@@ -606,32 +717,50 @@ function DeleteConfirmDialog({
 // ─── Expense form modal ───────────────────────────────────────────────────────
 
 function ExpenseFormModal({
-  open, onClose, initial, onSave,
+  open, onClose, initial, onSave, requirePerson = true,
 }: {
   open: boolean;
   onClose: () => void;
   initial: Expense | null;
   onSave: (data: object) => void;
+  requirePerson?: boolean;                // Personal Finance: "for whom" is optional
 }) {
-  const [amount, setAmount] = useState(String(initial?.amount ?? ""));
-  const [date,   setDate]   = useState(initial?.date ?? new Date().toISOString().split("T")[0]);
-  const [notes,  setNotes]  = useState(initial?.notes ?? "");
+  const { data: categories } = useExpenseCategories();
+  const { byId } = splitCategories(categories);
+  const leaf = initial?.category_id != null ? byId.get(initial.category_id) : undefined;
+  const [date, setDate] = useState(initial?.date ?? new Date().toISOString().split("T")[0]);
+  const [line, setLine] = useState<ExpenseLine>(() => newLine({
+    amount: initial ? String(initial.amount) : "",
+    notes: initial?.notes ?? "",
+    person_id: initial?.person_id ?? null,
+  }));
+  const [tried, setTried] = useState(false);
+
+  // an existing expense shows its category once the list is loaded: a sub-category is its parent + itself
+  const shown: ExpenseLine = initial && leaf && line.category_id === null && line.sub_id === null
+    ? { ...line, category_id: leaf.parent_id ?? leaf.id, sub_id: leaf.parent_id ? leaf.id : null }
+    : line;
+  const ungroupedOld = Boolean(initial) && initial?.category_id == null;     // an old expense: stays ungrouped unless a category is picked
 
   return (
     <Modal open={open} onClose={onClose} title={initial ? "Edit Expense" : "Add Expense"}>
-      <form onSubmit={(e) => { e.preventDefault(); onSave({ amount: Number(amount), date, notes: notes || null }); }} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Amount</label>
-          <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required autoFocus />
-        </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (requirePerson && shown.person_id == null) { setTried(true); toast.error("Choose who the expense was for"); return; }
+          if (!(Number(shown.amount) > 0)) { toast.error("Enter an amount"); return; }
+          onSave({
+            amount: Number(shown.amount), date, notes: shown.notes.trim() || null,
+            category_id: lineCategoryId(shown), person_id: shown.person_id,
+          });
+        }}
+        className="space-y-4"
+      >
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Date</label>
           <DatePicker value={date} onChange={setDate} />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes..." />
-        </div>
+        <ExpenseLineFields line={shown} onChange={(patch) => setLine({ ...shown, ...patch })} showPersonError={tried} personRequired={requirePerson} noDefaultCategory={ungroupedOld && shown.category_id === null} />
         <div className="flex gap-2 pt-1">
           <Button type="button" variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button type="submit" className="flex-1">Save</Button>

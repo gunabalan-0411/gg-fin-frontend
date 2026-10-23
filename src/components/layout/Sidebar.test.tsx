@@ -14,7 +14,7 @@ import { driveApi, upiApi } from "@/services/api";
 import { resetConnectionStatus } from "@/hooks/useConnectionStatus";
 import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
-import { ACCOUNT_SECTIONS, ALL_NAV_ITEMS, NAV_GROUPS, SETTINGS_SECTIONS, sectionHref, selectedSection } from "./navConfig";
+import { ACCOUNT_SECTIONS, ALL_NAV_ITEMS, NAV_GROUPS, PERSONAL_SECTIONS, SETTINGS_SECTIONS, sectionHref, selectedSection } from "./navConfig";
 
 const drive = driveApi.status as unknown as ReturnType<typeof vi.fn>;
 const gmail = upiApi.gmailStatus as unknown as ReturnType<typeof vi.fn>;
@@ -49,7 +49,7 @@ describe("left menu — groups and order (MN-01)", () => {
     renderMenu();
     const hrefs = (id: string) => within(groupEl(id)).getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(hrefs("home")).toEqual(["/dashboard"]);
-    expect(hrefs("manage")).toEqual(["/customers", "/expenses", "/debts"]);
+    expect(hrefs("manage")).toEqual(["/customers", "/expenses", "/personal", "/debts"]);
     expect(hrefs("daily")).toEqual(["/daily-print", "/ocr", "/voice", "/transactions", "/notepad"]);
     expect(hrefs("mappings")).toEqual(["/upi", "/namemap"]);
     expect(hrefs("advanced")).toEqual(["/sql"]);
@@ -58,7 +58,7 @@ describe("left menu — groups and order (MN-01)", () => {
   it("the visible names (Collections once, Mapping Configs shown as Customer Groupings)", () => {
     renderMenu();
     expect(mainLinks().map(labelOf)).toEqual([
-      "Dashboard", "Customers", "Account Adjustments", "Capital", "Daily Print", "OCR Entry", "Voice Entry", "Collections", "Note Pad",
+      "Dashboard", "Customers", "Account Adjustments", "Personal Finance", "Capital", "Daily Print", "OCR Entry", "Voice Entry", "Collections", "Note Pad",
       "UPI Transactions", "Customer Groupings", "SQL Console", "Settings",
     ]);
     expect(screen.getAllByText("Collections")).toHaveLength(1);
@@ -88,7 +88,7 @@ describe("every page exactly once, URLs unchanged (MN-02)", () => {
   it("lists each page once", () => {
     const paths = ALL_NAV_ITEMS.map((i) => i.to);
     expect(new Set(paths).size).toBe(paths.length);
-    expect(paths).toHaveLength(13);
+    expect(paths).toHaveLength(14);
   });
 
   it("covers exactly the pages the app routes to — none missing, none extra", () => {
@@ -100,7 +100,7 @@ describe("every page exactly once, URLs unchanged (MN-02)", () => {
 
   it("the URLs are the same ones as before", () => {
     expect(ALL_NAV_ITEMS.map((i) => i.to).sort()).toEqual([
-      "/customers", "/dashboard", "/daily-print", "/debts", "/expenses", "/namemap", "/notepad", "/ocr", "/settings", "/sql", "/transactions", "/upi", "/voice",
+      "/customers", "/dashboard", "/daily-print", "/debts", "/expenses", "/namemap", "/notepad", "/ocr", "/personal", "/settings", "/sql", "/transactions", "/upi", "/voice",
     ].sort());
   });
 });
@@ -134,8 +134,9 @@ describe("Settings is pinned at the bottom (MN-01)", () => {
 // ── sections branch out of the main item (SM-02 … SM-05) ──────────────────────
 
 describe("sections as a branch under the main item (SM-02, SM-04)", () => {
-  it("only Account Adjustments and Settings have sections", () => {
-    expect(ALL_NAV_ITEMS.filter((i) => i.sections).map((i) => i.to)).toEqual(["/expenses", "/settings"]);
+  it("only Account Adjustments, Personal Finance and Settings have sections", () => {
+    expect(ALL_NAV_ITEMS.filter((i) => i.sections).map((i) => i.to)).toEqual(["/expenses", "/personal", "/settings"]);
+    expect(PERSONAL_SECTIONS.map((s) => s.label)).toEqual(["Expenses"]);          // Investments can be added later
     expect(ACCOUNT_SECTIONS.map((s) => s.label)).toEqual(["Add Expense", "Unclaimed Amount", "Defaulted Amount"]);
     expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "Security"]);
   });
@@ -216,7 +217,7 @@ describe("opening and closing a branch (SM-05)", () => {
 
   it("items without sections have no chevron", () => {
     renderMenu({}, "/dashboard");
-    expect(screen.getAllByRole("button", { name: /sections$/ })).toHaveLength(2);          // Account Adjustments + Settings only
+    expect(screen.getAllByRole("button", { name: /sections$/ })).toHaveLength(3);          // Account Adjustments + Personal Finance + Settings only
   });
 
   it("choosing a section closes the drawer on a phone", async () => {
@@ -317,7 +318,7 @@ describe("mobile drawer and bottom bar (MN-07)", () => {
     expect(screen.getByRole("button", { name: "Close menu" })).toBeInTheDocument();
     await userEvent.setup().click(screen.getByTestId("nav-customers"));
     expect(onClose).toHaveBeenCalled();
-    expect(mainLinks()).toHaveLength(13);
+    expect(mainLinks()).toHaveLength(14);
   });
 
   it("the bottom icon bar is unchanged", () => {

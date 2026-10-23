@@ -16,7 +16,7 @@ vi.mock("@/services/api", () => {
   const answer = () => Object.assign([], { data: [], total: 0, connected: false, email: null, device: "cpu", device_name: "CPU", gpu_available: false });
   const anyApi = () => new Proxy({}, { get: () => vi.fn().mockImplementation(async () => ({ data: answer() })) });
   return {
-    expensesApi: anyApi(), unclaimedBalancesApi: anyApi(), defaultedBalancesApi: anyApi(), customersApi: anyApi(),
+    expensesApi: anyApi(), personalApi: anyApi(), expenseGroupsApi: anyApi(), unclaimedBalancesApi: anyApi(), defaultedBalancesApi: anyApi(), customersApi: anyApi(),
     authApi: anyApi(), backupApi: anyApi(), upiApi: anyApi(), driveApi: anyApi(), voiceApi: anyApi(),
   };
 });

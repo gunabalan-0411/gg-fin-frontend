@@ -6,7 +6,7 @@
 // no second navigation bar inside the page.
 import {
   LayoutDashboard, Users, ArrowLeftRight, Receipt, Mic, ScanText, Settings, BookText, Wallet, Landmark, Database, Printer,
-  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen,
+  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen, PiggyBank,
   type LucideIcon,
 } from "lucide-react";
 
@@ -39,6 +39,11 @@ export const ACCOUNT_SECTIONS = [
   { id: "defaulted", label: "Defaulted Amount", icon: ShieldAlert },
 ] as const satisfies readonly NavSection[];
 
+/** Personal Finance: the logged-in person's own money. Investments can be added here later as another section. */
+export const PERSONAL_SECTIONS = [
+  { id: "expenses", label: "Expenses", icon: Receipt },
+] as const satisfies readonly NavSection[];
+
 export const SETTINGS_SECTIONS = [
   { id: "local", label: "Local Backup", icon: HardDrive },
   { id: "upi", label: "UPI Import", icon: Mail },
@@ -48,6 +53,7 @@ export const SETTINGS_SECTIONS = [
 ] as const satisfies readonly NavSection[];
 
 export type AccountSectionId = (typeof ACCOUNT_SECTIONS)[number]["id"];
+export type PersonalSectionId = (typeof PERSONAL_SECTIONS)[number]["id"];
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -63,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/customers", icon: Users, label: "Customers" },
       { to: "/expenses", icon: Receipt, label: "Account Adjustments", sections: ACCOUNT_SECTIONS },
+      { to: "/personal", icon: PiggyBank, label: "Personal Finance", sections: PERSONAL_SECTIONS },
       { to: "/debts", icon: Landmark, label: "Capital" },
     ],
   },

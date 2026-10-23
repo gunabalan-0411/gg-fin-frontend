@@ -60,7 +60,56 @@ export interface Expense {
   id: number;
   amount: number;
   date: string;
-  notes?: string;
+  notes?: string | null;
+  category_id?: number | null;          // the most specific category; null = an old expense that is not grouped yet
+  top_id?: number | null;               // its top-level category
+  top_name?: string | null;
+  sub_name?: string | null;             // the sub-category, when one was chosen
+  person_id?: number | null;            // "for whom"
+  person_name?: string | null;
+}
+
+/** A category: top-level (parent_id null) or a sub-category. `used` = expenses in it (and its sub-categories). */
+export interface ExpenseCategory {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  is_system: boolean;                   // Miscellaneous: cannot be renamed or deleted
+  used: number;
+}
+
+export interface ExpensePerson {
+  id: number;
+  name: string;
+  used: number;
+}
+
+export interface ExpenseSummary {
+  categories: { id: number | null; name: string; ungrouped: boolean; count: number; total: number | string;
+                subs: { id: number; name: string; count: number; total: number | string }[] }[];
+  people: { id: number | null; name: string; count: number; total: number | string }[];
+  total: number | string;
+  count: number;
+}
+
+/** One line of "Group old expenses": every old expense with this notes text, and the guess to review. */
+export interface LegacyExpenseGroup {
+  notes: string | null;
+  count: number;
+  total: number | string;
+  first: string;
+  last: string;
+  category_id: number;
+  person_id: number | null;
+}
+
+/** Filters shared by the list, the totals and the export. */
+export interface ExpenseFilters {
+  date_from?: string;
+  date_to?: string;
+  category_id?: number;
+  person_id?: number;
+  search?: string;
 }
 
 export interface MonthlyProfit {
@@ -209,6 +258,26 @@ export interface MappingPopupData {
   aliases: MappingItem[];
   mismatches: MappingItem[];
   limits: { alias: number; ai_mismatch: number };
+}
+
+/** The Personal view of the main dashboard (one person's own spending). */
+export interface PersonalDashboard {
+  month: string;                                              // "2026-10"
+  this_month: { total: number | string; count: number };
+  last_month: { total: number | string; count: number };
+  categories: ExpenseSummary["categories"];                   // this month by category > sub-category, biggest first
+  people: ExpenseSummary["people"];
+  monthly: { month: string; total: number | string }[];       // the last 12 months, oldest first (zeros included)
+}
+
+/** One IOP row checked by the server: the interest it leaves, the customer's balance before / after, and why it would be refused. */
+export interface IopSplitCheck {
+  index: number;                        // position of the row in the list that was sent
+  principal: number;
+  interest: number;
+  balance_before: number | null;
+  balance_after: number | null;
+  error: string | null;
 }
 
 /** Re-loan: the names stored under a customer's name (any customer, open or closed). */

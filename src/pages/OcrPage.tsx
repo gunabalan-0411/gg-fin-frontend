@@ -27,10 +27,13 @@ import {
   PenLine,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/useBreakpoint";
-import { ocrApi, upiApi, expensesApi, customersApi, nameMappingsApi, trainingDataApi, type UpiPairing } from "@/services/api";
+import { ocrApi, upiApi, customersApi, nameMappingsApi, trainingDataApi, type UpiPairing } from "@/services/api";
 import { CustomerStepOverlay } from "@/components/CustomerStepOverlay";
 import { TrainingDataToggle } from "@/components/TrainingDataToggle";
 import { UpiTxnItem } from "@/components/ocr/UpiTxnItem";
+import { IopSplitPanel, SplitToggle } from "@/components/ocr/IopSplitPanel";
+import { canSplit, checkRecords, isSplit, localSplitIssue, principalOf, wantsCheck } from "@/utils/iopSplit";
+import { ExpenseStepPanel } from "@/components/expenses/ExpenseStepPanel";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { buildOcrTrainingRows, ocrFormData, trainingErrorMessage } from "@/utils/trainingData";
@@ -47,7 +50,7 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import {
   clearedCustomer, MappingEditButton, MatchBadge, RememberBanner, pickPatch, type RowMappingFields,
 } from "@/components/ocr/rowMapping";
-import type { MappingCandidate, MappingKind } from "@/types";
+import type { IopSplitCheck, MappingCandidate, MappingKind } from "@/types";
 import { ImageCropModal } from "@/components/ImageCropModal";
 import toast from "react-hot-toast";
 
@@ -64,6 +67,7 @@ type Row = {
   confidence_score: number;
   notes: string;
   customer_suggestions: Suggestion[];
+  principal?: number;                                     // IOP only: the part of `amount` that is principal (the rest is interest)
 } & RowMappingFields;                                     // alias / AI-mismatch mapping fields
 
 type UpiTxn = {
@@ -219,8 +223,14 @@ function RecordCard({
   onDismissRemember,
   upiArmed,
   onArmUpi,
+  splitOpen,
+  onToggleSplit,
+  splitCheck,
 }: {
   row: Row;
+  splitOpen?: boolean;                     // IOP: the principal / interest split is expanded
+  onToggleSplit?: (uid: string) => void;
+  splitCheck?: IopSplitCheck | null;       // the server's check of that split
   onUpdate: (uid: string, patch: Partial<Row>) => void;
   onDelete: (uid: string) => void;
   fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
@@ -255,7 +265,7 @@ function RecordCard({
         <input type="date" value={ddmmyyyyToInput(row.collection_date)}
           onChange={(e) => onUpdate(row.uid, { collection_date: inputToDdmmyyyy(e.target.value) })}
           className="text-xs rounded-lg border border-border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/20" />
-        <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", ...clearedCustomer() })}
+        <button onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", ...clearedCustomer(), principal: 0 })}
           className={`text-xs px-2 py-1 rounded-lg font-bold transition-colors ${
             row.product_type === "IOP"
               ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
@@ -298,13 +308,19 @@ function RecordCard({
             {upiArmed ? "Picking UPI…" : "Waiting for UPI"}
           </button>
         )}
-        <div className="flex items-center border border-border rounded-lg px-2 py-1 bg-background ml-auto">
+        {canSplit(row) && onToggleSplit && (
+          <span className="ml-auto"><SplitToggle row={row} open={Boolean(splitOpen)} onToggle={() => onToggleSplit(row.uid)} /></span>
+        )}
+        <div className={`flex items-center border border-border rounded-lg px-2 py-1 bg-background ${canSplit(row) && onToggleSplit ? "" : "ml-auto"}`}>
           <span className="text-xs text-muted-foreground mr-1">₹</span>
           <input type="number" value={row.amount || ""}
             onChange={(e) => onUpdate(row.uid, { amount: Number(e.target.value) })}
             className="w-20 text-sm font-semibold bg-transparent focus:outline-none" />
         </div>
       </div>
+      {canSplit(row) && splitOpen && (
+        <IopSplitPanel row={row} check={splitCheck} onChange={(patch) => onUpdate(row.uid, patch)} />
+      )}
       {(row.match_source === "ai_mismatch" || row.match_source === "alias") && (
         <div className="flex items-center gap-1.5 flex-wrap pl-4">
           <MatchBadge row={row} />
@@ -620,10 +636,12 @@ function AddRowModal({
 // ── OcrTableRow (desktop table row) ──────────────────────────────────────────
 function OcrTableRow({
   row, index, onUpdate, onDelete, fetchSuggestions, fetchMappingSuggestions, onOpenMapping,
-  isActive, onHoverIn, onHoverOut, upiArmed, onArmUpi,
+  isActive, onHoverIn, onHoverOut, upiArmed, onArmUpi, splitOpen, onToggleSplit,
 }: {
   row: Row;
   index: number;
+  splitOpen?: boolean;                     // IOP: the principal / interest split is expanded below the row
+  onToggleSplit?: (uid: string) => void;
   onUpdate: (uid: string, patch: Partial<Row>) => void;
   onDelete: (uid: string) => void;
   fetchSuggestions?: (query: string, productType: "EDI" | "IOP") => Promise<Suggestion[]>;
@@ -689,7 +707,7 @@ function OcrTableRow({
       <td className="px-1 text-center">
         <button
           tabIndex={-1}
-          onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", ...clearedCustomer() })}
+          onClick={() => onUpdate(row.uid, { product_type: row.product_type === "EDI" ? "IOP" : "EDI", ...clearedCustomer(), principal: 0 })}
           className={`text-[10.5px] px-2 py-0.5 rounded-md font-bold transition-colors ${
             row.product_type === "IOP"
               ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
@@ -757,6 +775,9 @@ function OcrTableRow({
       {/* Amount */}
       <td className="px-1 text-right">
         <div className="flex items-center justify-end gap-0.5 px-1.5">
+          {canSplit(row) && onToggleSplit && (
+            <SplitToggle row={row} open={Boolean(splitOpen)} onToggle={() => onToggleSplit(row.uid)} compact />
+          )}
           <span className="text-[10.5px] text-muted-foreground">₹</span>
           <input
             type="number"
@@ -803,123 +824,6 @@ const WF_STEPS: { n: WfStep; label: string; desc: string }[] = [
   { n: 6, label: "Customer", desc: "Add new customers" },
   { n: 7, label: "Submit",   desc: "Final review & submit" },
 ];
-
-// ── ExpenseStepPanel ──────────────────────────────────────────────────────────
-// Right-side slide panel so user can scroll the PDF while entering expenses.
-function ExpenseStepPanel({
-  dates,
-  isMobile,
-  onDone,
-  onSkip,
-  onSkipAll,
-}: {
-  dates: string[];
-  isMobile: boolean;
-  onDone: () => void;
-  onSkip: () => void;
-  onSkipAll: () => void;
-}) {
-  type Entry = { amount: string; notes: string };
-  const [entries, setEntries] = useState<Record<string, Entry>>(() => {
-    const init: Record<string, Entry> = {};
-    dates.forEach((d) => { init[d] = { amount: "", notes: "" }; });
-    return init;
-  });
-  const [saving, setSaving] = useState(false);
-
-  const setEntry = (date: string, patch: Partial<Entry>) =>
-    setEntries((prev) => ({ ...prev, [date]: { ...prev[date], ...patch } }));
-
-  const handleSave = async () => {
-    const toSave = dates.filter((d) => entries[d]?.amount && Number(entries[d].amount) > 0);
-    if (toSave.length === 0) { onDone(); return; }
-    setSaving(true);
-    try {
-      await Promise.all(
-        toSave.map((d) =>
-          expensesApi.create({
-            date: ddmmToYyyyMmDd(d),
-            amount: Number(entries[d].amount),
-            notes: entries[d].notes || null,
-          })
-        )
-      );
-      toast.success(`${toSave.length} expense${toSave.length > 1 ? "s" : ""} saved`);
-      onDone();
-    } catch {
-      toast.error("Failed to save expenses");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const body = (
-    <>
-      <div className="flex items-center gap-2.5 px-4 py-3 bg-secondary border-b border-border flex-shrink-0">
-        <div className="w-6 h-6 rounded-full bg-foreground flex items-center justify-center flex-shrink-0">
-          <span className="text-[10px] font-bold text-background">5</span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">Daily Expenses</p>
-          <p className="text-[11px] text-muted-foreground">Scroll the PDF and log expenses per date</p>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {dates.map((date) => (
-          <div key={date} className="rounded-xl border border-border bg-background p-3 space-y-2">
-            <p className="text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wide">
-              {fmtTxnDate(ddmmToYyyyMmDd(date))}
-            </p>
-            <div className="flex items-center border border-border rounded-lg px-2.5 py-1.5 bg-card focus-within:ring-1 focus-within:ring-foreground/20">
-              <span className="text-xs text-muted-foreground mr-1">₹</span>
-              <input
-                type="number"
-                value={entries[date]?.amount ?? ""}
-                onChange={(e) => setEntry(date, { amount: e.target.value })}
-                placeholder="0"
-                className="flex-1 text-sm font-semibold bg-transparent focus:outline-none"
-              />
-            </div>
-            <input
-              type="text"
-              value={entries[date]?.notes ?? ""}
-              onChange={(e) => setEntry(date, { notes: e.target.value })}
-              placeholder="Notes (optional)…"
-              className="w-full text-xs rounded-lg border border-border px-2.5 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-foreground/15 placeholder:text-muted-foreground/40"
-            />
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-col gap-2 p-4 border-t border-border bg-secondary flex-shrink-0">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold hover:bg-foreground/85 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
-        >
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {saving ? "Saving…" : "Save & Continue"}
-        </button>
-        <div className="flex gap-2">
-          <button onClick={onSkip} className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
-            Skip
-          </button>
-          <button onClick={onSkipAll} className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/40 transition-colors">
-            Skip All
-          </button>
-        </div>
-      </div>
-    </>
-  );
-
-  if (isMobile) {
-    return <div className="fixed inset-0 z-50 flex flex-col bg-card">{body}</div>;
-  }
-  return (
-    <div className="fixed right-0 top-0 bottom-0 z-40 flex flex-col bg-card border-l border-border shadow-2xl" style={{ width: 360 }}>
-      {body}
-    </div>
-  );
-}
 
 // ── FinalSummaryModal ─────────────────────────────────────────────────────────
 function FinalSummaryModal({
@@ -1090,6 +994,8 @@ export default function OcrPage() {
   const autoApplied = useRef<Set<number>>(new Set());                    // UPI payments already applied by themselves once: an Undo must stick
   const [upiTargetUid, setUpiTargetUid] = useState<string | null>(null);   // the row marked paid online the highlighted UPI transactions are for
   const [remapConfirm, setRemapConfirm] = useState<{ txn: UpiTxn; rowUid: string; owner: VpaOwner } | null>(null);
+  const [splitOpen, setSplitOpen] = useState<Set<string>>(new Set());                    // IOP rows whose principal / interest split is expanded
+  const [splitChecks, setSplitChecks] = useState<Record<string, IopSplitCheck>>({});          // the server's check of those splits, by row
   const [savedVpas, setSavedVpas] = useState<SavedVpa[]>([]);               // the saved UPI id -> customer list, to spot a clash while pairing
   const [unlinkConfirm, setUnlinkConfirm] = useState<{ txn: UpiTxn; busy: boolean } | null>(null);   // "Unlink" asked on a mapped transaction
   const [syncingGmail, setSyncingGmail] = useState(false);
@@ -1491,9 +1397,46 @@ export default function OcrPage() {
     }
   };
 
+  const toggleSplit = (uid: string) =>
+    setSplitOpen((prev) => { const next = new Set(prev); if (next.has(uid)) next.delete(uid); else next.add(uid); return next; });
+
+  // IOP rows split into principal + interest: ask the server (debounced) for the balance before / after and for anything that would be
+  // refused. It looks at ALL the page's IOP rows, because rows of the same customer share the balance.
+  const splitKey = JSON.stringify(rows.filter((r) => canSplit(r) && r.customer_id).map((r) =>
+    [r.uid, r.customer_id, r.collection_date, r.payment_mode, r.is_paid, r.amount, r.principal ?? 0, splitOpen.has(r.uid)]));
+  useEffect(() => {
+    const iopRows = rows.filter((r) => canSplit(r) && r.customer_id && r.amount > 0);
+    if (!iopRows.some((r) => wantsCheck({ ...r, split_open: splitOpen.has(r.uid) }))) { setSplitChecks((c) => (Object.keys(c).length ? {} : c)); return; }
+    let live = true;
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await ocrApi.splitCheck(checkRecords(iopRows));
+        if (!live) return;
+        setSplitChecks(Object.fromEntries(data.rows.map((c) => [iopRows[c.index].uid, c])));
+      } catch { /* the check is a convenience: the submit still enforces it */ }
+    }, 450);
+    return () => { live = false; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splitKey]);
+
+  /** The first split that cannot be saved (the page's own check, then the server's); its panel is opened. */
+  const firstSplitProblem = (list: Row[]): { row: Row; message: string } | null => {
+    for (const r of list) {
+      const message = localSplitIssue(r) ?? (isSplit(r) ? splitChecks[r.uid]?.error ?? null : null);
+      if (message) return { row: r, message };
+    }
+    return null;
+  };
+
   const handleSubmit = async () => {
     const valid = rows.filter((r) => r.customer_id && r.amount > 0);
     if (!valid.length) { toast.error("No valid records — assign a customer to at least one row"); return; }
+    const problem = firstSplitProblem(valid);
+    if (problem) {
+      setSplitOpen((prev) => new Set(prev).add(problem.row.uid));
+      toast.error(`${problem.row.customer_name || "An IOP row"}: ${problem.message}`);
+      return;
+    }
     setSubmitting(true);
     const tid = toast.loading(`Saving ${valid.length} records…`);
     try {
@@ -1502,10 +1445,11 @@ export default function OcrPage() {
           collection_date: r.collection_date, customer_name: r.customer_name,
           customer_id: r.customer_id, product_type: r.product_type,
           payment_mode: r.payment_mode, is_paid: r.is_paid, amount: r.amount,
+          principal_amount: principalOf(r),               // IOP: the part of the amount that is principal (the transaction is the interest)
           mapping_ref: r.mapping_ref ?? undefined,       // lets the server count a use of the alias / AI-mismatch name
         })),
       });
-      toast.success(`${data.submitted} records saved`, { id: tid });
+      toast.success(`${data.submitted} records saved${data.principal_added ? ` · ₹${Math.round(data.principal_added).toLocaleString("en-IN")} principal added` : ""}`, { id: tid });
       // The records are saved. These two follow and can never fail or block the submit.
       void saveUpiPairings(valid);
       if (trainingOn) void uploadOcrTraining();
@@ -1521,7 +1465,18 @@ export default function OcrPage() {
       } else {
         setWfStep(null);
       }
-    } catch { toast.error("Submit failed", { id: tid }); }
+    } catch (err) {
+      // an IOP principal the server refused: nothing was saved - say why and open that row's split
+      const detail = (err as { response?: { status?: number; data?: { detail?: { code?: string; message?: string; rows?: { index: number }[] } } } })?.response;
+      if (detail?.status === 422 && detail.data?.detail?.code === "bad_principal") {
+        const bad = detail.data.detail.rows?.[0];
+        const row = bad != null ? valid[bad.index] : undefined;
+        if (row) setSplitOpen((prev) => new Set(prev).add(row.uid));
+        toast.error(`${detail.data.detail.message ?? "The principal is not allowed"} — nothing was saved`, { id: tid });
+      } else {
+        toast.error("Submit failed", { id: tid });
+      }
+    }
     finally { setSubmitting(false); }
   };
 
@@ -2092,7 +2047,8 @@ export default function OcrPage() {
                               <RecordCard row={row} onUpdate={updateRow} onDelete={deleteRow} fetchSuggestions={fetchCustomerSuggestions}
                                 fetchMappingSuggestions={fetchMappingSuggestions} onOpenMapping={openMapping}
                                 onRemember={handleRemember} onDismissRemember={dismissRemember}
-                                upiArmed={upiTargetUid === row.uid} onArmUpi={armUpi} />
+                                upiArmed={upiTargetUid === row.uid} onArmUpi={armUpi}
+                                splitOpen={splitOpen.has(row.uid)} onToggleSplit={toggleSplit} splitCheck={splitChecks[row.uid]} />
                               {showSummary && (
                                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 rounded-xl border border-border/50 text-[10.5px] font-mono">
                                   <span className="text-muted-foreground/50 text-[9.5px] uppercase tracking-wide font-semibold">subtotal</span>
@@ -2600,7 +2556,18 @@ export default function OcrPage() {
                                   onHoverOut={() => setActiveRowUid(null)}
                                   upiArmed={upiTargetUid === row.uid}
                                   onArmUpi={armUpi}
+                                  splitOpen={splitOpen.has(row.uid)}
+                                  onToggleSplit={toggleSplit}
                                 />
+                                {canSplit(row) && splitOpen.has(row.uid) && (
+                                  <tr data-testid="split-row">
+                                    <td colSpan={8} className="px-3 pb-2 pt-0.5">
+                                      <div className="sticky left-3 max-w-[22rem]">
+                                        <IopSplitPanel row={row} check={splitChecks[row.uid]} onChange={(patch) => updateRow(row.uid, patch)} />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
                                 {row.remember_offer && row.customer_id && (
                                   <tr>
                                     <td colSpan={8} className="px-3 pb-2 pt-0.5">

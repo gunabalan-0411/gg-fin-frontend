@@ -12,6 +12,7 @@ vi.mock("react-hot-toast", () => ({ default: Object.assign(vi.fn(), { success: v
 vi.mock("@/components/CustomerStepOverlay", () => ({
   CustomerStepOverlay: ({ onDone }: { onDone: () => void }) => <button onClick={onDone}>Customers done</button>,
 }));
+vi.mock("@/components/expenses/ExpenseStepPanel", () => ({ ExpenseStepPanel: ({ onSkip }: { onSkip: () => void }) => <div><p>Daily Expenses</p><button onClick={onSkip}>Skip</button></div> }));   // the real panel has its own tests
 vi.mock("@/services/api", () => {
   const ok = (data: unknown = {}) => vi.fn().mockResolvedValue({ data });
   return {

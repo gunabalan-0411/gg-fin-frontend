@@ -8,6 +8,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import CustomersPage from "@/pages/CustomersPage";
 import CollectionsPage from "@/pages/CollectionsPage";
 import ExpensesPage from "@/pages/ExpensesPage";
+import PersonalFinancePage from "@/pages/PersonalFinancePage";
 import DebtsPage from "@/pages/DebtsPage";
 import VoicePage from "@/pages/VoicePage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="customers" element={<CustomersPage />} />
           <Route path="transactions" element={<CollectionsPage />} />
           <Route path="expenses" element={<ExpensesPage />} />
+          <Route path="personal" element={<PersonalFinancePage />} />
           <Route path="debts" element={<DebtsPage />} />
           <Route path="voice" element={<VoicePage />} />
           <Route path="ocr" element={<OcrPage />} />

@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  CarryForwardResult, CarryPreview, FinanceType, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
+  CarryForwardResult, CarryPreview, IopSplitCheck, PersonalDashboard, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -91,9 +91,53 @@ export const transactionsApi = {
 export const expensesApi = {
   list: (params?: object) => api.get("/expenses", { params }),
   create: (data: object) => api.post("/expenses", data),
+  /** Several expense lines at once (the OCR Expense step): all are saved or none. */
+  createBulk: (items: ExpenseNew[]) => api.post<Expense[]>("/expenses/bulk", { items }),
+  summary: (params?: ExpenseFilters) => api.get<ExpenseSummary>("/expenses/summary", { params }),
+  /** CSV (rows or category totals) with a Total line at the end. */
+  exportCsv: (kind: "rows" | "summary", params?: ExpenseFilters) =>
+    api.get<Blob>("/expenses/export", { params: { kind, ...params }, responseType: "blob" }),
+  /** Old, ungrouped expenses - one line per distinct notes text - with the suggested category / person. */
+  legacyGroups: () => api.get<{ groups: LegacyExpenseGroup[]; count: number; total: number | string }>("/expenses/legacy-groups"),
+  applyLegacy: (items: { notes: string | null; category_id: number; person_id: number | null }[]) =>
+    api.post<{ updated: number }>("/expenses/legacy-groups/apply", { items }),
   update: (id: number, data: object) => api.patch(`/expenses/${id}`, data),
   delete: (id: number) => api.delete(`/expenses/${id}`),
 };
+
+// ── Personal Finance: the logged-in person's OWN expenses (same shape as expensesApi, never shared) ──
+export const personalApi = {
+  list: (params?: object) => api.get("/personal/expenses", { params }),
+  create: (data: object) => api.post("/personal/expenses", data),
+  update: (id: number, data: object) => api.patch(`/personal/expenses/${id}`, data),
+  delete: (id: number) => api.delete(`/personal/expenses/${id}`),
+  summary: (params?: ExpenseFilters) => api.get<ExpenseSummary>("/personal/expenses/summary", { params }),
+  exportCsv: (kind: "rows" | "summary", params?: ExpenseFilters) =>
+    api.get<Blob>("/personal/expenses/export", { params: { kind, ...params }, responseType: "blob" }),
+  /** The Personal view of the main dashboard. */
+  dashboard: () => api.get<PersonalDashboard>("/personal/dashboard"),
+};
+
+// ── Expense categories (two levels) and "for whom" ─────────────────────────
+export const expenseGroupsApi = {
+  categories: () => api.get<ExpenseCategory[]>("/expense-groups/categories"),
+  createCategory: (name: string, parent_id: number | null) => api.post<ExpenseCategory>("/expense-groups/categories", { name, parent_id }),
+  renameCategory: (id: number, name: string) => api.patch(`/expense-groups/categories/${id}`, { name }),
+  deleteCategory: (id: number) => api.delete<{ deleted: number; moved: number }>(`/expense-groups/categories/${id}`),
+  persons: () => api.get<ExpensePerson[]>("/expense-groups/persons"),
+  createPerson: (name: string) => api.post<ExpensePerson>("/expense-groups/persons", { name }),
+  renamePerson: (id: number, name: string) => api.patch(`/expense-groups/persons/${id}`, { name }),
+  deletePerson: (id: number) => api.delete<{ deleted: number; unspecified: number }>(`/expense-groups/persons/${id}`),
+};
+
+/** One new expense line. "For whom" is required; the category defaults to Miscellaneous on the server. */
+export interface ExpenseNew {
+  amount: number;
+  date: string;
+  notes?: string | null;
+  category_id?: number | null;
+  person_id: number;
+}
 
 // ── Debts ─────────────────────────────────────────────────────────────────
 export const debtsApi = {
@@ -277,7 +321,9 @@ export const ocrApi = {
   extract: (body: { session_id: string; page_index: number; model?: string }) =>
     api.post<{ page_image_b64: string; records: any[]; mapping_warning?: string }>("/ocr/extract", body),
   submit: (body: { records: any[] }) =>
-    api.post<{ submitted: number; mapping_usage?: number }>("/ocr/submit", body),
+    api.post<{ submitted: number; mapping_usage?: number; principal_added?: number }>("/ocr/submit", body),
+  /** Live check of the IOP rows split into principal + interest: interest, balance before / after, and why it would be refused. Saves nothing. */
+  splitCheck: (records: any[]) => api.post<{ rows: IopSplitCheck[] }>("/ocr/iop-split-check", { records }),
 };
 
 // ── Alias / AI-mismatch name mappings ─────────────────────────────────────
