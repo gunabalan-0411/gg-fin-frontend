@@ -1,4 +1,4 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <title>TickBook — App Icon</title>
-  <rect width="512" height="512" rx="112" fill="#3d8a66"/><g transform="translate(96 96) scale(10)" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 16.2 L12.2 22.9" stroke="#ffffff" stroke-width="4.6"/><path d="M15.6 22.6 L27 8.6" stroke="#ffffff" stroke-width="4.6"/><path d="M4.5 28 Q 16 25.2 27.5 28" stroke="#ffffff" stroke-width="1.7" opacity="0.55"/></g>
+  <rect width="512" height="512" fill="#f1f5f0"/><g transform="translate(6.000 6.000) scale(4.16667)" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="12" y="12" width="96" height="96" rx="22" fill="#3d8a66"/><path d="M32 38 H88" stroke="#f1f5f0" stroke-width="7" opacity="0.5"/><path d="M32 58 H88" stroke="#f1f5f0" stroke-width="7" opacity="0.5"/><path d="M30 80 L40 90 L58 71" stroke="#f1f5f0" stroke-width="8"/><path d="M68 81 H88" stroke="#f1f5f0" stroke-width="7" opacity="0.5"/></g>
 </svg>

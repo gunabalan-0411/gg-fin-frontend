@@ -195,10 +195,7 @@ export default function LoginPage() {
         {/* Quote / tagline at bottom */}
         <div className="mt-auto max-w-xs">
           <p className="text-[22px] font-light leading-snug tracking-tight text-foreground">
-            Your quiet<br />lending ledger.
-          </p>
-          <p className="mt-3 font-mono text-[11px] text-foreground/50 uppercase tracking-widest">
-            Personal · Precise · Private
+            Every collection,<br />ticked.
           </p>
         </div>
 
