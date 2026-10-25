@@ -4,10 +4,12 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { personalApi } from "@/services/api";
 import { cn } from "@/utils";
+import type { PersonalDashboard as PersonalDashboardData } from "@/types";
 
 const num = (v: number | string) => Number(v) || 0;
 const fmt = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dmy = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d} ${MONTHS[Number(m) - 1] ?? ""} ${y}`; };
 const monthLabel = (key: string) => MONTHS[Number(key.slice(5, 7)) - 1] ?? key;
 const longMonth = (key: string) => `${monthLabel(key)} ${key.slice(0, 4)}`;
 
@@ -43,6 +45,7 @@ export function PersonalDashboard() {
 
   return (
     <div data-testid="personal-dashboard" className="space-y-4">
+      <Holdings data={data.holdings} />
       <div className="grid gap-3 md:grid-cols-3">
         <div className="glass-card p-4">
           <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">Spent in {longMonth(data.month)}</p>
@@ -116,6 +119,32 @@ export function PersonalDashboard() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The two numbers a person wants first: what is in savings, and what friends still owe. Both from Personal Finance. */
+function Holdings({ data }: { data: PersonalDashboardData["holdings"] }) {
+  const savings = data?.savings ?? { total: 0, accounts: 0 };
+  const lends = data?.lends ?? { to_collect: 0, people: 0, overdue: 0, overdue_amount: 0, next_follow_up: null, next_follow_up_to: null };
+  return (
+    <div data-testid="personal-holdings" className="grid gap-3 md:grid-cols-2">
+      <Link to="/personal?section=savings" className="glass-card block p-4 transition-colors hover:bg-secondary/40">
+        <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">Total in savings</p>
+        <p data-testid="personal-savings-total" className="mt-1 text-3xl font-bold tracking-tight">{fmt(num(savings.total))}</p>
+        <p data-testid="personal-savings-note" className="mt-1 text-xs text-muted-foreground">
+          {savings.accounts === 0 ? "No savings added yet" : `${savings.accounts} ${savings.accounts === 1 ? "account" : "accounts"}`}
+        </p>
+      </Link>
+      <Link to="/personal?section=lends" className="glass-card block p-4 transition-colors hover:bg-secondary/40">
+        <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">To collect from friends</p>
+        <p data-testid="personal-lends-total" className="mt-1 text-3xl font-bold tracking-tight">{fmt(num(lends.to_collect))}</p>
+        <p data-testid="personal-lends-note" className="mt-1 text-xs text-muted-foreground">
+          {lends.people === 0 ? "Nothing to collect" : `from ${lends.people} ${lends.people === 1 ? "person" : "people"}`}
+          {lends.overdue > 0 && <span data-testid="personal-lends-overdue" className="ml-1.5 font-semibold text-red-600 dark:text-red-400">· {lends.overdue} overdue ({fmt(num(lends.overdue_amount))})</span>}
+          {lends.next_follow_up && <span data-testid="personal-lends-next" className="ml-1.5">· next follow-up {dmy(lends.next_follow_up)}{lends.next_follow_up_to ? ` (${lends.next_follow_up_to})` : ""}</span>}
+        </p>
+      </Link>
     </div>
   );
 }

@@ -300,6 +300,17 @@ export interface PersonalDashboard {
   categories: ExpenseSummary["categories"];                   // this month by category > sub-category, biggest first
   people: ExpenseSummary["people"];
   monthly: { month: string; total: number | string }[];       // the last 12 months, oldest first (zeros included)
+  holdings?: PersonalHoldings;
+}
+
+/** What the person holds: the total in savings and what is still to be collected from friends (open lends only). */
+export interface PersonalHoldings {
+  savings: { total: number | string; accounts: number };
+  lends: {
+    to_collect: number | string; people: number;
+    overdue: number; overdue_amount: number | string;
+    next_follow_up: string | null; next_follow_up_to: string | null;
+  };
 }
 
 /** One IOP row checked by the server: the interest it leaves, the customer's balance before / after, and why it would be refused. */
