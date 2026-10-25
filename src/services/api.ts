@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  CarryForwardResult, CarryPreview, IopSplitCheck, PersonalDashboard, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
+  CarryForwardResult, CarryPreview, IopSplitCheck, PersonalDashboard, PersonalRecordKind, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -116,6 +116,11 @@ export const personalApi = {
     api.get<Blob>("/personal/expenses/export", { params: { kind, ...params }, responseType: "blob" }),
   /** The Personal view of the main dashboard. */
   dashboard: () => api.get<PersonalDashboard>("/personal/dashboard"),
+  /** Savings accounts / friendly lends / gifts received (the logged-in person's own). */
+  records: <T = unknown>(kind: PersonalRecordKind) => api.get<T[]>(`/personal/${kind}`),
+  createRecord: (kind: PersonalRecordKind, data: object) => api.post(`/personal/${kind}`, data),
+  updateRecord: (kind: PersonalRecordKind, id: number, data: object) => api.patch(`/personal/${kind}/${id}`, data),
+  deleteRecord: (kind: PersonalRecordKind, id: number) => api.delete(`/personal/${kind}/${id}`),
 };
 
 // ── Expense categories (two levels) and "for whom" ─────────────────────────

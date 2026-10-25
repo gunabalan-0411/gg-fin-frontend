@@ -53,6 +53,7 @@ import {
 import type { IopSplitCheck, MappingCandidate, MappingKind } from "@/types";
 import { ImageCropModal } from "@/components/ImageCropModal";
 import toast from "react-hot-toast";
+import { BrandMark } from "@/components/BrandMark";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Row = {
@@ -2192,9 +2193,7 @@ export default function OcrPage() {
         <div className="flex items-center gap-3 px-4 h-14 border-b border-border bg-secondary/60 flex-shrink-0 z-10">
           {/* Brand + breadcrumb */}
           <div className="flex items-center gap-2 font-semibold text-sm tracking-tight flex-shrink-0">
-            <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center">
-              <span className="font-mono text-[10px] font-semibold text-background">gf</span>
-            </div>
+            <BrandMark className="w-6 h-6 rounded-md" />
             <span className="text-foreground/80">OCR</span>
           </div>
 

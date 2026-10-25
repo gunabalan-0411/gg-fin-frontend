@@ -762,7 +762,7 @@ export function DeleteConfirmModal({ name, onSimpleDelete, onResequenceDelete, o
             className="w-full text-left px-4 py-3 rounded-lg border border-border hover:border-border hover:bg-muted/50 transition-colors"
           >
             <p className="text-sm font-medium text-foreground">Delete &amp; Re-sequence IDs</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Renumbers all subsequent IDs in customers, transactions &amp; name map</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Renumbers all later IDs everywhere: customers, transactions, name map, UPI ids &amp; payments, unclaimed / defaulted. This customer&apos;s own transactions stay in the profit history, owned by nobody.</p>
           </button>
           <button
             onClick={onSimpleDelete}

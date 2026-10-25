@@ -51,7 +51,7 @@ export default function Header({
             <Menu className="h-4 w-4" />
           </button>
         )}
-        <img src="/brand/mark.svg" alt="gg fin" className="h-6 w-auto opacity-60" />
+        <img src="/brand/mark.svg" alt="TickBook" className="h-6 w-auto opacity-60" />
       </div>
 
       <div className="flex items-center gap-1">

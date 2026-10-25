@@ -4,6 +4,7 @@ import { Lock, User } from "lucide-react";
 import { useAuthStore } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { BrandMark } from "@/components/BrandMark";
 
 // Stroke path lengths for draw-in animation
 const L = {
@@ -187,10 +188,8 @@ export default function LoginPage() {
       >
         {/* Brand mark */}
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-foreground/90 flex items-center justify-center">
-            <span className="font-mono text-xs font-semibold text-background tracking-tight">gf</span>
-          </div>
-          <span className="text-[15px] font-semibold text-foreground tracking-tight">gg fin</span>
+          <BrandMark className="w-8 h-8 rounded-lg" />
+          <span className="text-[15px] font-semibold text-foreground tracking-tight">TickBook</span>
         </div>
 
         {/* Quote / tagline at bottom */}
@@ -213,10 +212,8 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           {/* Mobile brand */}
           <div className="flex items-center gap-2.5 mb-8 md:hidden">
-            <div className="w-7 h-7 rounded-lg bg-foreground flex items-center justify-center">
-              <span className="font-mono text-[11px] font-semibold text-background tracking-tight">gf</span>
-            </div>
-            <span className="text-[15px] font-semibold text-foreground tracking-tight">gg fin</span>
+            <BrandMark className="w-7 h-7 rounded-lg" />
+            <span className="text-[15px] font-semibold text-foreground tracking-tight">TickBook</span>
           </div>
 
           <h1 className="text-xl font-semibold text-foreground mb-1">Sign in</h1>

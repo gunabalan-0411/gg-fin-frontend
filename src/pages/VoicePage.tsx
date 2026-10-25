@@ -18,6 +18,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import { IopSplitPanel, SplitToggle } from "@/components/ocr/IopSplitPanel";
 import { checkRecords, isSplit, localSplitIssue, principalOf, type SplitRow } from "@/utils/iopSplit";
 import type { ProductType, VoiceEntry, VoiceAlternative, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction, IopSplitCheck } from "@/types";
+import { BrandMark } from "@/components/BrandMark";
 
 
 // One recording kept in the browser until Submit (training data → Google Drive; the server never stores it).
@@ -195,11 +196,19 @@ export default function VoicePage() {
   const allCustomers = (custsData?.data ?? []) as (EdiCustomer | IopCustomer)[];
   const hasTxns = txns.length > 0;
 
+  // What was typed for a product + date is kept while another product / date is shown, and comes back when you return to it
+  // (EDI <-> IOP used to wipe the table). `shownKeyRef` is what the table currently holds; `baseRef` is that table as the server gave it,
+  // so only a table that was really edited is kept.
+  const draftsRef = useRef<Map<string, TableRow[]>>(new Map());
+  const shownKeyRef = useRef<string | null>(null);
+  const baseRef = useRef<string>("");
+
   useEffect(() => {
     if (txnsLoading || custsLoading) return;
+    const key = `${product}|${date}`;
     const withBalance = allCustomers.filter((c) => !(c as EdiCustomer | IopCustomer).is_closed);
     const txnMap = new Map(txns.map((t) => [t.customer_id, t]));
-    setRows(
+    const fresh: TableRow[] = (
       withBalance.map((c) => {
         const txn = txnMap.get(c.customer_id);
         const mode = ((txn as any)?.payment_mode ?? "CASH") as "CASH" | "ONLINE";
@@ -218,6 +227,22 @@ export default function VoicePage() {
         };
       })
     );
+    const leaving = shownKeyRef.current;
+    if (leaving && leaving !== key && JSON.stringify(rows) !== baseRef.current) draftsRef.current.set(leaving, rows);
+    const draft = leaving !== key ? draftsRef.current.get(key) : undefined;       // same key = a reload of what was just saved: show the server's
+    if (leaving === key) draftsRef.current.delete(key);
+    baseRef.current = JSON.stringify(fresh);
+    shownKeyRef.current = key;
+    if (draft) {
+      const typed = new Map(draft.map((r) => [r.customer_id, r]));
+      setRows(fresh.map((r) => {
+        const d = typed.get(r.customer_id);
+        return d ? { ...r, amount: d.amount, payment_mode: d.payment_mode, is_paid: d.is_paid, principal: d.principal } : r;
+      }));
+      draftsRef.current.delete(key);
+    } else {
+      setRows(fresh);
+    }
     setSplitOpen(new Set());
     setSplitChecks({});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -585,6 +610,8 @@ export default function VoicePage() {
         date,
         product
       );
+      baseRef.current = JSON.stringify(rows);                       // what is shown is now what is saved
+      draftsRef.current.delete(`${product}|${date}`);
       const added = data?.principal_added ?? 0;
       toast.success(`${nonZero.length} transactions saved${added ? ` · ₹${Math.round(added).toLocaleString("en-IN")} principal added` : ""}`);
       qc.invalidateQueries({ queryKey: ["transactions", product, date] });
@@ -1277,9 +1304,7 @@ export default function VoicePage() {
         {/* ── Top bar ── */}
         <div className="flex items-center gap-3 px-4 h-14 border-b border-border bg-secondary/60 flex-shrink-0 z-10">
           <div className="flex items-center gap-2 font-semibold text-sm tracking-tight flex-shrink-0">
-            <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center">
-              <span className="font-mono text-[10px] font-semibold text-background">gf</span>
-            </div>
+            <BrandMark className="w-6 h-6 rounded-md" />
             <span className="text-foreground/80">Type / Voice Entry</span>
           </div>
           <div className="flex items-center gap-1.5 pl-3 border-l border-border text-[13px] text-muted-foreground min-w-0">

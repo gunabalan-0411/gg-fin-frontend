@@ -102,11 +102,11 @@ export default function SetupPage({ onComplete }: Props) {
       <div className="w-full max-w-md space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
-          <img src="/brand/mark.svg" alt="gg fin" className="h-20 w-auto mx-auto mb-2" />
+          <img src="/brand/mark.svg" alt="TickBook" className="h-20 w-auto mx-auto mb-2" />
           <p className="font-serif text-xl tracking-widest" style={{ color: "#00A896" }}>
             gg <span style={{ color: "#4FC3F7" }}>fin</span>
           </p>
-          <h1 className="text-2xl font-bold text-foreground">Welcome to GG Finance</h1>
+          <h1 className="text-2xl font-bold text-foreground">Welcome to TickBook</h1>
           <p className="text-sm text-muted-foreground">
             {phase === "choose" && "No existing data found. How would you like to get started?"}
             {phase === "connect" && "Opening Google login…"}

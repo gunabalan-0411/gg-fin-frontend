@@ -57,6 +57,37 @@ export interface IopTransaction {
   payment_status: string;
 }
 
+/** Personal Finance records (the logged-in person's own; amounts come from the server as numbers or numeric text). */
+export interface PersonalSaving {
+  id: number;
+  amount: number | string;
+  bank: string;
+  account_name: string;
+  balance_date: string;                 // the day that balance was recorded
+  notes?: string | null;
+}
+export interface PersonalLend {
+  id: number;
+  to_whom: string;
+  amount: number | string;
+  follow_up_date?: string | null;
+  is_settled: boolean;
+  notes?: string | null;
+}
+export type GiftType = "money" | "gold" | "other";
+export interface PersonalGift {
+  id: number;
+  gift_type: GiftType;
+  amount?: number | string | null;      // money: how much
+  gold_grams?: number | string | null;  // gold: how much (grams)
+  item_name?: string | null;            // other: what it is
+  occasion?: string | null;
+  gift_from?: string | null;
+  received_date?: string | null;
+  notes?: string | null;
+}
+export type PersonalRecordKind = "savings" | "lends" | "gifts";
+
 export interface Expense {
   id: number;
   amount: number;

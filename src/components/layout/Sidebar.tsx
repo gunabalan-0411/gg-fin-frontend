@@ -4,6 +4,7 @@ import { X, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/utils";
 import { useConnection } from "@/hooks/useConnectionStatus";
 import { NAV_GROUPS, SETTINGS_ITEM, sectionHref, selectedSection, type NavItem } from "./navConfig";
+import { BrandMark } from "@/components/BrandMark";
 
 type SectionDots = Record<string, string | null>;   // section id -> why it has a dot (e.g. "Gmail is not connected")
 
@@ -162,12 +163,10 @@ export default function Sidebar({
       >
         <div className={cn("flex items-center gap-2.5", collapsed && "justify-center")}>
           {/* Brand mark */}
-          <div className="w-7 h-7 rounded-lg bg-foreground flex items-center justify-center flex-shrink-0">
-            <span className="font-mono text-[11px] font-semibold text-background tracking-tight">gf</span>
-          </div>
+          <BrandMark className="w-7 h-7 rounded-lg" />
           {!collapsed && (
             <div>
-              <p className="text-[13.5px] font-semibold text-foreground tracking-tight leading-none">gg fin</p>
+              <p className="text-[13.5px] font-semibold text-foreground tracking-tight leading-none">TickBook</p>
               <p className="text-[10.5px] text-muted-foreground mt-0.5 leading-none">Lending Dashboard</p>
             </div>
           )}
