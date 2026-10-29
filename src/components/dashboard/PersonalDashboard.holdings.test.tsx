@@ -56,10 +56,29 @@ describe("holdings", () => {
     expect(screen.getByTestId("personal-this-month")).toBeInTheDocument();
   });
 
+  it("shows what I owe with the people count, overdue and the next pay-back (PH-F07)", async () => {
+    show({
+      savings: { total: 0, accounts: 0 }, lends: { to_collect: 0, people: 0, overdue: 0, overdue_amount: 0, next_follow_up: null, next_follow_up_to: null },
+      borrows: { to_pay: "6000.00", people: 3, overdue: 1, overdue_amount: "4000", next_pay_back: "2026-11-04", next_pay_back_to: "Selvi" },
+    });
+    expect(await screen.findByTestId("personal-borrows-total")).toHaveTextContent("₹6,000");
+    expect(screen.getByTestId("personal-borrows-note")).toHaveTextContent("to 3 people");
+    expect(screen.getByTestId("personal-borrows-overdue")).toHaveTextContent("1 overdue (₹4,000)");
+    expect(screen.getByTestId("personal-borrows-next")).toHaveTextContent("next pay-back 04 Nov 2026 (Selvi)");
+  });
+
+  it("owing nobody reads plainly, and an older server reply without borrows still shows (PH-F08)", async () => {
+    show({ savings: { total: 0, accounts: 0 }, lends: { to_collect: 0, people: 0, overdue: 0, overdue_amount: 0, next_follow_up: null, next_follow_up_to: null } });
+    expect(await screen.findByTestId("personal-borrows-total")).toHaveTextContent("₹0");
+    expect(screen.getByTestId("personal-borrows-note")).toHaveTextContent("You owe nobody");
+    expect(screen.queryByTestId("personal-borrows-overdue")).toBeNull();
+    expect(screen.queryByTestId("personal-borrows-next")).toBeNull();
+  });
+
   it("each card opens its section in Personal Finance (PH-F06)", async () => {
     show();
     await screen.findByTestId("personal-holdings");
     const links = screen.getByTestId("personal-holdings").querySelectorAll("a");
-    expect([...links].map((a) => a.getAttribute("href"))).toEqual(["/personal?section=savings", "/personal?section=lends"]);
+    expect([...links].map((a) => a.getAttribute("href"))).toEqual(["/personal?section=savings", "/personal?section=lends", "/personal?section=lends"]);
   });
 });

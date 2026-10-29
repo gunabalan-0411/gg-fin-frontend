@@ -6,7 +6,7 @@
 // no second navigation bar inside the page.
 import {
   LayoutDashboard, Users, ArrowLeftRight, Receipt, Mic, ScanText, Settings, BookText, Wallet, Landmark, Database, Printer,
-  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen, PiggyBank, HandCoins, Gift,
+  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen, PiggyBank, HandCoins, Gift, TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -39,12 +39,13 @@ export const ACCOUNT_SECTIONS = [
   { id: "defaulted", label: "Defaulted Amount", icon: ShieldAlert },
 ] as const satisfies readonly NavSection[];
 
-/** Personal Finance: the logged-in person's own money. Investments can be added here later as another section. */
+/** Personal Finance: the logged-in person's own money. */
 export const PERSONAL_SECTIONS = [
   { id: "expenses", label: "Expenses", icon: Receipt },
   { id: "savings", label: "Savings", icon: Wallet },
   { id: "lends", label: "Friendly Lends", icon: HandCoins },
   { id: "gifts", label: "Gifts Received", icon: Gift },
+  { id: "investments", label: "Investments", icon: TrendingUp },
 ] as const satisfies readonly NavSection[];
 
 export const SETTINGS_SECTIONS = [

@@ -86,7 +86,26 @@ export interface PersonalGift {
   received_date?: string | null;
   notes?: string | null;
 }
-export type PersonalRecordKind = "savings" | "lends" | "gifts";
+/** Friendly borrow: money the person OWES to someone. */
+export interface PersonalBorrow {
+  id: number;
+  from_whom: string;
+  amount: number | string;
+  pay_back_date?: string | null;
+  is_settled: boolean;
+  notes?: string | null;
+}
+export type InvestmentType = "stocks" | "mutual_fund" | "fixed_deposit" | "gold" | "chit" | "other";
+export interface PersonalInvestment {
+  id: number;
+  name: string;
+  inv_type: InvestmentType;
+  amount: number | string;              // invested
+  current_value?: number | string | null;   // worth now, when known
+  invested_date?: string | null;
+  notes?: string | null;
+}
+export type PersonalRecordKind = "savings" | "lends" | "borrows" | "gifts" | "investments";
 
 export interface Expense {
   id: number;
@@ -310,6 +329,11 @@ export interface PersonalHoldings {
     to_collect: number | string; people: number;
     overdue: number; overdue_amount: number | string;
     next_follow_up: string | null; next_follow_up_to: string | null;
+  };
+  borrows?: {                                                 // what the person still owes (unpaid borrows only)
+    to_pay: number | string; people: number;
+    overdue: number; overdue_amount: number | string;
+    next_pay_back: string | null; next_pay_back_to: string | null;
   };
 }
 

@@ -30,12 +30,31 @@ describe("sections", () => {
     ["?section=savings", "savings-section", "savings"],
     ["?section=lends", "lends-section", "lends"],
     ["?section=gifts", "gifts-section", "gifts"],
+    ["?section=investments", "investments-section", "investments"],
   ])("%s opens %s (PP-01)", async (search, testId, kind) => {
     at(search);
     expect(await screen.findByTestId(testId)).toBeInTheDocument();
     expect(screen.getByTestId("personal-finance")).toHaveAttribute("data-section", search ? search.split("=")[1] : "expenses");
     if (kind) expect(personalApi.records).toHaveBeenCalledWith(kind);
     else expect(personalApi.records).not.toHaveBeenCalled();
+  });
+
+  it("Friendly lends has the borrows table (what I owe) beside it, in one row (PP-03)", async () => {
+    at("?section=lends");
+    const row = await screen.findByTestId("lends-and-borrows");
+    expect(row.className).toMatch(/lg:grid-cols-2/);                       // side by side on a wide screen, stacked on a narrow one
+    const [left, right] = Array.from(row.children);
+    expect(left).toHaveAttribute("data-testid", "lends-section");
+    expect(right).toHaveAttribute("data-testid", "borrows-section");
+    expect(personalApi.records).toHaveBeenCalledWith("lends");
+    expect(personalApi.records).toHaveBeenCalledWith("borrows");
+  });
+
+  it("the other sections do not show the borrows table (PP-04)", async () => {
+    at("?section=savings");
+    await screen.findByTestId("savings-section");
+    expect(screen.queryByTestId("borrows-section")).toBeNull();
+    expect(screen.queryByTestId("lends-and-borrows")).toBeNull();
   });
 
   it("only the chosen section is on the screen (PP-02)", async () => {

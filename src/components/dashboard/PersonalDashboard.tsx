@@ -123,12 +123,13 @@ export function PersonalDashboard() {
   );
 }
 
-/** The two numbers a person wants first: what is in savings, and what friends still owe. Both from Personal Finance. */
+/** The numbers a person wants first: what is in savings, what friends still owe them, and what they still owe. All from Personal Finance. */
 function Holdings({ data }: { data: PersonalDashboardData["holdings"] }) {
   const savings = data?.savings ?? { total: 0, accounts: 0 };
   const lends = data?.lends ?? { to_collect: 0, people: 0, overdue: 0, overdue_amount: 0, next_follow_up: null, next_follow_up_to: null };
+  const borrows = data?.borrows ?? { to_pay: 0, people: 0, overdue: 0, overdue_amount: 0, next_pay_back: null, next_pay_back_to: null };
   return (
-    <div data-testid="personal-holdings" className="grid gap-3 md:grid-cols-2">
+    <div data-testid="personal-holdings" className="grid gap-3 md:grid-cols-3">
       <Link to="/personal?section=savings" className="glass-card block p-4 transition-colors hover:bg-secondary/40">
         <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">Total in savings</p>
         <p data-testid="personal-savings-total" className="mt-1 text-3xl font-bold tracking-tight">{fmt(num(savings.total))}</p>
@@ -143,6 +144,15 @@ function Holdings({ data }: { data: PersonalDashboardData["holdings"] }) {
           {lends.people === 0 ? "Nothing to collect" : `from ${lends.people} ${lends.people === 1 ? "person" : "people"}`}
           {lends.overdue > 0 && <span data-testid="personal-lends-overdue" className="ml-1.5 font-semibold text-red-600 dark:text-red-400">· {lends.overdue} overdue ({fmt(num(lends.overdue_amount))})</span>}
           {lends.next_follow_up && <span data-testid="personal-lends-next" className="ml-1.5">· next follow-up {dmy(lends.next_follow_up)}{lends.next_follow_up_to ? ` (${lends.next_follow_up_to})` : ""}</span>}
+        </p>
+      </Link>
+      <Link to="/personal?section=lends" className="glass-card block p-4 transition-colors hover:bg-secondary/40">
+        <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">You owe</p>
+        <p data-testid="personal-borrows-total" className="mt-1 text-3xl font-bold tracking-tight">{fmt(num(borrows.to_pay))}</p>
+        <p data-testid="personal-borrows-note" className="mt-1 text-xs text-muted-foreground">
+          {borrows.people === 0 ? "You owe nobody" : `to ${borrows.people} ${borrows.people === 1 ? "person" : "people"}`}
+          {borrows.overdue > 0 && <span data-testid="personal-borrows-overdue" className="ml-1.5 font-semibold text-red-600 dark:text-red-400">· {borrows.overdue} overdue ({fmt(num(borrows.overdue_amount))})</span>}
+          {borrows.next_pay_back && <span data-testid="personal-borrows-next" className="ml-1.5">· next pay-back {dmy(borrows.next_pay_back)}{borrows.next_pay_back_to ? ` (${borrows.next_pay_back_to})` : ""}</span>}
         </p>
       </Link>
     </div>
