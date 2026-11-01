@@ -6,7 +6,7 @@
 // no second navigation bar inside the page.
 import {
   LayoutDashboard, Users, ArrowLeftRight, Receipt, Mic, ScanText, Settings, BookText, Wallet, Landmark, Database, Printer,
-  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen, PiggyBank, HandCoins, Gift, TrendingUp,
+  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen, PiggyBank, HandCoins, Gift, TrendingUp, Target,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,7 +41,9 @@ export const ACCOUNT_SECTIONS = [
 
 /** Personal Finance: the logged-in person's own money. */
 export const PERSONAL_SECTIONS = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "expenses", label: "Expenses", icon: Receipt },
+  { id: "budget", label: "Monthly budget", icon: Target },
   { id: "savings", label: "Savings", icon: Wallet },
   { id: "lends", label: "Friendly Lends", icon: HandCoins },
   { id: "gifts", label: "Gifts Received", icon: Gift },

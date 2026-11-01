@@ -12,7 +12,7 @@ const SOURCES = {
 } as const;
 
 /** Everything that shows personal totals must be re-read after a personal expense changes. */
-const PERSONAL_KEYS = ["personal-expenses", "personal-expense-summary", "personal-dashboard"] as const;
+const PERSONAL_KEYS = ["personal-expenses", "personal-expense-summary", "personal-dashboard", "personal-budget"] as const;
 const OFFICE_KEYS = ["expenses", "expense-summary"] as const;
 
 export function expenseKeys(scope: ExpenseScope): readonly string[] {

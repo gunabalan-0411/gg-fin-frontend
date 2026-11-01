@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  CarryForwardResult, CarryPreview, IopSplitCheck, PersonalDashboard, PersonalRecordKind, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
+  CarryForwardResult, CarryPreview, IopSplitCheck, PersonalBudgetView, PersonalDashboard, PersonalRecordKind, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -116,6 +116,10 @@ export const personalApi = {
     api.get<Blob>("/personal/expenses/export", { params: { kind, ...params }, responseType: "blob" }),
   /** The Personal view of the main dashboard. */
   dashboard: () => api.get<PersonalDashboard>("/personal/dashboard"),
+  /** Monthly budget per main category, with what was spent in `month` ("2026-11"; this month when omitted). */
+  budgets: (month?: string) => api.get<PersonalBudgetView>("/personal/budgets", { params: month ? { month } : undefined }),
+  /** Set a category's monthly budget; an empty or 0 amount removes it. */
+  setBudget: (categoryId: number, amount: number | null) => api.put(`/personal/budgets/${categoryId}`, { amount }),
   /** Savings accounts / friendly lends / gifts received (the logged-in person's own). */
   records: <T = unknown>(kind: PersonalRecordKind) => api.get<T[]>(`/personal/${kind}`),
   createRecord: (kind: PersonalRecordKind, data: object) => api.post(`/personal/${kind}`, data),

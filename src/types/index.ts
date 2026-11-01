@@ -320,6 +320,24 @@ export interface PersonalDashboard {
   people: ExpenseSummary["people"];
   monthly: { month: string; total: number | string }[];       // the last 12 months, oldest first (zeros included)
   holdings?: PersonalHoldings;
+  budget?: PersonalBudgetSummary;                             // this month's budget numbers
+}
+
+/** This month against the monthly budget, over the categories that have one. */
+export interface PersonalBudgetSummary {
+  total_budget: number | string; spent_on_budgeted: number | string; over_count: number; budgeted_count: number;
+}
+
+/** Personal Finance > Monthly budget: every main category with its budget and the month's spending. */
+export interface PersonalBudgetView extends PersonalBudgetSummary {
+  month: string;                                              // "2026-11"
+  total_spent: number | string;                               // everything spent this month, budgeted or not
+  categories: {
+    category_id: number; name: string;
+    budget: number | string | null; spent: number | string; left: number | string | null; over: boolean;
+    subs: { id: number; name: string; total: number | string }[];
+  }[];
+  ungrouped: { name: string; spent: number | string } | null;  // old expenses without a category (cannot hold a budget)
 }
 
 /** What the person holds: the total in savings and what is still to be collected from friends (open lends only). */

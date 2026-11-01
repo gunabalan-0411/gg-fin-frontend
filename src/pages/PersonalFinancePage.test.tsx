@@ -29,7 +29,7 @@ import { expenseGroupsApi, expensesApi, personalApi } from "@/services/api";
 import PersonalFinancePage from "./PersonalFinancePage";
 
 type Fn = ReturnType<typeof vi.fn>;
-const personal = personalApi as unknown as Record<"list" | "create" | "update" | "delete" | "summary" | "exportCsv", Fn>;
+const personal = personalApi as unknown as Record<"list" | "create" | "update" | "delete" | "summary" | "exportCsv" | "dashboard", Fn>;
 const office = expensesApi as unknown as Record<"list" | "summary" | "exportCsv" | "legacyGroups" | "create" | "update" | "delete", Fn>;
 const grp = expenseGroupsApi as unknown as Record<"categories" | "persons", Fn>;
 
@@ -53,7 +53,7 @@ const SUMMARY = {
   total: "1000.00", count: 2,
 };
 
-function setup(at = "/personal") {
+function setup(at = "/personal?section=expenses") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const utils = render(<QueryClientProvider client={qc}><MemoryRouter initialEntries={[at]}><PersonalFinancePage /></MemoryRouter></QueryClientProvider>);
   return { ...utils, user: userEvent.setup() };
@@ -101,9 +101,15 @@ describe("the page (PF-FE-01 ... PF-FE-03)", () => {
     expect(screen.queryByTestId("legacy-banner")).toBeNull();
   });
 
-  it("an unknown section in the address still shows the expenses (PF-FE-03)", async () => {
+  it("Personal Finance opens on its Dashboard, and so does an unknown section in the address (PF-FE-03)", async () => {
+    personal.dashboard.mockResolvedValue({ data: { month: "2026-10", this_month: { total: 0, count: 0 }, last_month: { total: 0, count: 0 }, categories: [], people: [], monthly: [] } });
+    const first = setup("/personal");
+    expect(await screen.findByRole("heading", { name: "Personal finance" })).toBeInTheDocument();
+    expect(screen.getByTestId("personal-finance")).toHaveAttribute("data-section", "dashboard");
+    expect(personal.list).not.toHaveBeenCalled();
+    first.unmount();
     setup("/personal?section=nonsense");
-    expect(await screen.findByRole("heading", { name: "Personal expenses" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Personal finance" })).toBeInTheDocument();
   });
 });
 

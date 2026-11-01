@@ -1,5 +1,6 @@
-// The Personal view of the main dashboard: how much the logged-in person spent - this month against last month, this month by category,
-// and the last 12 months. Their own expenses only (Personal Finance), never the office books.
+// The Personal Finance dashboard (first section of Personal Finance): what the logged-in person holds and owes, how much they spent - this month
+// against last month, this month by category, the last 12 months - and where they stand against their monthly budget.
+// Their own money only, never the office books.
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { personalApi } from "@/services/api";
@@ -46,6 +47,7 @@ export function PersonalDashboard() {
   return (
     <div data-testid="personal-dashboard" className="space-y-4">
       <Holdings data={data.holdings} />
+      <BudgetCard data={data.budget} />
       <div className="grid gap-3 md:grid-cols-3">
         <div className="glass-card p-4">
           <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">Spent in {longMonth(data.month)}</p>
@@ -68,11 +70,11 @@ export function PersonalDashboard() {
         <div className="glass-card p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold">This month by category</h2>
-            <Link to="/personal" className="text-xs font-medium text-muted-foreground underline hover:text-foreground">Open Personal Finance →</Link>
+            <Link to="/personal?section=expenses" className="text-xs font-medium text-muted-foreground underline hover:text-foreground">Open expenses →</Link>
           </div>
           {data.categories.length === 0 ? (
             <p data-testid="personal-empty" className="py-8 text-center text-sm text-muted-foreground">
-              No personal expenses this month yet. <Link to="/personal" className="font-medium underline">Add one</Link>
+              No personal expenses this month yet. <Link to="/personal?section=expenses" className="font-medium underline">Add one</Link>
             </p>
           ) : (
             <ul className="space-y-3">
@@ -159,24 +161,33 @@ function Holdings({ data }: { data: PersonalDashboardData["holdings"] }) {
   );
 }
 
-/** The switch at the top of the dashboard: the office books, or the person's own spending. Starts on Office. */
-export function FinanceModeToggle({ mode, onChange }: { mode: "office" | "personal"; onChange: (m: "office" | "personal") => void }) {
+/** This month against the monthly budget: spent on the budgeted categories out of the total budget, and how many categories went over. */
+function BudgetCard({ data }: { data: PersonalDashboardData["budget"] }) {
+  const total = num(data?.total_budget ?? 0);
+  const spent = num(data?.spent_on_budgeted ?? 0);
+  const over = data?.over_count ?? 0;
+  const count = data?.budgeted_count ?? 0;
+  const pct = total > 0 ? (spent / total) * 100 : 0;
   return (
-    <div data-testid="finance-mode" role="group" aria-label="Dashboard view" className="inline-flex items-center rounded-xl border border-border bg-card p-1">
-      {(["office", "personal"] as const).map((m) => (
-        <button
-          key={m}
-          type="button"
-          aria-pressed={mode === m}
-          onClick={() => onChange(m)}
-          className={cn(
-            "rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors",
-            mode === m ? "bg-foreground text-background shadow-sm" : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {m === "office" ? "Office" : "Personal"}
-        </button>
-      ))}
-    </div>
+    <Link to="/personal?section=budget" data-testid="personal-budget" className="glass-card block p-4 transition-colors hover:bg-secondary/40">
+      <p className="text-[11.5px] font-medium uppercase tracking-wide text-muted-foreground">Monthly budget</p>
+      {count === 0 ? (
+        <p data-testid="personal-budget-empty" className="mt-1 text-sm text-muted-foreground">No budget set yet. <span className="font-medium text-foreground underline">Set one</span></p>
+      ) : (
+        <>
+          <p className="mt-1 text-3xl font-bold tracking-tight">
+            <span data-testid="personal-budget-spent">{fmt(spent)}</span>
+            <span className="text-base font-normal text-muted-foreground"> of <span data-testid="personal-budget-total">{fmt(total)}</span></span>
+          </p>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${Math.round(pct)}% of this month's budget spent`}>
+            <div data-testid="personal-budget-bar" className={cn("h-full rounded-full", pct > 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-primary")} style={{ width: `${Math.min(pct, 100)}%` }} />
+          </div>
+          <p data-testid="personal-budget-note" className="mt-1 text-xs text-muted-foreground">
+            {Math.round(pct)}% used · {count} {count === 1 ? "category" : "categories"} budgeted
+            {over > 0 && <span data-testid="personal-budget-over" className="ml-1.5 font-semibold text-red-600 dark:text-red-400">· {over} over budget</span>}
+          </p>
+        </>
+      )}
+    </Link>
   );
 }

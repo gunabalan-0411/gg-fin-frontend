@@ -1,9 +1,8 @@
 /**
- * The Personal view of the dashboard and the Office / Personal switch. PD-01 ... PD-10.
+ * The Personal Finance dashboard (and the main dashboard no longer carrying it). PD-01 ... PD-10.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -22,7 +21,7 @@ vi.mock("@/hooks/useDashboard", () => {
 });
 
 import { personalApi } from "@/services/api";
-import { FinanceModeToggle, PersonalDashboard } from "./PersonalDashboard";
+import { PersonalDashboard } from "./PersonalDashboard";
 import DashboardPage from "@/pages/DashboardPage";
 
 const dash = personalApi.dashboard as unknown as ReturnType<typeof vi.fn>;
@@ -110,13 +109,13 @@ describe("the Personal view (PD-01 ... PD-06)", () => {
     expect(heights[0]).toBe("0%");                                                               // an empty month has no bar
   });
 
-  it("a month with no expenses says so and points to Personal Finance (PD-05)", async () => {
+  it("a month with no expenses says so and points to the Expenses section (PD-05)", async () => {
     dash.mockResolvedValue({ data: { ...DATA, this_month: { total: "0.00", count: 0 }, categories: [] } });
     wrap(<PersonalDashboard />);
     const empty = await screen.findByTestId("personal-empty");
     expect(empty).toHaveTextContent("No personal expenses this month yet.");
-    expect(within(empty).getByRole("link", { name: "Add one" })).toHaveAttribute("href", "/personal");
-    expect(screen.getByRole("link", { name: /Open Personal Finance/ })).toHaveAttribute("href", "/personal");
+    expect(within(empty).getByRole("link", { name: "Add one" })).toHaveAttribute("href", "/personal?section=expenses");
+    expect(screen.getByRole("link", { name: /Open expenses/ })).toHaveAttribute("href", "/personal?section=expenses");
   });
 
   it("shows loading, and an error if the numbers cannot be read (PD-06)", async () => {
@@ -133,49 +132,49 @@ describe("the Personal view (PD-01 ... PD-06)", () => {
   });
 });
 
-describe("the Office / Personal switch (PD-07 ... PD-10)", () => {
-  it("starts on Office; the Personal numbers are not even asked for (PD-07)", async () => {
+describe("the main dashboard is the office only (PD-07)", () => {
+  it("has no Office / Personal switch and never asks for the personal numbers (PD-07)", async () => {
     wrap(<DashboardPage />);
-    const toggle = screen.getByTestId("finance-mode");
-    expect(within(toggle).getByRole("button", { name: "Office" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(toggle).getByRole("button", { name: "Personal" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("Financial overview")).toBeInTheDocument();
+    expect(screen.queryByTestId("finance-mode")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Personal" })).toBeNull();
     expect(screen.queryByTestId("personal-dashboard")).toBeNull();
     expect(dash).not.toHaveBeenCalled();
   });
+});
 
-  it("Personal shows the person's own spending in place of the office dashboard; Office brings it back (PD-08)", async () => {
-    const user = userEvent.setup();
-    wrap(<DashboardPage />);
-    await user.click(screen.getByRole("button", { name: "Personal" }));
-    expect(await screen.findByTestId("personal-dashboard")).toBeInTheDocument();
-    expect(screen.queryByText("Financial overview")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Personal finance" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Personal" })).toHaveAttribute("aria-pressed", "true");
-    await user.click(screen.getByRole("button", { name: "Office" }));
-    expect(screen.getByText("Financial overview")).toBeInTheDocument();
-    expect(screen.queryByTestId("personal-dashboard")).toBeNull();
+describe("the monthly budget card (PD-08 ... PD-10)", () => {
+  const budget = (over: object) => dash.mockResolvedValue({ data: { ...DATA, budget: { total_budget: 6000, spent_on_budgeted: 2700, over_count: 1, budgeted_count: 2, ...over } } });
+
+  it("with no budget set it invites the person to set one (PD-08)", async () => {
+    wrap(<PersonalDashboard />);                                                       // DATA has no budget at all
+    const card = await screen.findByTestId("personal-budget");
+    expect(within(card).getByTestId("personal-budget-empty")).toHaveTextContent("No budget set yet");
+    expect(card).toHaveAttribute("href", "/personal?section=budget");
   });
 
-  it("leaving the dashboard and coming back starts on Office again (PD-09)", async () => {
-    const user = userEvent.setup();
-    const first = wrap(<DashboardPage />);
-    await user.click(screen.getByRole("button", { name: "Personal" }));
-    await screen.findByTestId("personal-dashboard");
+  it("shows what was spent out of the budget, the share used and how many categories are over (PD-09)", async () => {
+    budget({});
+    wrap(<PersonalDashboard />);
+    expect(await screen.findByTestId("personal-budget-spent")).toHaveTextContent("₹2,700");
+    expect(screen.getByTestId("personal-budget-total")).toHaveTextContent("₹6,000");
+    expect(screen.getByTestId("personal-budget-note")).toHaveTextContent("45% used · 2 categories budgeted");
+    expect(screen.getByTestId("personal-budget-over")).toHaveTextContent("1 over budget");
+    expect(screen.getByTestId("personal-budget-bar").style.width).toBe("45%");
+    expect(screen.getByTestId("personal-budget-bar").className).toContain("bg-primary");
+  });
+
+  it("the bar turns amber from 80% and red past 100%, and says nothing about 'over' when none is (PD-10)", async () => {
+    budget({ spent_on_budgeted: 5000, over_count: 0 });
+    const first = wrap(<PersonalDashboard />);
+    expect((await screen.findByTestId("personal-budget-bar")).className).toContain("bg-amber-500");
+    expect(screen.queryByTestId("personal-budget-over")).toBeNull();
     first.unmount();
-    wrap(<DashboardPage />);
-    expect(screen.getByRole("button", { name: "Office" })).toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("the switch itself reports changes and marks the current view (PD-10)", async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    const { rerender } = render(<FinanceModeToggle mode="office" onChange={onChange} />);
-    await user.click(screen.getByRole("button", { name: "Personal" }));
-    expect(onChange).toHaveBeenCalledWith("personal");
-    rerender(<FinanceModeToggle mode="personal" onChange={onChange} />);
-    await user.click(screen.getByRole("button", { name: "Office" }));
-    expect(onChange).toHaveBeenLastCalledWith("office");
-    expect(screen.getByRole("group", { name: "Dashboard view" })).toBeInTheDocument();
+    budget({ spent_on_budgeted: 7500 });
+    wrap(<PersonalDashboard />);
+    const bar = await screen.findByTestId("personal-budget-bar");
+    expect(bar.className).toContain("bg-red-500");
+    expect(bar.style.width).toBe("100%");                                              // the bar stops at full; the note says 125%
+    expect(screen.getByTestId("personal-budget-note")).toHaveTextContent("125% used");
   });
 });

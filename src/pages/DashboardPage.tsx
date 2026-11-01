@@ -8,7 +8,6 @@ import {
   useEdiInactive, useEdiDefaulters, useIopMonthlyDues,
 } from "@/hooks/useDashboard";
 import { customersApi } from "@/services/api";
-import { FinanceModeToggle, PersonalDashboard } from "@/components/dashboard/PersonalDashboard";
 import { MonthlyTrendChart } from "@/components/dashboard/MonthlyTrendChart";
 import type {
   MonthlyProfit, LoanSummary,
@@ -1159,26 +1158,8 @@ const TAB_SHORT_LABELS: Record<DashTab, string> = {
   defaulters: "Defaulters",
 };
 
-/** The main dashboard: a switch between the OFFICE books (default) and the person's own PERSONAL spending. */
+/** The main dashboard: the office books. (A person's own money is on the Personal Finance dashboard.) */
 export default function DashboardPage() {
-  const [mode, setMode] = useState<"office" | "personal">("office");
-  return (
-    <div className="space-y-4">
-      <FinanceModeToggle mode={mode} onChange={setMode} />
-      {mode === "office" ? <OfficeDashboard /> : (
-        <>
-          <div>
-            <h1 className="text-foreground font-medium tracking-tight leading-tight" style={{ fontSize: 20 }}>Personal finance</h1>
-            <div className="text-muted-foreground mt-0.5" style={{ fontSize: 11.5 }}>How much you spend — your own expenses, kept apart from the office</div>
-          </div>
-          <PersonalDashboard />
-        </>
-      )}
-    </div>
-  );
-}
-
-function OfficeDashboard() {
   const [activeTab, setActiveTab] = useState<DashTab>("main");
   const isMobile = useIsMobile();
   const { data: summary, isLoading: summaryLoading } = useDashboardSummary();

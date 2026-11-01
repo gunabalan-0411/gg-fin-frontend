@@ -34,6 +34,7 @@ export function useRefreshExpenseGroups() {
     qc.invalidateQueries({ queryKey: ["personal-expenses"] }),                 // categories and people are shared with Personal Finance
     qc.invalidateQueries({ queryKey: ["personal-expense-summary"] }),
     qc.invalidateQueries({ queryKey: ["personal-dashboard"] }),
+    qc.invalidateQueries({ queryKey: ["personal-budget"] }),
   ]);
 }
 

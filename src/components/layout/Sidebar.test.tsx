@@ -136,7 +136,7 @@ describe("Settings is pinned at the bottom (MN-01)", () => {
 describe("sections as a branch under the main item (SM-02, SM-04)", () => {
   it("only Account Adjustments, Personal Finance and Settings have sections", () => {
     expect(ALL_NAV_ITEMS.filter((i) => i.sections).map((i) => i.to)).toEqual(["/expenses", "/personal", "/settings"]);
-    expect(PERSONAL_SECTIONS.map((s) => s.label)).toEqual(["Expenses", "Savings", "Friendly Lends", "Gifts Received", "Investments"]);
+    expect(PERSONAL_SECTIONS.map((s) => s.label)).toEqual(["Dashboard", "Expenses", "Monthly budget", "Savings", "Friendly Lends", "Gifts Received", "Investments"]);
     expect(ACCOUNT_SECTIONS.map((s) => s.label)).toEqual(["Add Expense", "Unclaimed Amount", "Defaulted Amount"]);
     expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "Security"]);
   });
