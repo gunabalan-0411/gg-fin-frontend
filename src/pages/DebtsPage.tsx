@@ -147,6 +147,11 @@ function BorrowingsTab() {
                       <span className={`font-semibold ${d.balance > 0 ? "text-red-400" : "text-green-400"}`}>
                         {formatCurrency(d.balance)}
                       </span>
+                      {d.balance_anchor != null && d.balance_anchor_date && (
+                        <div data-testid="balance-anchor-note" className="text-[11px] text-muted-foreground">
+                          lender: {formatCurrency(d.balance_anchor)} · {formatDate(d.balance_anchor_date)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex justify-end gap-1">
@@ -417,6 +422,9 @@ function DebtFormModal({ initial, onClose, onSave }: { initial: Debt | null; onC
   const [endDate, setEndDate] = useState(initial?.end_date ?? "");
   const [paidBy, setPaidBy] = useState(initial?.paid_by ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [anchor, setAnchor] = useState(String(initial?.balance_anchor ?? ""));
+  const [anchorDate, setAnchorDate] = useState(initial?.balance_anchor_date ?? "");
+  const anchorHalfFilled = anchor !== "" && anchorDate === "";   // an empty balance clears both
 
   return (
     <Modal open onClose={onClose} title={initial ? "Edit Borrowing" : "Add Lender"}>
@@ -434,6 +442,8 @@ function DebtFormModal({ initial, onClose, onSave }: { initial: Debt | null; onC
             end_date: endDate || null,
             paid_by: paidBy || null,
             notes: notes || null,
+            balance_anchor: anchor !== "" ? Number(anchor) : null,
+            balance_anchor_date: anchor !== "" ? anchorDate || null : null,
           });
         }}
         className="space-y-4"
@@ -482,13 +492,31 @@ function DebtFormModal({ initial, onClose, onSave }: { initial: Debt | null; onC
             <Input value={paidBy} onChange={(e) => setPaidBy(e.target.value)} placeholder="Business / Gu" />
           </div>
         </div>
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Balance as the lender reports it. The app rolls it forward each month on the 5th using the EMI and rate above. Leave both empty to work it out from the schedule instead.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="lender-balance" className="block text-xs font-medium text-muted-foreground mb-1">Lender balance</label>
+              <Input id="lender-balance" type="number" value={anchor} onChange={(e) => setAnchor(e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">As of</label>
+              <DatePicker value={anchorDate} onChange={setAnchorDate} />
+            </div>
+          </div>
+          {anchorHalfFilled && (
+            <p role="alert" className="text-xs text-red-400">Enter both the lender's balance and the date it is as of.</p>
+          )}
+        </div>
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional..." />
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit" disabled={anchorHalfFilled}>Save</Button>
         </div>
       </form>
     </Modal>

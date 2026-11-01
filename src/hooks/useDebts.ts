@@ -15,6 +15,9 @@ export interface Debt {
   paid_by?: string | null;
   total_repaid: number;
   balance: number;
+  /** What the lender reported on `balance_anchor_date`; `balance` is rolled forward from it. */
+  balance_anchor?: number | null;
+  balance_anchor_date?: string | null;
   notes?: string | null;
 }
 
