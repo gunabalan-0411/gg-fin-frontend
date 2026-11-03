@@ -164,6 +164,18 @@ describe("the monthly budget card (PD-08 ... PD-10)", () => {
     expect(screen.getByTestId("personal-budget-bar").className).toContain("bg-primary");
   });
 
+  it("counts what rolled in from earlier months as available, and says so (PD-11)", async () => {
+    budget({ total_available: 7000, spent_on_budgeted: 2800 });                       // 6,000 budget + 1,000 carried forward
+    const first = wrap(<PersonalDashboard />);
+    expect(await screen.findByTestId("personal-budget-total")).toHaveTextContent("₹7,000");
+    expect(screen.getByTestId("personal-budget-carried")).toHaveTextContent("includes ₹1,000 carried forward");
+    expect(screen.getByTestId("personal-budget-note")).toHaveTextContent("40% used");
+    first.unmount();
+    budget({ total_available: 5000, spent_on_budgeted: 1000 });                       // overspent last month: 1,000 less
+    wrap(<PersonalDashboard />);
+    expect(await screen.findByTestId("personal-budget-carried")).toHaveTextContent("less ₹1,000 overspent last month");
+  });
+
   it("the bar turns amber from 80% and red past 100%, and says nothing about 'over' when none is (PD-10)", async () => {
     budget({ spent_on_budgeted: 5000, over_count: 0 });
     const first = wrap(<PersonalDashboard />);

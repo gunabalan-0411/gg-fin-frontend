@@ -1,6 +1,6 @@
 import axios from "axios";
 import type {
-  CarryForwardResult, CarryPreview, IopSplitCheck, PersonalBudgetView, PersonalDashboard, PersonalRecordKind, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
+  CarryForwardResult, CarryPreview, IopSplitCheck, PersonalAccount, PersonalAccountEntry, PersonalAccountsView, PersonalBudgetView, PersonalDashboard, ReconcileResult, PersonalRecordKind, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
 } from "@/types";
 
 export interface UpiPairing {
@@ -120,6 +120,15 @@ export const personalApi = {
   budgets: (month?: string) => api.get<PersonalBudgetView>("/personal/budgets", { params: month ? { month } : undefined }),
   /** Set a category's monthly budget; an empty or 0 amount removes it. */
   setBudget: (categoryId: number, amount: number | null) => api.put(`/personal/budgets/${categoryId}`, { amount }),
+  /** Expense accounts (used only for expenses): the month view, funds, matching with the bank. */
+  accounts: (month?: string) => api.get<PersonalAccountsView>("/personal/accounts", { params: month ? { month } : undefined }),
+  createAccount: (data: { name: string; opening_balance: number; opening_date?: string }) => api.post<PersonalAccount>("/personal/accounts", data),
+  updateAccount: (id: number, data: object) => api.patch<PersonalAccount>(`/personal/accounts/${id}`, data),
+  deleteAccount: (id: number) => api.delete<{ deleted: number; expenses_kept: number; entries_removed: number }>(`/personal/accounts/${id}`),
+  accountEntries: (id: number) => api.get<PersonalAccountEntry[]>(`/personal/accounts/${id}/entries`),
+  addFund: (id: number, data: { amount: number; date?: string; notes?: string | null }) => api.post<PersonalAccount>(`/personal/accounts/${id}/funds`, data),
+  deleteEntry: (id: number, entryId: number) => api.delete<PersonalAccount>(`/personal/accounts/${id}/entries/${entryId}`),
+  reconcile: (id: number, data: { bank_balance: number; as_of?: string; record?: boolean }) => api.post<ReconcileResult>(`/personal/accounts/${id}/reconcile`, data),
   /** Savings accounts / friendly lends / gifts received (the logged-in person's own). */
   records: <T = unknown>(kind: PersonalRecordKind) => api.get<T[]>(`/personal/${kind}`),
   createRecord: (kind: PersonalRecordKind, data: object) => api.post(`/personal/${kind}`, data),

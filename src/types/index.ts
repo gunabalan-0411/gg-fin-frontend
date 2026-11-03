@@ -118,6 +118,8 @@ export interface Expense {
   sub_name?: string | null;             // the sub-category, when one was chosen
   person_id?: number | null;            // "for whom"
   person_name?: string | null;
+  account_id?: number | null;           // personal expenses: the expense account it was paid from
+  account_name?: string | null;
 }
 
 /** A category: top-level (parent_id null) or a sub-category. `used` = expenses in it (and its sub-categories). */
@@ -326,19 +328,41 @@ export interface PersonalDashboard {
 /** This month against the monthly budget, over the categories that have one. */
 export interface PersonalBudgetSummary {
   total_budget: number | string; spent_on_budgeted: number | string; over_count: number; budgeted_count: number;
+  total_available?: number | string;                          // the budget plus what rolled in from earlier months
 }
 
 /** Personal Finance > Monthly budget: every main category with its budget and the month's spending. */
 export interface PersonalBudgetView extends PersonalBudgetSummary {
   month: string;                                              // "2026-11"
   total_spent: number | string;                               // everything spent this month, budgeted or not
+  total_carried_in: number | string;                          // rolled in from earlier months (can be negative after overspending)
+  total_available: number | string;                           // total_budget + total_carried_in
+  left: number | string;                                      // available - spent_on_budgeted: rolls into next month
   categories: {
     category_id: number; name: string;
-    budget: number | string | null; spent: number | string; left: number | string | null; over: boolean;
+    budget: number | string | null; spent: number | string; over: boolean;
+    carried_in: number | string | null; available: number | string | null; left: number | string | null;   // null = no budget
     subs: { id: number; name: string; total: number | string }[];
   }[];
   ungrouped: { name: string; spent: number | string } | null;  // old expenses without a category (cannot hold a budget)
 }
+
+/** One expense account for a month: what it started with, what went in, what was spent from it, and what it should hold at the end. */
+export interface PersonalAccount {
+  id: number; name: string;
+  opening_balance: number | string; opening_date: string;
+  balance_now: number | string;
+  active: boolean;                                            // false = the account did not exist yet in that month
+  month_opening: number | string | null; funds: number | string; adjustments: number | string; spent: number | string; closing: number | string | null;
+}
+export interface PersonalAccountsView {
+  month: string;
+  accounts: PersonalAccount[];
+  totals: { month_opening: number | string; funds: number | string; adjustments: number | string; spent: number | string; closing: number | string; balance_now: number | string };
+}
+export interface PersonalAccountEntry { id: number; date: string; amount: number | string; kind: "fund" | "adjustment"; notes: string | null }
+/** Matching an account with the bank: the difference is bank minus TickBook. */
+export interface ReconcileResult { as_of: string; tickbook_balance: number | string; bank_balance: number | string; difference: number | string; matched: boolean; recorded: boolean }
 
 /** What the person holds: the total in savings and what is still to be collected from friends (open lends only). */
 export interface PersonalHoldings {

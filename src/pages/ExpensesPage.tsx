@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import { usePersonalAccounts } from "@/hooks/usePersonalAccounts";
 import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense, type ExpenseScope } from "@/hooks/useExpenses";
 import { categoryLabel, splitCategories, useExpenseCategories, useExpensePersons } from "@/hooks/useExpenseGroups";
 import { PickCombobox } from "@/components/expenses/PickCombobox";
@@ -235,7 +236,7 @@ export function ExpensesSection({ isMobile = false, scope = "office" }: { isMobi
                       <span className="text-xs text-muted-foreground">{formatDate(e.date)}</span>
                     </div>
                     <p className="text-xl font-bold text-red-400">{formatCurrency(Number(e.amount))}</p>
-                    <p className="mt-1 text-xs text-foreground/80">{catCell(e)} · <span className="text-muted-foreground">{personCell(e)}</span></p>
+                    <p className="mt-1 text-xs text-foreground/80">{catCell(e)} · <span className="text-muted-foreground">{personCell(e)}</span>{personal && e.account_name && <span className="text-muted-foreground"> · from {e.account_name}</span>}</p>
                     {e.notes && <p className="text-xs text-muted-foreground mt-1 truncate">{e.notes}</p>}
                   </div>
                   <div className="flex gap-1 flex-shrink-0">
@@ -279,6 +280,7 @@ export function ExpensesSection({ isMobile = false, scope = "office" }: { isMobi
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Category</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">For whom</th>
+                  {personal && <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Paid from</th>}
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Notes</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground">Actions</th>
@@ -288,17 +290,18 @@ export function ExpensesSection({ isMobile = false, scope = "office" }: { isMobi
                 {isLoading ? (
                   [...Array(5)].map((_, i) => (
                     <tr key={i} className="border-b border-border/50">
-                      {[...Array(7)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>)}
+                      {[...Array(personal ? 8 : 7)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>)}
                     </tr>
                   ))
                 ) : sorted.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">{filtered ? "No expenses match these filters" : "No expenses recorded"}</td></tr>
+                  <tr><td colSpan={personal ? 8 : 7} className="px-4 py-12 text-center text-muted-foreground">{filtered ? "No expenses match these filters" : "No expenses recorded"}</td></tr>
                 ) : sorted.map((e) => (
                   <tr key={e.id} data-testid="expense-row" className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                     <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{e.id}</td>
                     <td className="px-4 py-3 text-muted-foreground">{formatDate(e.date)}</td>
                     <td className="px-4 py-3">{catCell(e)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{personCell(e)}</td>
+                    {personal && <td data-testid="expense-account" className="px-4 py-3 text-muted-foreground">{e.account_name ?? <span className="text-muted-foreground/60">—</span>}</td>}
                     <td className="px-4 py-3 font-semibold text-red-400">{formatCurrency(Number(e.amount))}</td>
                     <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">{e.notes ?? "—"}</td>
                     <td className="px-4 py-3">
@@ -317,7 +320,7 @@ export function ExpensesSection({ isMobile = false, scope = "office" }: { isMobi
               {!isLoading && sorted.length > 0 && (
                 <tfoot>
                   <tr data-testid="expenses-footer-total" className="border-t-2 border-border bg-secondary/50">
-                    <td className="px-4 py-3 font-bold" colSpan={4}>Total expense · {sorted.length} {sorted.length === 1 ? "record" : "records"}</td>
+                    <td className="px-4 py-3 font-bold" colSpan={personal ? 5 : 4}>Total expense · {sorted.length} {sorted.length === 1 ? "record" : "records"}</td>
                     <td className="px-4 py-3 font-bold text-red-400">{formatCurrency(total)}</td>
                     <td colSpan={2} />
                   </tr>
@@ -345,6 +348,7 @@ export function ExpensesSection({ isMobile = false, scope = "office" }: { isMobi
         initial={editing}
         onSave={handleSave}
         requirePerson={!personal}
+        withAccount={personal}
       />
 
       <ManageExpenseGroupsModal open={showManage} onClose={() => setShowManage(false)} />
@@ -716,14 +720,29 @@ function DeleteConfirmDialog({
 
 // ─── Expense form modal ───────────────────────────────────────────────────────
 
+const LAST_ACCOUNT_KEY = "gg_fin_last_expense_account";
+
+/** The account a new expense starts on: the only one there is, else the one used last (when it still exists). */
+function defaultAccountId(ids: number[]): number | null {
+  if (ids.length === 1) return ids[0];
+  try {
+    const last = Number(localStorage.getItem(LAST_ACCOUNT_KEY));
+    return ids.includes(last) ? last : null;
+  } catch { return null; }
+}
+function rememberAccount(id: number) {
+  try { localStorage.setItem(LAST_ACCOUNT_KEY, String(id)); } catch { /* a remembered choice is only a convenience */ }
+}
+
 function ExpenseFormModal({
-  open, onClose, initial, onSave, requirePerson = true,
+  open, onClose, initial, onSave, requirePerson = true, withAccount = false,
 }: {
   open: boolean;
   onClose: () => void;
   initial: Expense | null;
   onSave: (data: object) => void;
   requirePerson?: boolean;                // Personal Finance: "for whom" is optional
+  withAccount?: boolean;                  // Personal Finance: which expense account paid it
 }) {
   const { data: categories } = useExpenseCategories();
   const { byId } = splitCategories(categories);
@@ -735,6 +754,10 @@ function ExpenseFormModal({
     person_id: initial?.person_id ?? null,
   }));
   const [tried, setTried] = useState(false);
+  const { data: accountsView } = usePersonalAccounts(undefined, withAccount);
+  const accounts = withAccount ? (accountsView?.accounts ?? []).filter((a) => a.active) : [];
+  const [accountId, setAccountId] = useState<number | null | undefined>(initial ? (initial.account_id ?? null) : undefined);   // undefined = not chosen yet
+  const shownAccount = accountId !== undefined ? accountId : initial ? null : defaultAccountId(accounts.map((a) => a.id));
 
   // an existing expense shows its category once the list is loaded: a sub-category is its parent + itself
   const shown: ExpenseLine = initial && leaf && line.category_id === null && line.sub_id === null
@@ -752,7 +775,9 @@ function ExpenseFormModal({
           onSave({
             amount: Number(shown.amount), date, notes: shown.notes.trim() || null,
             category_id: lineCategoryId(shown), person_id: shown.person_id,
+            ...(withAccount && accounts.length > 0 ? { account_id: shownAccount } : {}),
           });
+          if (withAccount && shownAccount != null) rememberAccount(shownAccount);
         }}
         className="space-y-4"
       >
@@ -761,6 +786,16 @@ function ExpenseFormModal({
           <DatePicker value={date} onChange={setDate} />
         </div>
         <ExpenseLineFields line={shown} onChange={(patch) => setLine({ ...shown, ...patch })} showPersonError={tried} personRequired={requirePerson} noDefaultCategory={ungroupedOld && shown.category_id === null} />
+        {accounts.length > 0 && (
+          <div>
+            <label htmlFor="paid-from" className="block text-xs font-medium text-muted-foreground mb-1">Paid from</label>
+            <select id="paid-from" value={shownAccount ?? ""} onChange={(e) => setAccountId(e.target.value === "" ? null : Number(e.target.value))}
+              className="flex h-9 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:border-muted-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/30">
+              <option value="">Not from an expense account</option>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+        )}
         <div className="flex gap-2 pt-1">
           <Button type="button" variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button type="submit" className="flex-1">Save</Button>

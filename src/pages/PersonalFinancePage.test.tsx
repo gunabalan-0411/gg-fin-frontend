@@ -13,7 +13,7 @@ vi.mock("@/utils/download", () => ({ saveBlob: vi.fn() }));
 vi.mock("@/services/api", () => {
   const anyApi = () => new Proxy({}, { get: () => vi.fn().mockResolvedValue({ data: [] }) });
   return {
-    personalApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), dashboard: vi.fn() },
+    personalApi: { list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), dashboard: vi.fn(), accounts: vi.fn() },
     expensesApi: { list: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), legacyGroups: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     expenseGroupsApi: {
       categories: vi.fn(), persons: vi.fn(), createCategory: vi.fn(), renameCategory: vi.fn(), deleteCategory: vi.fn(),
@@ -29,7 +29,7 @@ import { expenseGroupsApi, expensesApi, personalApi } from "@/services/api";
 import PersonalFinancePage from "./PersonalFinancePage";
 
 type Fn = ReturnType<typeof vi.fn>;
-const personal = personalApi as unknown as Record<"list" | "create" | "update" | "delete" | "summary" | "exportCsv" | "dashboard", Fn>;
+const personal = personalApi as unknown as Record<"list" | "create" | "update" | "delete" | "summary" | "exportCsv" | "dashboard" | "accounts", Fn>;
 const office = expensesApi as unknown as Record<"list" | "summary" | "exportCsv" | "legacyGroups" | "create" | "update" | "delete", Fn>;
 const grp = expenseGroupsApi as unknown as Record<"categories" | "persons", Fn>;
 
@@ -44,6 +44,9 @@ const MINE = [
   { id: 1, amount: "300.00", date: "2026-10-17", notes: "fish", category_id: 2, top_id: 1, top_name: "Groceries", sub_name: "Fish & Chicken", person_id: 2, person_name: "Appa" },
   { id: 2, amount: "700.00", date: "2026-10-18", notes: "tablets", category_id: 4, top_id: 4, top_name: "Medical", sub_name: null, person_id: null, person_name: null },
 ];
+const ACCOUNT = (id: number, name: string) => ({ id, name, opening_balance: 0, opening_date: "2026-10-01", balance_now: 0, active: true, month_opening: 0, funds: 0, adjustments: 0, spent: 0, closing: 0 });
+const WITH_ACCOUNTS = (...a: ReturnType<typeof ACCOUNT>[]) => ({ data: { month: "2026-11", accounts: a, totals: { month_opening: 0, funds: 0, adjustments: 0, spent: 0, closing: 0, balance_now: 0 } } });
+const NO_ACCOUNTS = WITH_ACCOUNTS().data;
 const SUMMARY = {
   categories: [
     { id: 4, name: "Medical", ungrouped: false, count: 1, total: "700.00", subs: [] },
@@ -69,6 +72,8 @@ beforeEach(() => {
   personal.list.mockResolvedValue({ data: MINE });
   personal.summary.mockResolvedValue({ data: SUMMARY });
   personal.exportCsv.mockResolvedValue({ data: new Blob(["x"]) });
+  personal.accounts.mockResolvedValue({ data: NO_ACCOUNTS });
+  try { localStorage.clear(); } catch { /* fine */ }
   personal.create.mockResolvedValue({ data: {} });
   personal.update.mockResolvedValue({ data: {} });
   personal.delete.mockResolvedValue({ data: {} });
@@ -222,5 +227,94 @@ describe("deleting, filtering, totals, export (PF-FE-07 ... PF-FE-12)", () => {
     personal.list.mockResolvedValue({ data: [] });
     setup();
     expect(await screen.findByText("No expenses recorded")).toBeInTheDocument();
+  });
+});
+
+describe("Paid from - the expense account an expense came out of (PF-FE-13 ... PF-FE-17)", () => {
+  async function openAdd(user: ReturnType<typeof userEvent.setup>) {
+    await rows();
+    await user.click(screen.getByRole("button", { name: /Add Expense/ }));
+    const form = (await screen.findByText("Add Expense", { selector: "h2" })).closest("[role=dialog]") as HTMLElement;
+    await waitFor(() => expect(within(form).getByRole("combobox", { name: "Category" })).toHaveValue("Miscellaneous"));
+    return form;
+  }
+  const save = async (user: ReturnType<typeof userEvent.setup>, form: HTMLElement, amount = "40") => {
+    await user.type(within(form).getByLabelText("Amount"), amount);
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(personal.create).toHaveBeenCalledTimes(1));
+    return personal.create.mock.calls[0][0] as Record<string, unknown>;
+  };
+
+  it("with no expense account the form has no Paid from and sends none (PF-FE-13)", async () => {
+    const { user } = setup();
+    const form = await openAdd(user);
+    expect(within(form).queryByLabelText("Paid from")).toBeNull();
+    expect(await save(user, form)).not.toHaveProperty("account_id");
+  });
+
+  it("the only account is preselected and goes with the expense; it can be left off (PF-FE-14)", async () => {
+    personal.accounts.mockResolvedValue(WITH_ACCOUNTS(ACCOUNT(7, "HDFC expenses")));
+    const { user } = setup();
+    await rows();
+    await user.click(screen.getByRole("button", { name: /Add Expense/ }));
+    const form = (await screen.findByText("Add Expense", { selector: "h2" })).closest("[role=dialog]") as HTMLElement;
+    const paidFrom = await within(form).findByLabelText("Paid from");
+    await waitFor(() => expect(paidFrom).toHaveValue("7"));
+    expect(within(paidFrom).getAllByRole("option").map((o) => o.textContent)).toEqual(["Not from an expense account", "HDFC expenses"]);
+    expect(await save(user, form)).toMatchObject({ account_id: 7 });
+  });
+
+  it("leaving the account off sends null (PF-FE-15)", async () => {
+    personal.accounts.mockResolvedValue(WITH_ACCOUNTS(ACCOUNT(7, "HDFC expenses")));
+    const { user } = setup();
+    await rows();
+    await user.click(screen.getByRole("button", { name: /Add Expense/ }));
+    const form = (await screen.findByText("Add Expense", { selector: "h2" })).closest("[role=dialog]") as HTMLElement;
+    const paidFrom = await within(form).findByLabelText("Paid from");
+    await waitFor(() => expect(paidFrom).toHaveValue("7"));
+    await user.selectOptions(paidFrom, "");
+    expect(await save(user, form)).toMatchObject({ account_id: null });
+  });
+
+  it("with several accounts none is chosen at first; the one used last is remembered for the next expense (PF-FE-16)", async () => {
+    personal.accounts.mockResolvedValue(WITH_ACCOUNTS(ACCOUNT(7, "HDFC expenses"), ACCOUNT(8, "Cash wallet")));
+    const first = setup();
+    await rows();
+    await first.user.click(screen.getByRole("button", { name: /Add Expense/ }));
+    let form = (await screen.findByText("Add Expense", { selector: "h2" })).closest("[role=dialog]") as HTMLElement;
+    const paidFrom = await within(form).findByLabelText("Paid from");
+    expect(paidFrom).toHaveValue("");
+    await first.user.selectOptions(paidFrom, "8");
+    expect(await save(first.user, form)).toMatchObject({ account_id: 8 });
+    first.unmount();
+    personal.create.mockClear();
+    const next = setup();
+    await rows();
+    await next.user.click(screen.getByRole("button", { name: /Add Expense/ }));
+    form = (await screen.findByText("Add Expense", { selector: "h2" })).closest("[role=dialog]") as HTMLElement;
+    await waitFor(() => expect(within(form).getByLabelText("Paid from")).toHaveValue("8"));
+  });
+
+  it("an expense shows its account in the list, and editing keeps it or takes it off (PF-FE-17)", async () => {
+    personal.accounts.mockResolvedValue(WITH_ACCOUNTS(ACCOUNT(7, "HDFC expenses"), ACCOUNT(8, "Cash wallet")));
+    personal.list.mockResolvedValue({ data: [{ ...MINE[0], account_id: 7, account_name: "HDFC expenses" }, MINE[1]] });
+    const { user } = setup();
+    const r = await rows();
+    expect(screen.getByRole("columnheader", { name: "Paid from" })).toBeInTheDocument();
+    expect(within(r[1]).getByTestId("expense-account")).toHaveTextContent("HDFC expenses");   // newest first: the fish expense is second
+    expect(within(r[0]).getByTestId("expense-account")).toHaveTextContent("—");
+    await user.click(within(r[1]).getAllByRole("button")[0]);
+    let form = (await screen.findByText("Edit Expense", { selector: "h2" })).closest("[role=dialog]") as HTMLElement;
+    await waitFor(() => expect(within(form).getByLabelText("Paid from")).toHaveValue("7"));
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(personal.update).toHaveBeenCalledTimes(1));
+    expect(personal.update.mock.calls[0][1]).toMatchObject({ account_id: 7 });                        // untouched: the account stays
+    personal.update.mockClear();
+    await user.click(within((await rows())[1]).getAllByRole("button")[0]);
+    form = (await screen.findByText("Edit Expense", { selector: "h2" })).closest("[role=dialog]") as HTMLElement;
+    await user.selectOptions(await within(form).findByLabelText("Paid from"), "");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(personal.update).toHaveBeenCalledTimes(1));
+    expect(personal.update.mock.calls[0][1]).toMatchObject({ account_id: null });
   });
 });

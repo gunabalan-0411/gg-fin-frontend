@@ -163,7 +163,9 @@ function Holdings({ data }: { data: PersonalDashboardData["holdings"] }) {
 
 /** This month against the monthly budget: spent on the budgeted categories out of the total budget, and how many categories went over. */
 function BudgetCard({ data }: { data: PersonalDashboardData["budget"] }) {
-  const total = num(data?.total_budget ?? 0);
+  const budgeted = num(data?.total_budget ?? 0);
+  const total = num(data?.total_available ?? data?.total_budget ?? 0);          // the budget plus what rolled in from earlier months
+  const carried = total - budgeted;
   const spent = num(data?.spent_on_budgeted ?? 0);
   const over = data?.over_count ?? 0;
   const count = data?.budgeted_count ?? 0;
@@ -177,13 +179,14 @@ function BudgetCard({ data }: { data: PersonalDashboardData["budget"] }) {
         <>
           <p className="mt-1 text-3xl font-bold tracking-tight">
             <span data-testid="personal-budget-spent">{fmt(spent)}</span>
-            <span className="text-base font-normal text-muted-foreground"> of <span data-testid="personal-budget-total">{fmt(total)}</span></span>
+            <span className="text-base font-normal text-muted-foreground"> of <span data-testid="personal-budget-total">{fmt(total)}</span> available</span>
           </p>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted" role="img" aria-label={`${Math.round(pct)}% of this month's budget spent`}>
             <div data-testid="personal-budget-bar" className={cn("h-full rounded-full", pct > 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-primary")} style={{ width: `${Math.min(pct, 100)}%` }} />
           </div>
           <p data-testid="personal-budget-note" className="mt-1 text-xs text-muted-foreground">
             {Math.round(pct)}% used · {count} {count === 1 ? "category" : "categories"} budgeted
+            {Math.round(carried) !== 0 && <span data-testid="personal-budget-carried"> · {carried > 0 ? "includes" : "less"} {fmt(Math.abs(carried))} {carried > 0 ? "carried forward" : "overspent last month"}</span>}
             {over > 0 && <span data-testid="personal-budget-over" className="ml-1.5 font-semibold text-red-600 dark:text-red-400">· {over} over budget</span>}
           </p>
         </>
