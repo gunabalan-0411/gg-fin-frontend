@@ -19,10 +19,13 @@ import { IopSplitPanel, SplitToggle } from "@/components/ocr/IopSplitPanel";
 import { checkRecords, isSplit, localSplitIssue, principalOf, type SplitRow } from "@/utils/iopSplit";
 import type { ProductType, VoiceEntry, VoiceAlternative, EdiCustomer, IopCustomer, EdiTransaction, IopTransaction, IopSplitCheck } from "@/types";
 import { BrandMark } from "@/components/BrandMark";
+import { ExpenseStepPanel } from "@/components/expenses/ExpenseStepPanel";
+import { CustomerStepOverlay } from "@/components/CustomerStepOverlay";
+import { gmailSyncError, gmailSyncOk } from "@/utils/upiSync";
 
 
 // One recording kept in the browser until Submit (training data → Google Drive; the server never stores it).
-type VoiceRecording = { id: string; blob: Blob; transcription: string; entries: Map<number, VoiceSpokenEntry> };
+type VoiceRecording = { id: string; blob: Blob; transcription: string; entries: Map<number, VoiceSpokenEntry>; product: ProductType };
 
 type TableRow = {
   customer_id: number;
@@ -41,6 +44,23 @@ const splitRowOf = (r: TableRow): SplitRow => ({ product_type: "IOP", is_paid: r
 
 type AnyTxn = EdiTransaction | IopTransaction;
 
+/** What one product collected: how many customers, how much, and how much of it by cash / online. */
+type Totals = { count: number; total: number; cash: number; online: number; cashCount: number; onlineCount: number };
+const NO_TOTALS: Totals = { count: 0, total: 0, cash: 0, online: 0, cashCount: 0, onlineCount: 0 };
+function addTotal(t: Totals, amount: number, mode: string): Totals {
+  if (!(amount > 0)) return t;
+  const online = mode === "ONLINE";
+  return {
+    count: t.count + 1, total: t.total + amount,
+    cash: t.cash + (online ? 0 : amount), online: t.online + (online ? amount : 0),
+    cashCount: t.cashCount + (online ? 0 : 1), onlineCount: t.onlineCount + (online ? 1 : 0),
+  };
+}
+const totalsOfRows = (rs: TableRow[]): Totals => rs.reduce((t, r) => addTotal(t, Number(r.amount) || 0, r.payment_mode), NO_TOTALS);
+/** Saved transactions as the same kind of total: an IOP row's amount is the interest plus the principal collected with it. */
+const totalsOfTxns = (ts: AnyTxn[], p: ProductType): Totals =>
+  ts.reduce((t, x) => addTotal(t, Number(x.amount) + (p === "iop" ? Number((x as IopTransaction).principal_amount) || 0 : 0), (x as { payment_mode?: string }).payment_mode ?? "CASH"), NO_TOTALS);
+
 export default function VoicePage() {
   const [product, setProduct] = useSessionState<ProductType>("voice.product", "edi");
   const [date, setDate] = useSessionState("voice.date", toISODate(new Date()));
@@ -54,6 +74,10 @@ export default function VoicePage() {
     return next;
   });
   const [upiExpanded, setUpiExpanded] = useState(false);
+  const [view, setView] = useSessionState<"all" | "entered">("voice.view", "all");           // the table: every customer, or only those with an amount
+  const [editingId, setEditingId] = useState<number | null>(null);                           // the amount box being typed in stays visible in the Entered view
+  const [post, setPost] = useState<{ step: "expense" | "customers"; date: string } | null>(null);   // what follows a Submit: that day's expenses, then customers
+  const [refreshingUpi, setRefreshingUpi] = useState(false);
   const [showGoTop, setShowGoTop] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [transcription, setTranscription] = useState("");
@@ -518,7 +542,7 @@ export default function VoicePage() {
       setQueueIndex(0);
       // Keep the recording in memory (nothing is sent anywhere yet); it goes to Drive at Submit if "Save data for training" is ON
       recordingCounterRef.current += 1;
-      recordingsRef.current.push({ id: `rec${recordingCounterRef.current}`, blob, transcription, entries: new Map() });
+      recordingsRef.current.push({ id: `rec${recordingCounterRef.current}`, blob, transcription, entries: new Map(), product });
     } catch (err: any) {
       if (err?.code !== "ERR_CANCELED") toast.error("Transcription failed");
     } finally {
@@ -567,11 +591,15 @@ export default function VoicePage() {
     }, activeQueueModeRef.current === "online" ? 3000 : 2000);
   };
 
+  /** What Submit would save for a product: the table on screen for the one being shown, and what was typed (and kept) for the other. */
+  const entriesFor = (p: ProductType): TableRow[] =>
+    (p === product ? rows : draftsRef.current.get(`${p}|${date}`) ?? []).filter((r) => Number(r.amount) > 0);
+
   /** Recordings (as 16 kHz mono WAV, encoded here in the browser) + the table -> Drive. The server only relays them. */
-  const uploadTrainingData = async (recordings: VoiceRecording[], finalRows: TableRow[]) => {
+  const uploadTrainingData = async (recordings: VoiceRecording[], finalRows: TableRow[], forProduct: ProductType) => {
     try {
       const entries = recordings.flatMap((r) => [...r.entries.values()]);
-      const trainingRows = buildVoiceTrainingRows(entries, finalRows, { date, product });
+      const trainingRows = buildVoiceTrainingRows(entries, finalRows, { date, product: forProduct });
       if (trainingRows.length === 0) return;
       const used = recordings.filter((r) => trainingRows.some((t) => t.source_file === r.id));
       const files = await Promise.all(used.map(async (r) => {
@@ -585,54 +613,73 @@ export default function VoicePage() {
     }
   };
 
+  /** ONE Submit for both products: whatever was typed for EDI and for IOP is saved together. */
   const handleSubmitAll = async () => {
-    const nonZero = rows.filter((r) => Number(r.amount) > 0);
-    if (!nonZero.length) { toast.error("No amounts entered"); return; }
-    if (product === "iop") {
+    // IOP goes first: it is the one that can be refused (a principal that is not allowed), and then nothing has been saved at all
+    const batches = (["iop", "edi"] as ProductType[]).map((p) => ({ product: p, entries: entriesFor(p) })).filter((b) => b.entries.length > 0);
+    if (!batches.length) { toast.error("No amounts entered"); return; }
+    for (const r of batches.find((b) => b.product === "iop")?.entries ?? []) {
       // a split that cannot be saved (the page's own check, then the server's) stops the submit and opens its panel
-      for (const r of nonZero) {
-        const sr = splitRowOf(r);
-        const message = localSplitIssue(sr) ?? (isSplit(sr) ? splitChecks[r.customer_id]?.error ?? null : null);
-        if (message) {
-          setSplitOpen((prev) => new Set(prev).add(r.customer_id));
-          toast.error(`${r.customer_name}: ${message}`);
-          return;
-        }
+      const sr = splitRowOf(r);
+      const message = localSplitIssue(sr) ?? (product === "iop" && isSplit(sr) ? splitChecks[r.customer_id]?.error ?? null : null);
+      if (message) {
+        if (product === "iop") setSplitOpen((prev) => new Set(prev).add(r.customer_id));
+        else setProduct("iop");                                          // show the table the problem is in
+        toast.error(`${r.customer_name}: ${message}`);
+        return;
       }
     }
     setSubmitting(true);
-    try {
-      const { data } = await voiceApi.submit(
-        nonZero.map((r) => ({
-          customer_id: r.customer_id, amount: Number(r.amount), payment_mode: r.payment_mode,
-          ...(product === "iop" ? { principal_amount: principalOf(splitRowOf(r)) } : {}),   // IOP: the part of the amount that is principal
-        })),
-        date,
-        product
-      );
-      baseRef.current = JSON.stringify(rows);                       // what is shown is now what is saved
-      draftsRef.current.delete(`${product}|${date}`);
-      const added = data?.principal_added ?? 0;
-      toast.success(`${nonZero.length} transactions saved${added ? ` · ₹${Math.round(added).toLocaleString("en-IN")} principal added` : ""}`);
-      qc.invalidateQueries({ queryKey: ["transactions", product, date] });
-      if (product === "iop") qc.invalidateQueries({ queryKey: ["customers", "iop"] });      // the balances moved
-
-      // Training data → Google Drive. The records are already saved above, so this never blocks or fails the submit.
-      const recordings = recordingsRef.current;
-      recordingsRef.current = [];
-      if (trainingOn) void uploadTrainingData(recordings, rows);
-      setTrainingOn(true);                                         // a new work session starts with the toggle ON again
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      if (detail?.code === "bad_principal") {           // the server refused a split: nothing was saved
-        const bad = (detail.rows ?? []).map((x: { index: number }) => nonZero[x.index]?.customer_id).filter(Boolean) as number[];
-        setSplitOpen((prev) => new Set([...prev, ...bad]));
-        toast.error(detail.message ?? "A principal amount is not allowed");
-      } else {
-        toast.error("Submit failed");
+    const saved: Partial<Record<ProductType, TableRow[]>> = {};
+    let principalAdded = 0;
+    let failed = false;
+    for (const b of batches) {
+      try {
+        const { data } = await voiceApi.submit(
+          b.entries.map((r) => ({
+            customer_id: r.customer_id, amount: Number(r.amount), payment_mode: r.payment_mode,
+            ...(b.product === "iop" ? { principal_amount: principalOf(splitRowOf(r)) } : {}),   // IOP: the part of the amount that is principal
+          })),
+          date,
+          b.product,
+        );
+        saved[b.product] = b.entries;
+        principalAdded += data?.principal_added ?? 0;
+      } catch (err: any) {
+        failed = true;
+        const detail = err?.response?.data?.detail;
+        if (detail?.code === "bad_principal") {           // the server refused a split: nothing of IOP was saved
+          const bad = (detail.rows ?? []).map((x: { index: number }) => b.entries[x.index]?.customer_id).filter(Boolean) as number[];
+          if (product === "iop") setSplitOpen((prev) => new Set([...prev, ...bad]));
+          else setProduct("iop");
+          toast.error(detail.message ?? "A principal amount is not allowed");
+        } else {
+          toast.error(Object.keys(saved).length ? `${b.product.toUpperCase()} could not be saved - press Submit to try again` : "Submit failed");
+        }
+        break;
       }
-    } finally {
-      setSubmitting(false);
+    }
+    setSubmitting(false);
+    const done = Object.keys(saved) as ProductType[];
+    if (done.length === 0) return;
+
+    for (const p of done) {
+      draftsRef.current.delete(`${p}|${date}`);
+      qc.invalidateQueries({ queryKey: ["transactions", p, date] });
+    }
+    if (saved[product]) baseRef.current = JSON.stringify(rows);       // what is shown is now what is saved
+    if (saved.iop) qc.invalidateQueries({ queryKey: ["customers", "iop"] });      // the balances moved
+    const count = done.reduce((n, p) => n + (saved[p]?.length ?? 0), 0);
+    const parts = done.length > 1 ? ` (${done.map((p) => `${p.toUpperCase()} ${saved[p]?.length}`).join(" · ")})` : "";
+    toast.success(`${count} transactions saved${parts}${principalAdded ? ` · ₹${Math.round(principalAdded).toLocaleString("en-IN")} principal added` : ""}`);
+
+    // Training data → Google Drive. The records are already saved above, so this never blocks or fails the submit.
+    const recordings = recordingsRef.current;
+    recordingsRef.current = failed ? recordings.filter((r) => !saved[r.product]) : [];
+    if (trainingOn) for (const p of done) void uploadTrainingData(recordings.filter((r) => r.product === p), saved[p] ?? [], p);
+    if (!failed) {
+      setTrainingOn(true);                                           // a new work session starts with the toggle ON again
+      setPost({ step: "expense", date });                            // then that day's expenses, then customers (as on the OCR page)
     }
   };
 
@@ -677,16 +724,32 @@ export default function VoicePage() {
     groups.forEach((g) => g.rows.sort((a, b) => b.customer_id - a.customer_id));
     return groups;
   })();
+  // "Entered" shows only the customers that have an amount (and the one whose box is being typed in); "All" shows everybody
+  const visibleGroups = groupedRows
+    .map((g) => ({ ...g, shown: view === "entered" ? g.rows.filter((r) => Number(r.amount) > 0 || r.customer_id === editingId) : g.rows }))
+    .filter((g) => g.shown.length > 0);
+  const enteredShown = rows.filter((r) => Number(r.amount) > 0).length;
 
   const queueDone = queue.length > 0 && queueIndex >= queue.length;
 
   const ediTxns = ediTxnsAll as AnyTxn[];
   const iopTxns = iopTxnsAll as AnyTxn[];
-  const ediTotal = ediTxns.reduce((s, t) => s + Number(t.amount), 0);
-  const iopTotal = iopTxns.reduce((s, t) => s + Number(t.amount), 0);
+  // The totals follow what is typed, for both products together. A product whose table nobody edited counts what is saved for it.
+  const rowsAreShown = !isTableLoading && shownKeyRef.current === `${product}|${date}`;
+  const totalsOf = (p: ProductType): Totals => {
+    if (p === product && rowsAreShown) return totalsOfRows(rows);
+    const draft = draftsRef.current.get(`${p}|${date}`);
+    if (draft) return totalsOfRows(draft);
+    return totalsOfTxns(p === "edi" ? ediTxns : iopTxns, p);
+  };
+  const ediTot = totalsOf("edi");
+  const iopTot = totalsOf("iop");
+  const ediTotal = ediTot.total;
+  const iopTotal = iopTot.total;
   const combinedTotal = ediTotal + iopTotal;
-  const gpayTotal = [...ediTxns, ...iopTxns].filter((t) => (t as any).payment_mode === "ONLINE").reduce((s, t) => s + Number(t.amount), 0);
-  const cashTotal = [...ediTxns, ...iopTxns].filter((t) => (t as any).payment_mode === "CASH").reduce((s, t) => s + Number(t.amount), 0);
+  const gpayTotal = ediTot.online + iopTot.online;
+  const cashTotal = ediTot.cash + iopTot.cash;
+  const todayCount = ediTot.count + iopTot.count;
 
   // UPI transactions for selected date
   const { data: upiRaw, refetch: refetchUpi, isFetching: upiRefetching } = useQuery({
@@ -705,6 +768,18 @@ export default function VoicePage() {
       return bm - am;
     });
   }, [upiRaw]);
+
+  /** Pull the latest credits from Gmail, then reload this day's list. A failed sync (Gmail not connected ...) still reloads. */
+  const refreshUpi = async () => {
+    setRefreshingUpi(true);
+    try {
+      const { data } = await upiApi.gmailSync();
+      toast.success(gmailSyncOk(data));
+    } catch (err) {
+      toast.error(gmailSyncError(err));
+    }
+    try { await refetchUpi(); } finally { setRefreshingUpi(false); }
+  };
 
   const applyMappedUpiTransactions = () => {
     const mapped = upiTxnsForDate.filter(
@@ -743,8 +818,26 @@ export default function VoicePage() {
     { label: "Cash", value: cashTotal, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/25" },
   ];
 
-  const nonZeroCount = rows.filter((r) => Number(r.amount) > 0).length;
+  const nonZeroCount = entriesFor("edi").length + entriesFor("iop").length;          // what Submit would save (both products)
   const tableTotal = rows.reduce((sum, r) => sum + Number(r.amount), 0);
+
+  // After a Submit: that day's expenses (the OCR page's own panel), then customer management - each can be skipped
+  const postSubmit = (
+    <>
+      {post?.step === "expense" && (
+        <ExpenseStepPanel
+          dates={[post.date.split("-").reverse().join("-")]}
+          isMobile={isMobile}
+          onDone={() => setPost({ step: "customers", date: post.date })}
+          onSkip={() => setPost({ step: "customers", date: post.date })}
+          onSkipAll={() => setPost(null)}
+        />
+      )}
+      {post?.step === "customers" && (
+        <CustomerStepOverlay onDone={() => setPost(null)} onSkip={() => setPost(null)} onSkipAll={() => setPost(null)} />
+      )}
+    </>
+  );
 
   // ── MOBILE LAYOUT ─────────────────────────────────────────────────────────
   if (isMobile) {
@@ -1092,11 +1185,11 @@ export default function VoicePage() {
               <span className="text-xs text-muted-foreground">{upiTxnsForDate.length} txns</span>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={(e) => { e.stopPropagation(); void refetchUpi(); }}
-                disabled={upiRefetching}
-                title="Refresh UPI"
+              <button onClick={(e) => { e.stopPropagation(); void refreshUpi(); }}
+                disabled={upiRefetching || refreshingUpi}
+                title="Refresh UPI" aria-label="Refresh UPI"
                 className="flex items-center justify-center h-6 w-6 rounded-lg border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors disabled:opacity-40">
-                <RefreshCw className={`h-3 w-3 ${upiRefetching ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-3 w-3 ${upiRefetching || refreshingUpi ? "animate-spin" : ""}`} />
               </button>
               <button onClick={(e) => { e.stopPropagation(); applyMappedUpiTransactions(); }}
                 className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-muted text-foreground border border-border hover:bg-muted/80 transition-colors">
@@ -1146,6 +1239,7 @@ export default function VoicePage() {
               {formatCurrency(tableTotal)}
             </span>
           </div>
+          <ViewToggle view={view} onChange={setView} entered={enteredShown} all={rows.length} className="mb-3" />
 
           {isTableLoading ? (
             <div className="space-y-2">
@@ -1164,13 +1258,15 @@ export default function VoicePage() {
             </div>
           ) : rows.length === 0 ? (
             <div className="rounded-xl border border-border bg-card py-10 text-center text-sm text-muted-foreground">No records for {date}</div>
+          ) : visibleGroups.length === 0 ? (
+            <NothingEntered onShowAll={() => setView("all")} />
           ) : (
             <div className="space-y-4">
-              {groupedRows.map((group) => (
+              {visibleGroups.map((group) => (
                 <div key={group.segment_id ?? "unknown"}>
                   <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 px-0.5">{group.segment_name}</p>
                   <div className="space-y-2">
-                    {group.rows.map((r) => {
+                    {group.shown.map((r) => {
                       const isHighlighted = r.customer_id === highlightedCustomerId;
                       const isOnlineHighlight = isHighlighted && activeQueueModeRef.current === "online";
                       return (
@@ -1199,6 +1295,7 @@ export default function VoicePage() {
                                 inputMode="numeric"
                                 value={r.amount}
                                 onChange={(e) => setRows((prev) => { const next = [...prev]; next[r.rowIdx] = { ...next[r.rowIdx], amount: e.target.value }; return next; })}
+                                onFocus={() => setEditingId(r.customer_id)} onBlur={() => setEditingId(null)}
                                 className={`w-24 h-10 rounded-lg border text-right px-3 text-base font-bold focus:outline-none focus:ring-2 transition-colors ${
                                   isHighlighted
                                     ? isOnlineHighlight
@@ -1256,6 +1353,7 @@ export default function VoicePage() {
           <Send className="h-4 w-4 mr-2" />
           {submitting ? "Saving…" : `Submit All (${nonZeroCount} with amount)`}
         </Button>
+        {postSubmit}
 
         {/* ── Floating go-to-top ───────────────────────────────────────────── */}
         {showGoTop && (
@@ -1326,12 +1424,6 @@ export default function VoicePage() {
             ))}
           </div>
           <DatePicker value={date} onChange={setDate} className="w-40" />
-          <div className="w-px h-5 bg-border flex-shrink-0" />
-          <button onClick={handleSubmitAll} disabled={submitting || isTableLoading || nonZeroCount === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-foreground text-background text-[12.5px] font-semibold hover:bg-foreground/85 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-            {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            Submit{nonZeroCount > 0 ? ` ${nonZeroCount}` : ""}
-          </button>
         </div>
 
         {/* ── Body: cockpit + (stats + workspace) ── */}
@@ -1700,6 +1792,11 @@ export default function VoicePage() {
                     <p className="text-[12.5px] font-medium">UPI · {date}</p>
                     <p className="text-[11px] text-muted-foreground">{upiTxnsForDate.length} txns · {upiTxnsForDate.filter((t) => t.mapped_customer_id != null).length} mapped</p>
                   </div>
+                  <button onClick={() => void refreshUpi()} disabled={upiRefetching || refreshingUpi}
+                    title="Refresh UPI" aria-label="Refresh UPI"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:opacity-40">
+                    <RefreshCw className={`h-3.5 w-3.5 ${upiRefetching || refreshingUpi ? "animate-spin" : ""}`} />
+                  </button>
                   <button onClick={applyMappedUpiTransactions}
                     disabled={!upiTxnsForDate.some((t) => t.mapped_customer_id != null && !struckUpiIds.has(t.id))}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors bg-primary/30 border border-primary/50 hover:bg-primary/40 disabled:opacity-40 disabled:cursor-not-allowed">
@@ -1756,7 +1853,7 @@ export default function VoicePage() {
                 style={{ background: "radial-gradient(120% 60% at 100% 0%, color-mix(in oklab, hsl(var(--primary)) 45%, transparent) 0%, transparent 60%), hsl(var(--card))" }}>
                 <div className="text-[9px] font-semibold uppercase tracking-[.08em] text-muted-foreground/70 mb-px">₹ Today</div>
                 <div className="font-mono text-[16px] font-medium leading-none tracking-tight text-foreground">{formatCurrency(combinedTotal)}</div>
-                <div className="text-[9.5px] text-emerald-700 dark:text-emerald-400 mt-0.5">↑ {nonZeroCount} with amount</div>
+                <div className="text-[9.5px] text-emerald-700 dark:text-emerald-400 mt-0.5">↑ {todayCount} with amount</div>
                 <div className="absolute right-2 top-1.5 opacity-70">
                   {(() => {
                     const pts = [3.8, 4.2, 3.6, 4.6, 5.1, 4.9, 5.4];
@@ -1777,7 +1874,7 @@ export default function VoicePage() {
                   <div className="text-[9.5px] text-muted-foreground/60 mt-0.5">
                     {label === "GPay" || label === "Cash"
                       ? `${combinedTotal ? Math.round((value / combinedTotal) * 100) : 0}% of total`
-                      : label === "EDI" ? `${ediTxns.length} customers` : `${iopTxns.length} customers`}
+                      : label === "EDI" ? `${ediTot.count} customers` : `${iopTot.count} customers`}
                   </div>
                 </div>
               ))}
@@ -1824,9 +1921,7 @@ export default function VoicePage() {
                     <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border border-border bg-card shadow-xl px-3 py-4 text-center text-xs text-muted-foreground">No customers found</div>
                   )}
                 </div>
-                <div className="flex items-center gap-2 ml-auto text-[11.5px] text-muted-foreground">
-                  <span><span className="font-mono font-medium text-foreground/80">{rows.filter((r) => Number(r.amount) > 0).length}</span> with amount</span>
-                </div>
+                <ViewToggle view={view} onChange={setView} entered={enteredShown} all={rows.length} className="ml-auto" />
               </div>
 
               {/* ws-body */}
@@ -1858,9 +1953,11 @@ export default function VoicePage() {
                       <p className="text-xs mt-1 opacity-60">All settled — try a different date.</p>
                     </div>
                   </div>
+                ) : visibleGroups.length === 0 ? (
+                  <NothingEntered onShowAll={() => setView("all")} />
                 ) : (
                   <div className="space-y-5">
-                    {groupedRows.map((group) => {
+                    {visibleGroups.map((group) => {
                       const segTotal = group.rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
                       const segCount = group.rows.filter((r) => Number(r.amount) > 0).length;
                       return (
@@ -1888,7 +1985,7 @@ export default function VoicePage() {
                               <div className="px-3 py-2" />
                             </div>
                             {/* ctable rows */}
-                            {group.rows.map((r) => {
+                            {group.shown.map((r) => {
                               const isHighlighted = r.customer_id === highlightedCustomerId;
                               const isOnlineHighlight = isHighlighted && activeQueueModeRef.current === "online";
                               const hasAmt = Number(r.amount) > 0;
@@ -1930,6 +2027,7 @@ export default function VoicePage() {
                                   <div className="px-3 py-2.5">
                                     <input type="text" inputMode="numeric" value={r.amount}
                                       onChange={(e) => setRows((prev) => { const next = [...prev]; next[r.rowIdx] = { ...next[r.rowIdx], amount: e.target.value }; return next; })}
+                                onFocus={() => setEditingId(r.customer_id)} onBlur={() => setEditingId(null)}
                                       className={`w-full px-2.5 py-1.5 rounded-md border text-right font-mono text-[13.5px] font-medium bg-secondary focus:outline-none transition-all ${
                                         isHighlighted
                                           ? isOnlineHighlight
@@ -1971,25 +2069,26 @@ export default function VoicePage() {
         <div className="flex items-center gap-4 px-5 border-t border-border bg-card flex-shrink-0" style={{ height: 60 }}>
           <div className="flex flex-col font-mono">
             <span className="text-[10.5px] uppercase tracking-[.08em] text-muted-foreground/60 mb-0.5">Entries</span>
-            <span className="text-[18px] font-medium leading-none text-foreground">{nonZeroCount}</span>
+            <span data-testid="dock-entries" className="text-[18px] font-medium leading-none text-foreground">{todayCount}</span>
           </div>
           <div className="w-px h-7 bg-border flex-shrink-0" />
           <div className="flex flex-col font-mono">
             <span className="text-[10.5px] uppercase tracking-[.08em] text-muted-foreground/60 mb-0.5">Total</span>
-            <span className="text-[18px] font-medium leading-none text-foreground">{formatCurrency(tableTotal)}</span>
+            <span data-testid="dock-total" className="text-[18px] font-medium leading-none text-foreground">{formatCurrency(combinedTotal)}</span>
           </div>
           <div className="w-px h-7 bg-border flex-shrink-0" />
           <div className="flex items-center gap-3.5 text-[11.5px] text-muted-foreground">
             <span>
               <span className="font-mono text-emerald-700 dark:text-emerald-400">●</span>{" "}
-              <span className="font-mono font-medium text-foreground/80">{rows.filter((r) => Number(r.amount) > 0 && r.payment_mode === "CASH").length}</span>{" "}
+              <span className="font-mono font-medium text-foreground/80">{ediTot.cashCount + iopTot.cashCount}</span>{" "}
               cash
             </span>
             <span>
               <span className="font-mono text-sky-600 dark:text-sky-400">●</span>{" "}
-              <span className="font-mono font-medium text-foreground/80">{rows.filter((r) => Number(r.amount) > 0 && r.payment_mode === "ONLINE").length}</span>{" "}
+              <span className="font-mono font-medium text-foreground/80">{ediTot.onlineCount + iopTot.onlineCount}</span>{" "}
               online
             </span>
+            <span data-testid="dock-split" className="text-muted-foreground/80">EDI <span className="font-mono font-medium text-foreground/80">{ediTot.count}</span> · IOP <span className="font-mono font-medium text-foreground/80">{iopTot.count}</span></span>
           </div>
           <div className="flex-1" />
           <TrainingDataToggle checked={trainingOn} onCheckedChange={setTrainingOn} />
@@ -2001,6 +2100,7 @@ export default function VoicePage() {
           </button>
         </div>
       </div>
+      {postSubmit}
     </>
   );
 }
@@ -2104,5 +2204,34 @@ function CircularProgress({
         style={{ transition: "stroke-dashoffset 0.02s linear" }}
       />
     </svg>
+  );
+}
+
+
+/** Entered: only the customers that have an amount, under their group. All: everybody, entered or not. */
+function ViewToggle({ view, onChange, entered, all, className = "" }: {
+  view: "all" | "entered"; onChange: (v: "all" | "entered") => void; entered: number; all: number; className?: string;
+}) {
+  const options: { key: "entered" | "all"; label: string; n: number }[] = [{ key: "entered", label: "Entered", n: entered }, { key: "all", label: "All", n: all }];
+  return (
+    <div data-testid="voice-view" role="group" aria-label="Customers shown" className={`inline-flex flex-shrink-0 gap-0.5 rounded-lg bg-muted p-0.5 ${className}`}>
+      {options.map((o) => (
+        <button key={o.key} type="button" aria-pressed={view === o.key} onClick={() => onChange(o.key)}
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-[12px] font-medium transition-colors ${view === o.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+          {o.label}
+          <span className="font-mono text-[10.5px] opacity-70">{o.n}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function NothingEntered({ onShowAll }: { onShowAll: () => void }) {
+  return (
+    <div data-testid="nothing-entered" className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border py-14 text-center">
+      <p className="text-sm font-medium text-foreground">Nothing entered yet</p>
+      <p className="text-xs text-muted-foreground">Customers show here once they have an amount.</p>
+      <button type="button" onClick={onShowAll} className="mt-1 rounded text-xs font-medium text-foreground underline underline-offset-2">Show all customers</button>
+    </div>
   );
 }
