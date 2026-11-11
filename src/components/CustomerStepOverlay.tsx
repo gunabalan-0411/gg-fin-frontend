@@ -93,6 +93,7 @@ export function CustomerStepOverlay({
           if (!carry) return;
           await runCarry(product, Number(id), carry);
           qc.invalidateQueries({ queryKey: ["customers", product] });
+          qc.invalidateQueries({ queryKey: ["dashboard"] });
         },
       });
     }
@@ -101,6 +102,7 @@ export function CustomerStepOverlay({
     setDuplicateSource(null);
     setCloseOldOnSave(false);
     qc.invalidateQueries({ queryKey: ["customers", product] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
   };
 
   const openCopy = (c: EdiCustomer | IopCustomer, closeOld: boolean) => {
@@ -150,6 +152,7 @@ export function CustomerStepOverlay({
     try {
       await reverseAction(action);
       qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast(`Undid: ${action.type} customer`);
     } catch {
       toast.error("Undo failed");
@@ -166,6 +169,7 @@ export function CustomerStepOverlay({
     try {
       await applyAction(action);
       qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast(`Redid: ${action.type} customer`);
     } catch {
       toast.error("Redo failed");

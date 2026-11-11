@@ -37,6 +37,9 @@ export function useNextCustomerId(product: ProductType) {
   });
 }
 
+/** The dashboard reports (reminders, defaulters, monthly dues ...) are built from the customers: refresh them whenever a customer changes. */
+const refreshDashboard = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: ["dashboard"] });
+
 export function useCreateCustomer(product: ProductType) {
   const qc = useQueryClient();
   return useMutation({
@@ -44,6 +47,7 @@ export function useCreateCustomer(product: ProductType) {
       product === "edi" ? customersApi.createEdi(data) : customersApi.createIop(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customers", product] });
+      refreshDashboard(qc);
       toast.success("Customer created");
     },
     // say WHY (e.g. "the balance to pay is zero or less") when the server explains it
@@ -61,9 +65,13 @@ export function useUpdateCustomer(product: ProductType) {
       product === "edi" ? customersApi.updateEdi(id, data) : customersApi.updateIop(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customers", product] });
+      refreshDashboard(qc);
       toast.success("Customer updated");
     },
-    onError: () => toast.error("Failed to update customer"),
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Failed to update customer");
+    },
   });
 }
 
@@ -76,6 +84,7 @@ export function useDeleteCustomer(product: ProductType) {
         : customersApi.deleteIop(id, resequence),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customers", product] });
+      refreshDashboard(qc);
       toast.success("Customer deleted");
     },
     onError: () => toast.error("Failed to delete customer"),

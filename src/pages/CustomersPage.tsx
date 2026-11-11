@@ -119,6 +119,7 @@ export default function CustomersPage() {
           if (!carry) return;
           await runCarry(product, customerId, carry);
           qc.invalidateQueries({ queryKey: ["customers", product] });
+          qc.invalidateQueries({ queryKey: ["dashboard"] });
         },
       });
     }
@@ -147,6 +148,7 @@ export default function CustomersPage() {
         await fn(entry.customer);
       }
       qc.invalidateQueries({ queryKey: ["customers", entry.product] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Undone");
     } catch { toast.error("Undo failed"); }
   };
@@ -169,6 +171,7 @@ export default function CustomersPage() {
         await fn(entry.customer.customer_id, false);
       }
       qc.invalidateQueries({ queryKey: ["customers", entry.product] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Redone");
     } catch { toast.error("Redo failed"); }
   };
@@ -918,7 +921,10 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       REQUIRED.push(["interest_payment_frequency", "Interest Freq."]);
     }
 
-    const missing = REQUIRED.filter(([k]) => {
+    // Closing an account must always be possible: many old accounts have no segment (or another field) filled in, and demanding it here
+    // would make "Account Closed" impossible to save. The fields are still required to keep an account OPEN.
+    const closingNow = merged.is_closed === "true" || merged.is_closed === true;
+    const missing = closingNow ? [] : REQUIRED.filter(([k]) => {
       const v = merged[k];
       return v === null || v === undefined || String(v).trim() === "";
     });
