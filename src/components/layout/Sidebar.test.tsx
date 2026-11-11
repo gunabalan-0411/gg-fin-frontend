@@ -138,7 +138,7 @@ describe("sections as a branch under the main item (SM-02, SM-04)", () => {
     expect(ALL_NAV_ITEMS.filter((i) => i.sections).map((i) => i.to)).toEqual(["/expenses", "/personal", "/settings"]);
     expect(PERSONAL_SECTIONS.map((s) => s.label)).toEqual(["Dashboard", "Expenses", "Monthly budget", "Savings", "Friendly Lends", "Gifts Received", "Investments"]);
     expect(ACCOUNT_SECTIONS.map((s) => s.label)).toEqual(["Add Expense", "Unclaimed Amount", "Defaulted Amount"]);
-    expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "Security"]);
+    expect(SETTINGS_SECTIONS.map((s) => s.label)).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "TV", "Security"]);
   });
 
   it("the branch of the page you are on is open: its sections, indented under it, linking to ?section=…", () => {
@@ -172,7 +172,7 @@ describe("sections as a branch under the main item (SM-02, SM-04)", () => {
   it("Settings branches the same way (it is pinned, below the groups)", () => {
     renderMenu({}, "/settings?section=drive");
     const branch = screen.getByTestId("branch-settings");
-    expect(within(branch).getAllByRole("link").map((a) => a.textContent)).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "Security"]);
+    expect(within(branch).getAllByRole("link").map((a) => a.textContent)).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "TV", "Security"]);
     expect(screen.getByTestId("section-settings-drive")).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("section-settings-drive")).toHaveAttribute("href", "/settings?section=drive");
   });

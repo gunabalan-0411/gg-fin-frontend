@@ -6,7 +6,7 @@
 // no second navigation bar inside the page.
 import {
   LayoutDashboard, Users, ArrowLeftRight, Receipt, Mic, ScanText, Settings, BookText, Wallet, Landmark, Database, Printer,
-  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, NotebookPen, PiggyBank, HandCoins, Gift, TrendingUp, Target,
+  AlertCircle, ShieldAlert, HardDrive, Mail, FolderSync, Cpu, Key, Tv, NotebookPen, PiggyBank, HandCoins, Gift, TrendingUp, Target,
   type LucideIcon,
 } from "lucide-react";
 
@@ -55,6 +55,7 @@ export const SETTINGS_SECTIONS = [
   { id: "upi", label: "UPI Import", icon: Mail },
   { id: "drive", label: "Google Drive", icon: FolderSync },
   { id: "device", label: "Inference", icon: Cpu },
+  { id: "tv", label: "TV", icon: Tv },
   { id: "security", label: "Security", icon: Key },
 ] as const satisfies readonly NavSection[];
 

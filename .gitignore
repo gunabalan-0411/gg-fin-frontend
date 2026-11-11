@@ -31,3 +31,10 @@ vitest.config.ts.timestamp-*
 .DS_Store
 Thumbs.db
 *.swp
+
+# Android TV app build output
+tv-app/.gradle/
+tv-app/build/
+tv-app/app/build/
+tv-app/local.properties
+*.apk

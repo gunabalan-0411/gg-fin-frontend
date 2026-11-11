@@ -851,6 +851,10 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
           for (const k of Object.keys(src)) {
             if (k !== "customer_id" && src[k] != null) prefilled[k] = String(src[k]);
           }
+          // A copy is a NEW loan: it starts with nothing paid. The old account's balance (which may be zero or even negative after an
+          // overpayment) must not come along - such a copy would be created already closed and vanish from the active list.
+          if (product === "edi") prefilled.outstanding_balance = prefilled.loan_amount ?? "";
+          else { prefilled.principal_paid = "0"; delete prefilled.outstanding_balance; }
           setForm(prefilled);
         } else {
           setForm({ customer_id: String(id) });
@@ -862,12 +866,16 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       setForm({});
       setNextId(null);
     }
+    balanceTouched.current = false;                            // a copy's balance follows the loan amount until the person types in it
+    setBalVer(0);
     setReuseUpi(true);                                         // every time the form opens, the inherit switches start ON
     setReuseAliases(true);
     setReuseMismatches(true);
   }, [open, initial, duplicateFrom, product]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const balanceTouched = useRef(false);
+  const [balVer, setBalVer] = useState(0);                         // re-draws the balance box when it follows the loan amount
 
   const handleNameChange = useCallback((value: string) => {
     set("customer_name", value);
@@ -919,6 +927,18 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       return;
     }
 
+    // An account that is OPEN needs something left to pay; otherwise the server would create it already closed (hidden from the active list).
+    if (!initial && !(merged.is_closed === "true" || merged.is_closed === true)) {
+      const loan = Number(merged.loan_amount);
+      const owed = product === "edi" ? Number(merged.outstanding_balance) : loan - Number(merged.principal_paid || 0);
+      if (loan > 0 && owed <= 0) {
+        toast.error(product === "edi"
+          ? "The balance to pay is zero or less, so this account would be created already closed. Enter the new loan's balance, or switch 'Account Closed' on."
+          : "Principal paid is not less than the loan amount, so this account would be created already closed. Enter the new loan's figures, or switch 'Account Closed' on.");
+        return;
+      }
+    }
+
     const data: Record<string, unknown> = { ...merged };
     ["customer_id", "customer_segment_id", "loan_amount", "disbursed_amount",
      "interest", "outstanding_balance", "interest_payment_frequency", "principal_paid"].forEach((k) => {
@@ -941,7 +961,11 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
 
   const getVal = (key: string) => {
     if (initial) return String((initial as unknown as Record<string, unknown>)[key] ?? "");
-    if (duplicateFrom && key !== "customer_id") return String((duplicateFrom as unknown as Record<string, unknown>)[key] ?? "");
+    if (duplicateFrom && key !== "customer_id") {
+      if (product === "edi" && key === "outstanding_balance") return form.outstanding_balance ?? String((duplicateFrom as EdiCustomer).loan_amount ?? "");
+      if (product === "iop" && key === "principal_paid") return form.principal_paid ?? "0";
+      return String((duplicateFrom as unknown as Record<string, unknown>)[key] ?? "");
+    }
     return "";
   };
 
@@ -966,9 +990,16 @@ export function CustomerFormModal({ open, onClose, product, initial, duplicateFr
       </label>
       <Input
         type="number"
-        key={`${key}-${initial?.customer_id ?? "new"}-${(duplicateFrom as EdiCustomer | null)?.customer_id ?? ""}`}
+        key={`${key}-${initial?.customer_id ?? "new"}-${(duplicateFrom as EdiCustomer | null)?.customer_id ?? ""}${key === "outstanding_balance" ? `-${balVer}` : ""}`}
         defaultValue={getVal(key)}
-        onChange={(e) => set(key, e.target.value)}
+        onChange={(e) => {
+          set(key, e.target.value);
+          if (key === "outstanding_balance") balanceTouched.current = true;
+          if (key === "loan_amount" && duplicateFrom && !initial && product === "edi" && !balanceTouched.current) {
+            set("outstanding_balance", e.target.value);            // the new loan's balance is the new loan amount, until it is typed over
+            setBalVer((v) => v + 1);
+          }
+        }}
       />
     </div>
   );

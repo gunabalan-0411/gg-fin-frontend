@@ -19,6 +19,7 @@ import SqlPage from "@/pages/SqlPage";
 import OAuthCallbackPage from "@/pages/OAuthCallbackPage";
 import DailyPrintPage from "@/pages/DailyPrintPage";
 import NotePadPage from "@/pages/NotePadPage";
+import TvPage from "@/tv/TvPage";
 import { useAuthStore } from "@/hooks/useAuth";
 import { setupApi } from "@/services/api";
 
@@ -28,7 +29,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <SessionGuard>{children}</SessionGuard>;
 }
 
-export default function App() {
+function MainApp() {
   const authenticated = useAuthStore((s) => s.authenticated);
   const [setupChecked, setSetupChecked] = useState(false);
   const [isFresh, setIsFresh] = useState(false);
@@ -85,4 +86,12 @@ export default function App() {
       </Routes>
     </BrowserRouter>
   );
+}
+
+/** The home TV page has its own pairing (no login, no setup check), so it is chosen before anything else loads. */
+export const isTvPath = (path: string) => path === "/tv" || path.startsWith("/tv/");
+
+export default function App() {
+  if (isTvPath(window.location.pathname)) return <TvPage />;
+  return <MainApp />;
 }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher icon: the mint circle with a magnifier, like the first screen of the TV page -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <path
+        android:fillColor="#A8D3C2"
+        android:pathData="M48,48m-44,0a44,44 0,1 1,88 0a44,44 0,1 1,-88 0" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M44,30a14,14 0,1 1,0 28a14,14 0,1 1,0 -28z"
+        android:strokeColor="#14402F"
+        android:strokeLineCap="round"
+        android:strokeWidth="5" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M55,55L68,68"
+        android:strokeColor="#14402F"
+        android:strokeLineCap="round"
+        android:strokeWidth="5" />
+</vector>

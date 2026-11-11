@@ -46,7 +46,11 @@ export function useCreateCustomer(product: ProductType) {
       qc.invalidateQueries({ queryKey: ["customers", product] });
       toast.success("Customer created");
     },
-    onError: () => toast.error("Failed to create customer"),
+    // say WHY (e.g. "the balance to pay is zero or less") when the server explains it
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Failed to create customer");
+    },
   });
 }
 

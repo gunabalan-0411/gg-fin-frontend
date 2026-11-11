@@ -2,6 +2,7 @@ import axios from "axios";
 import type {
   CarryForwardResult, CarryPreview, IopSplitCheck, PersonalAccount, PersonalAccountEntry, PersonalAccountsView, PersonalBudgetView, PersonalDashboard, ReconcileResult, PersonalRecordKind, Expense, ExpenseCategory, ExpenseFilters, ExpensePerson, ExpenseSummary, FinanceType, LegacyExpenseGroup, MappingCandidate, MappingConflict, MappingKind, MappingPopupData, MappingResolution, MappingSimilar, NotePage, NotePageSummary, PageInk, RememberResult,
 } from "@/types";
+import type { TvDevice } from "@/tv/types";
 
 export interface UpiPairing {
   txn_id: number;
@@ -434,3 +435,10 @@ export const printApi = {
 };
 
 export default api;
+
+// ── Home TV (Settings > TV): enter the code a TV shows, list / remove paired TVs ──────────────────────────
+export const tvAdminApi = {
+  approve: (code: string, name?: string) => api.post<{ ok: boolean; name: string }>("/tv/pair/approve", { code, name }),
+  devices: () => api.get<TvDevice[]>("/tv/devices"),
+  revoke: (id: number) => api.delete(`/tv/devices/${id}`),
+};

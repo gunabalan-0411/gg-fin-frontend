@@ -123,12 +123,12 @@ describe("Settings (SM-03, SM-04, SM-07)", () => {
     expect(await h2(/UPI Data Import/)).toBeInTheDocument();
   });
 
-  it("phone: the tab row lists the same five sections and switches through the URL", async () => {
+  it("phone: the tab row lists the same six sections and switches through the URL", async () => {
     screenOf("phone");
     const user = userEvent.setup();
     renderAt(<SettingsPage />, "/settings");
     const tabs = await screen.findByTestId("section-tabs");
-    expect(within(tabs).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "Security"]);
+    expect(within(tabs).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Local Backup", "UPI Import", "Google Drive", "Inference", "TV", "Security"]);
     await user.click(within(tabs).getByRole("button", { name: /Security/ }));
     expect(await h2(/Security/)).toBeInTheDocument();
     expect(screen.getByTestId("url")).toHaveTextContent("section=security");

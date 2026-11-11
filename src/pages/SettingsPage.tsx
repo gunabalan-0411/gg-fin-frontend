@@ -9,6 +9,7 @@ import {
   Mail, FolderSync, Cpu, MonitorDot, Key, Copy, Eye, EyeOff,
 } from "lucide-react";
 import { authApi, backupApi, upiApi, driveApi, voiceApi } from "@/services/api";
+import TvSection from "@/pages/TvSection";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type DriveFile = { id: string; name: string; size: string; modifiedTime: string };
@@ -1108,6 +1109,7 @@ export default function SettingsPage() {
     if (id === "drive")    return gStat.driveOk ? "ok" : "off";
     if (id === "device")   return gStat.deviceMode === "cuda" ? "ok" : "warn";
     if (id === "security") return "ok";
+    if (id === "tv")       return "ok";
     return "off";
   };
 
@@ -1187,6 +1189,7 @@ export default function SettingsPage() {
               />
             )}
             {activeSection === "security" && <SecuritySection showToast={showToast} />}
+            {activeSection === "tv" && <TvSection showToast={showToast} />}
           </div>
         </main>
       </div>
