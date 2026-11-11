@@ -3,7 +3,7 @@ import CustomerCard from "./CustomerCard";
 import PaymentsPanel from "./PaymentsPanel";
 import { Icon } from "./icons";
 import { amt } from "./format";
-import { listenOnce, setBackHandler } from "./bridge";
+import { listenOnce, setBackHandler, setMicKeyHandler } from "./bridge";
 import { T } from "./text";
 import { isUnauthorized, tvClient } from "./tvClient";
 import type { TvCustomer, TvProduct, TvSearchHit } from "./types";
@@ -106,8 +106,11 @@ export default function TvSearch({ token, onUnpaired, onHome }: Props) {
     const heard = await listenOnce();
     setListening(false);
     if (heard.unsupported) { setMicMsg(T.noMic); inputRef.current?.focus(); return; }
-    if (heard.text) setQuery(heard.text);
+    if (heard.text) setQuery(heard.text); else setMicMsg(T.notHeard);
   };
+
+  // the remote's own mic key (when the TV hands it to the app) does what the on-screen mic does
+  useEffect(() => { setMicKeyHandler(() => { void startListening(); }); return () => setMicKeyHandler(null); });
 
   // ── Back ──
   const goBack = useCallback((): boolean => {

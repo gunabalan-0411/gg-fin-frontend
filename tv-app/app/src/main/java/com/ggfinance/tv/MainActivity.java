@@ -30,8 +30,11 @@ import java.util.ArrayList;
 /**
  * GG Finance for the home TV: a full-screen WebView on the app's /tv page, plus two small bridges the page asks for.
  *
- *   window.GGTV.listen()  - the page's mic button. Listens with the TV's own speech service (Tamil) and answers by calling
- *                           window.__ggtvHeard(text), or window.__ggtvListenEnd() when nothing was heard.
+ *   window.GGTV.listen()  - the page's mic button. A TV has no microphone of its own - only the remote has one - so this opens the
+ *                           system's voice screen (the same "Speak now" overlay as the TV's own search), which listens to the remote's
+ *                           mic. It answers by calling window.__ggtvHeard(text), window.__ggtvListenEnd() when nothing was heard, or
+ *                           window.__ggtvNoMic() when this TV has no speech service at all. The remote's Google/mic key
+ *                           (KEYCODE_SEARCH / VOICE_ASSIST), when the TV delivers it to the app, does the same as the page's mic.
  *   Back key              - asks the page first (window.__ggtvBack(): it clears the search / goes to its first screen and says true);
  *                           only when the page has nothing left to go back to does the app close.
  *
@@ -40,6 +43,7 @@ import java.util.ArrayList;
 public class MainActivity extends Activity {
 
     private static final int REQ_MIC = 1001;
+    private static final int REQ_SPEECH = 1002;
     private static final long RETRY_MS = 5000;
     private static final String SPEECH_LANGUAGE = "ta-IN";
 
@@ -71,9 +75,7 @@ public class MainActivity extends Activity {
             s.setForceDark(WebSettings.FORCE_DARK_OFF);     // the page is white on purpose; do not let the TV invert it
         }
 
-        if (SpeechRecognizer.isRecognitionAvailable(this)) {
-            web.addJavascriptInterface(new Bridge(), "GGTV");   // without a recogniser the page simply says there is no mic
-        }
+        web.addJavascriptInterface(new Bridge(), "GGTV");       // the page's mic button; listen() reports back when there is no speech service
 
         final String host = Uri.parse(BuildConfig.TV_URL).getHost();
         web.setWebViewClient(new WebViewClient() {
@@ -114,6 +116,20 @@ public class MainActivity extends Activity {
         if (hasFocus) hideSystemBars();
     }
 
+    // ── The remote's own mic / Google key ──────────────────────────────────────────────────────────────────────
+    /** Seen before the WebView gets it. Only TVs that hand this key to the foreground app deliver it; the page decides what to do (it listens when its search is open). */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int k = event.getKeyCode();
+        if (k == KeyEvent.KEYCODE_SEARCH || k == KeyEvent.KEYCODE_ASSIST || k == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && web != null) {
+                web.evaluateJavascript("window.__ggtvMicKey && window.__ggtvMicKey()", null);
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
     // ── Back: the page first ────────────────────────────────────────────────────────────────────────────────
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
@@ -135,7 +151,37 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean listening = false;
+
     private void startListening() {
+        if (listening) return;
+        listening = true;
+        // 1) the system voice screen: it listens to the remote's mic and needs no permission of ours
+        Intent speak = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        speak.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        speak.putExtra(RecognizerIntent.EXTRA_LANGUAGE, SPEECH_LANGUAGE);
+        speak.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, SPEECH_LANGUAGE);
+        speak.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        speak.putExtra(RecognizerIntent.EXTRA_PROMPT, "பெயரைச் சொல்லுங்கள்");
+        try {
+            startActivityForResult(speak, REQ_SPEECH);
+            return;
+        } catch (Exception e) { /* no voice screen on this TV: try the background recogniser */ }
+        // 2) the background recogniser (a phone, or a TV box with a microphone)
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) { listening = false; noMic(); return; }
+        listenInBackground();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_SPEECH) return;
+        listening = false;
+        ArrayList<String> list = (resultCode == RESULT_OK && data != null) ? data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS) : null;
+        if (list != null && !list.isEmpty() && list.get(0) != null && !list.get(0).trim().isEmpty()) heard(list.get(0)); else listenEnded();
+    }
+
+    private void listenInBackground() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             listenAfterPermission = true;
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
@@ -145,10 +191,11 @@ public class MainActivity extends Activity {
         recognizer = SpeechRecognizer.createSpeechRecognizer(this);
         recognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onResults(Bundle results) {
+                listening = false;
                 ArrayList<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
                 if (list != null && !list.isEmpty()) heard(list.get(0)); else listenEnded();
             }
-            @Override public void onError(int error) { listenEnded(); }
+            @Override public void onError(int error) { listening = false; listenEnded(); }
             @Override public void onReadyForSpeech(Bundle params) { }
             @Override public void onBeginningOfSpeech() { }
             @Override public void onRmsChanged(float rmsdB) { }
@@ -171,6 +218,10 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.__ggtvHeard && window.__ggtvHeard(" + JSONObject.quote(text) + ")", null);
     }
 
+    private void noMic() {
+        web.evaluateJavascript("window.__ggtvNoMic && window.__ggtvNoMic()", null);
+    }
+
     private void listenEnded() {
         web.evaluateJavascript("window.__ggtvListenEnd && window.__ggtvListenEnd()", null);
     }
@@ -180,7 +231,7 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != REQ_MIC) return;
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-        if (granted && listenAfterPermission) startListening(); else if (listenAfterPermission) listenEnded();
+        if (granted && listenAfterPermission) listenInBackground(); else if (listenAfterPermission) { listening = false; listenEnded(); }
         listenAfterPermission = false;
     }
 

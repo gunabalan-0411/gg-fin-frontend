@@ -5,7 +5,7 @@
  */
 .tv-root {
   position: fixed; left: 0; top: 0; z-index: 50; transform-origin: 0 0; overflow: hidden;
-  display: grid; grid-template-columns: minmax(0, 1fr) 880px; grid-template-rows: minmax(0, 1fr);
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); grid-template-rows: minmax(0, 1fr);
   background: #F4F6F4; color: #0B0B0B; line-height: normal;
   font-family: "Manrope", "Noto Sans Tamil", sans-serif; font-variant-numeric: tabular-nums;
 }
@@ -62,16 +62,17 @@
 .tv-root .cen { font-size: 20px; color: #5E6662; }
 .tv-root .active { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: #D6F5E7; font-size: 16px; font-weight: 600; color: #1E3A2E; flex: none; }
 .tv-root .active i { width: 8px; height: 8px; border-radius: 4px; background: #1F8A5E; }
-.tv-root .cinfo { display: grid; grid-template-columns: auto auto minmax(0, 1fr); border-top: 1px solid #EDEDED; }
+.tv-root .cinfo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-top: 1px solid #EDEDED; }   /* phone | date, the address on a row of its own (the left column is 40% of the screen) */
 .tv-root .cinfo .cell { display: flex; align-items: center; gap: 12px; padding: 18px 32px; border-right: 1px solid #EDEDED; font-size: 24px; min-width: 0; }
 .tv-root .cinfo .cell:first-child { padding-left: 44px; }
 .tv-root .cinfo .cell svg.i { color: #7A7A7A; }
-.tv-root .cinfo .cell.addr { border-right: 0; font-size: 20px; font-weight: 500; }
+.tv-root .cinfo .cell:nth-child(2) { border-right: 0; }
+.tv-root .cinfo .cell.addr { grid-column: 1 / -1; border-right: 0; border-top: 1px solid #EDEDED; font-size: 20px; font-weight: 500; padding-left: 44px; }
 .tv-root .cloan { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid #111111; }
-.tv-root .cloan .box { display: flex; flex-direction: column; gap: 6px; padding: 22px 32px 26px; border-left: 1px solid #EDEDED; }
+.tv-root .cloan .box { display: flex; flex-direction: column; gap: 6px; padding: 22px 20px 26px 24px; min-width: 0; border-left: 1px solid #EDEDED; }
 .tv-root .cloan .box:first-child { padding-left: 44px; border-left: 0; }
 .tv-root .cloan .bl { font-size: 16px; color: #7A7A7A; }
-.tv-root .cloan .bv { font-size: 38px; font-weight: 500; }
+.tv-root .cloan .bv { font-size: 30px; font-weight: 500; white-space: nowrap; }
 
 /* ── statement (right) ── */
 .tv-root .ledger-col { display: flex; padding: 40px 64px 40px 8px; min-height: 0; min-width: 0; }

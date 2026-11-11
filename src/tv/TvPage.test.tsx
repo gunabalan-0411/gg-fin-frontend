@@ -61,7 +61,7 @@ async function openSearch() {
 const type = (text: string) => fireEvent.change(screen.getByLabelText(T.search), { target: { value: text } });
 
 beforeEach(() => { Object.values(api).forEach((f) => f.mockReset()); delete (window as any).GGTV; });
-afterEach(() => { vi.useRealTimers(); delete (window as any).GGTV; delete (window as any).__ggtvHeard; delete (window as any).__ggtvBack; });
+afterEach(() => { vi.useRealTimers(); delete (window as any).GGTV; delete (window as any).__ggtvHeard; delete (window as any).__ggtvListenEnd; delete (window as any).__ggtvNoMic; delete (window as any).__ggtvMicKey; delete (window as any).__ggtvBack; });
 
 describe("pairing", () => {
   it("TV-FE-01 an unpaired TV shows a big 6-digit code and the steps, in Tamil", async () => {
@@ -272,7 +272,7 @@ describe("mic", () => {
     expect(await screen.findAllByTestId("tv-suggestion")).toHaveLength(2);
   });
 
-  it("TV-FE-18 hearing nothing just stops listening", async () => {
+  it("TV-FE-18 hearing nothing stops listening and says so (in Tamil)", async () => {
     setup();
     (window as any).GGTV = { listen: vi.fn() };
     await openSearch();
@@ -280,7 +280,31 @@ describe("mic", () => {
     act(() => { (window as any).__ggtvListenEnd(); });
     await waitFor(() => expect(screen.getByRole("button", { name: T.speak })).toHaveAttribute("aria-pressed", "false"));
     expect(screen.getByLabelText(T.search)).toHaveValue("");
-    expect(screen.getByText(T.micHint)).toBeInTheDocument();
+    expect(screen.getByText(T.notHeard)).toBeInTheDocument();
+  });
+
+  it("TV-FE-18b the app saying this TV has no speech service shows the typing message", async () => {
+    setup();
+    (window as any).GGTV = { listen: vi.fn() };
+    await openSearch();
+    fireEvent.click(screen.getByRole("button", { name: T.speak }));
+    act(() => { (window as any).__ggtvNoMic(); });
+    expect(await screen.findByText(T.noMic)).toBeInTheDocument();
+    expect(screen.getByLabelText(T.search)).toHaveFocus();
+  });
+
+  it("TV-FE-18c the remote's own mic key (window.__ggtvMicKey) listens like the on-screen mic, and only while the search is open", async () => {
+    const listen = vi.fn();
+    setup();
+    (window as any).GGTV = { listen };
+    expect((window as any).__ggtvMicKey).toBeUndefined();                    // the circle home screen: the key does nothing
+    await openSearch();
+    act(() => { (window as any).__ggtvMicKey(); });
+    expect(listen).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: T.speak })).toHaveAttribute("aria-pressed", "true");
+    act(() => { (window as any).__ggtvHeard("murgan"); });
+    await waitFor(() => expect(api.search).toHaveBeenCalledWith("ggtv_abc", "murgan", "iop"));
+    expect(screen.getByLabelText(T.search)).toHaveValue("murgan");
   });
 
   it("TV-FE-19 a second press while listening does not start a second recognition", async () => {
