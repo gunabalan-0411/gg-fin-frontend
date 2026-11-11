@@ -81,11 +81,14 @@ export const transactionsApi = {
   createEdi: (data: object) => api.post("/transactions/edi", data),
   updateEdi: (id: number, data: object) => api.patch(`/transactions/edi/${id}`, data),
   deleteEdi: (id: number) => api.delete(`/transactions/edi/${id}`),
+  /** Delete several of ONE customer's transactions together (all or nothing). */
+  bulkDeleteEdi: (customer_id: number, ids: number[]) => api.post<{ deleted: number }>("/transactions/edi/bulk-delete", { customer_id, ids }),
 
   listIop: (collection_date: string) => api.get("/transactions/iop", { params: { collection_date } }),
   createIop: (data: object) => api.post("/transactions/iop", data),
   updateIop: (id: number, data: object) => api.patch(`/transactions/iop/${id}`, data),
   deleteIop: (id: number) => api.delete(`/transactions/iop/${id}`),
+  bulkDeleteIop: (customer_id: number, ids: number[]) => api.post<{ deleted: number }>("/transactions/iop/bulk-delete", { customer_id, ids }),
 };
 
 // ── Expenses ──────────────────────────────────────────────────────────────

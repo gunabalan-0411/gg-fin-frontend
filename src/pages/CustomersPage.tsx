@@ -6,7 +6,7 @@ import {
   ChevronUp, ChevronDown, Info, Filter, AlertTriangle, Share2, Copy,
   Undo2, Redo2,
 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
@@ -14,7 +14,7 @@ import { DatePicker } from "@/components/ui/DatePicker";
 import {
   useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer,
 } from "@/hooks/useCustomers";
-import { customersApi, nameMappingsApi, upiApi } from "@/services/api";
+import { customersApi, nameMappingsApi, transactionsApi, upiApi } from "@/services/api";
 import { Switch } from "@/components/ui/Switch";
 import { CloseOldAccountModal } from "@/components/customers/CloseOldAccountModal";
 import { newCarryRun, runCarry, undoCarry, type CarryOptions, type CarryRun, type CustomerSaveOptions } from "@/utils/customerCarry";
@@ -557,6 +557,59 @@ export function CustomerDetailModal({ customer, product, onClose }: {
   const txns = Array.isArray(_txnsRaw) ? _txnsRaw : [];
   const filteredTxns = txnFilter === "paid" ? txns.filter((t) => t.payment_status === "PAID") : txns;
 
+  // ── select rows -> Delete selected (removes them from the customer's transactions / the collection details) ──
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [principalTakenBack, setPrincipalTakenBack] = useState(0);           // IOP: the deleted rows' principal is no longer paid
+  const lastClicked = useRef<number | null>(null);
+  useEffect(() => { setSelected(new Set()); setConfirming(false); lastClicked.current = null; }, [txnFilter]);
+
+  const selectedTxns = filteredTxns.filter((t) => selected.has(t.transaction_id));
+  const selectedTotal = selectedTxns.reduce((s, t) => s + Number(t.amount), 0);
+  const allSelected = filteredTxns.length > 0 && selectedTxns.length === filteredTxns.length;
+
+  const toggleRow = (id: number, index: number, shift: boolean) => {
+    setConfirming(false);
+    const last = lastClicked.current;                                         // read now: the updater below runs later, after this is overwritten
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const turnOn = !prev.has(id);
+      if (shift && last !== null) {                                           // Shift + click: everything between the last click and this one
+        const [a, b] = [Math.min(last, index), Math.max(last, index)];
+        filteredTxns.slice(a, b + 1).forEach((t) => (turnOn ? next.add(t.transaction_id) : next.delete(t.transaction_id)));
+      } else if (turnOn) next.add(id); else next.delete(id);
+      return next;
+    });
+    lastClicked.current = index;
+  };
+  const toggleAll = () => { setConfirming(false); setSelected(allSelected ? new Set() : new Set(filteredTxns.map((t) => t.transaction_id))); };
+
+  const bulkDelete = useMutation({
+    mutationFn: (ids: number[]) =>
+      (product === "edi" ? transactionsApi.bulkDeleteEdi : transactionsApi.bulkDeleteIop)(customer.customer_id, ids),
+    onSuccess: (res, ids) => {
+      const taken = product === "iop"
+        ? txns.filter((t) => ids.includes(t.transaction_id)).reduce((s, t) => s + Number((t as IopTransaction).principal_amount ?? 0), 0)
+        : 0;
+      setPrincipalTakenBack((v) => v + taken);
+      qc.invalidateQueries({ queryKey: ["customer-txns", product, customer.customer_id] });
+      qc.invalidateQueries({ queryKey: ["customers", product] });
+      qc.invalidateQueries({ queryKey: ["transactions", product] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      const n = res?.data?.deleted ?? ids.length;
+      toast.success(`${n} transaction${n !== 1 ? "s" : ""} deleted`);
+      setSelected(new Set());
+      setConfirming(false);
+      lastClicked.current = null;
+    },
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Failed to delete the transactions");
+      setConfirming(false);
+    },
+  });
+
   const totalPaid = txns.filter((t) => t.payment_status === "PAID").reduce((s, t) => s + Number(t.amount), 0);
   const loanAmount = Number(customer.loan_amount || 0);
   // EDI outstanding = loan_amount minus total paid (computed from actual txns)
@@ -579,7 +632,7 @@ export function CustomerDetailModal({ customer, product, onClose }: {
   const subTitle = hasTamil ? englishName : undefined;
 
   const iopC2 = customer as IopCustomer;
-  const iopOutstanding = Number(iopC2.outstanding_balance ?? 0);
+  const iopOutstanding = Number(iopC2.outstanding_balance ?? 0) + principalTakenBack;
 
   const statsCards = [
     { label: "Loan Start",   value: fmtDate(customer.loan_start_date) },
@@ -684,11 +737,51 @@ export function CustomerDetailModal({ customer, product, onClose }: {
             </div>
           </div>
 
+          {/* Selected rows: delete them */}
+          {selectedTxns.length > 0 && (
+            <div className="flex items-center justify-between gap-2 flex-wrap rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2" data-testid="txn-selection-bar">
+              <p className="text-xs text-foreground" data-testid="txn-selected-count">
+                <span className="font-semibold">{selectedTxns.length} selected</span>
+                <span className="text-muted-foreground"> · {fmtAmt(selectedTotal)}</span>
+              </p>
+              {confirming ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-destructive font-medium">
+                    Delete {selectedTxns.length} transaction{selectedTxns.length !== 1 ? "s" : ""} for good?{product === "iop" ? " Their principal is taken back." : ""}
+                  </span>
+                  <button type="button" data-testid="txn-delete-cancel" onClick={() => setConfirming(false)} disabled={bulkDelete.isPending}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button type="button" data-testid="txn-delete-confirm" onClick={() => bulkDelete.mutate(selectedTxns.map((t) => t.transaction_id))} disabled={bulkDelete.isPending}
+                    className="px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-60">
+                    {bulkDelete.isPending ? "Deleting…" : "Yes, delete"}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setSelected(new Set())}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    Clear
+                  </button>
+                  <button type="button" data-testid="txn-delete-selected" onClick={() => setConfirming(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-semibold hover:opacity-90 transition-opacity">
+                    <Trash2 className="h-3.5 w-3.5" /> Delete selected
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Transaction table */}
           <div className="rounded-lg border border-border overflow-hidden max-h-72 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-border">
+                  <th className="pl-4 pr-1 py-2.5 w-8">
+                    <input type="checkbox" data-testid="txn-select-all" aria-label="Select all transactions" checked={allSelected} onChange={toggleAll}
+                      disabled={isLoading || filteredTxns.length === 0} className="h-3.5 w-3.5 cursor-pointer accent-foreground" />
+                  </th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Date</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Amount</th>
                   <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Mode</th>
@@ -699,16 +792,21 @@ export function CustomerDetailModal({ customer, product, onClose }: {
                 {isLoading ? (
                   [...Array(4)].map((_, i) => (
                     <tr key={i} className="border-b border-border/50">
-                      {[...Array(4)].map((_, j) => (
+                      {[...Array(5)].map((_, j) => (
                         <td key={j} className="px-4 py-3"><div className="h-4 bg-secondary rounded animate-pulse" /></td>
                       ))}
                     </tr>
                   ))
                 ) : filteredTxns.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-xs">No transactions found</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-xs">No transactions found</td></tr>
                 ) : (
-                  filteredTxns.map((t) => (
-                    <tr key={t.transaction_id} className="border-b border-border/50 hover:bg-secondary/30">
+                  filteredTxns.map((t, i) => (
+                    <tr key={t.transaction_id} data-testid="txn-row" className={`border-b border-border/50 hover:bg-secondary/30 ${selected.has(t.transaction_id) ? "bg-destructive/5" : ""}`}>
+                      <td className="pl-4 pr-1 py-2.5 w-8">
+                        <input type="checkbox" data-testid={`txn-select-${t.transaction_id}`} aria-label={`Select transaction ${fmtDate(t.collection_date)}`}
+                          checked={selected.has(t.transaction_id)} onChange={() => { /* handled in onClick (it carries the Shift key) */ }}
+                          onClick={(e) => toggleRow(t.transaction_id, i, e.shiftKey)} className="h-3.5 w-3.5 cursor-pointer accent-foreground" />
+                      </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(t.collection_date)}</td>
                       <td className="px-4 py-2.5 font-medium text-foreground">{fmtAmt(Number(t.amount))}</td>
                       <td className="px-4 py-2.5 text-muted-foreground capitalize">{(t.payment_mode ?? "").toLowerCase()}</td>
