@@ -8,7 +8,7 @@
 
 declare global {
   interface Window {
-    GGTV?: { listen?: () => void };
+    GGTV?: { listen?: () => void; stop?: () => void };
     __ggtvHeard?: (text: string) => void;
     __ggtvListenEnd?: () => void;
     __ggtvNoMic?: () => void;
@@ -24,6 +24,14 @@ export const SPEECH_LANG = "ta-IN";
 
 export interface Heard { text: string; unsupported?: boolean }
 
+let stopWeb: (() => void) | null = null;
+
+/** Press-and-hold: the key was let go - end the recording now (the app's own recogniser and the browser's stop at once; the TV's voice screen ends by itself). */
+export function stopListening(): void {
+  try { window.GGTV?.stop?.(); } catch { /* ignore */ }
+  try { stopWeb?.(); } catch { /* ignore */ }
+}
+
 export function listenOnce(): Promise<Heard> {
   return new Promise((resolve) => {
     let finished = false;
@@ -31,6 +39,7 @@ export function listenOnce(): Promise<Heard> {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
+      stopWeb = null;
       if (window.__ggtvHeard === onHeard) delete window.__ggtvHeard;
       if (window.__ggtvListenEnd === onEnd) delete window.__ggtvListenEnd;
       if (window.__ggtvNoMic === onNoMic) delete window.__ggtvNoMic;
@@ -59,6 +68,7 @@ export function listenOnce(): Promise<Heard> {
         rec.onerror = onEnd;
         rec.onend = onEnd;
         rec.start();
+        stopWeb = () => rec.stop();
         return;
       } catch { /* fall through */ }
     }

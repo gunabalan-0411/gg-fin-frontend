@@ -3,7 +3,7 @@ import CustomerCard from "./CustomerCard";
 import PaymentsPanel from "./PaymentsPanel";
 import { Icon } from "./icons";
 import { amt } from "./format";
-import { listenOnce, setBackHandler, setMicKeyHandler } from "./bridge";
+import { listenOnce, setBackHandler, setMicKeyHandler, stopListening } from "./bridge";
 import { T } from "./text";
 import { isUnauthorized, tvClient } from "./tvClient";
 import type { TvCustomer, TvProduct, TvSearchHit } from "./types";
@@ -37,9 +37,9 @@ interface Props {
 }
 
 /**
- * Search + view, laid out as the design: left column = logo and time, the EL | தவணை switch, the search box (type, or press the mic and say
+ * Search + view, laid out as the design: left column = logo and time, the EL | தவணை switch, the search bar (hold OK and say
  * the name), the "did you mean" names, and the CUSTOMER card at the bottom; right column = the statement.
- * The remote: OK on the mic to speak; up = the EL | தவணை switch; down into the names (each one is previewed as you land on it);
+ * The remote: hold OK on the bar to speak (it glows while focused, brighter while listening); up = the EL | தவணை switch; down into the names (each one is previewed as you land on it);
  * Back clears the search, Back again returns to the first screen.
  */
 export default function TvSearch({ token, onUnpaired, onHome }: Props) {
@@ -52,12 +52,12 @@ export default function TvSearch({ token, onUnpaired, onHome }: Props) {
   const [listening, setListening] = useState(false);
   const [micMsg, setMicMsg] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const micRef = useRef<HTMLButtonElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);               // the whole search bar is ONE focus stop: it glows, and OK (held) speaks
   const suggRef = useRef<HTMLDivElement>(null);
   const switchRef = useRef<HTMLDivElement>(null);
   const cache = useRef(new Map<string, { at: number; data: TvCustomer }>());
 
-  useEffect(() => { micRef.current?.focus(); }, []);          // one press of OK and you can speak
+  useEffect(() => { barRef.current?.focus(); }, []);          // one press of OK and you can speak
 
   const chooseProduct = (p: TvProduct) => {
     setProduct(p);
@@ -109,6 +109,21 @@ export default function TvSearch({ token, onUnpaired, onHome }: Props) {
     if (heard.text) setQuery(heard.text); else setMicMsg(T.notHeard);
   };
 
+  // press and hold OK on the bar: listens while it is down, and searches when it is let go
+  const holdDown = useRef(false);
+  const onBarKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target !== barRef.current || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    if (e.repeat || holdDown.current) return;
+    holdDown.current = true;
+    void startListening();
+  };
+  const onBarKeyUp = (e: React.KeyboardEvent) => {
+    if (e.target !== barRef.current || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    if (holdDown.current) { holdDown.current = false; stopListening(); }
+  };
+
   // the remote's own mic key (when the TV hands it to the app) does what the on-screen mic does
   useEffect(() => { setMicKeyHandler(() => { void startListening(); }); return () => setMicKeyHandler(null); });
 
@@ -117,7 +132,7 @@ export default function TvSearch({ token, onUnpaired, onHome }: Props) {
     if (!query.trim()) { onHome(); return true; }
     setQuery("");
     setMicMsg("");
-    micRef.current?.focus();
+    barRef.current?.focus();
     return true;
   }, [query, onHome]);
   useEffect(() => { setBackHandler(goBack); return () => setBackHandler(null); }, [goBack]);
@@ -126,7 +141,7 @@ export default function TvSearch({ token, onUnpaired, onHome }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const a = document.activeElement, k = e.key;
-      const input = inputRef.current, mic = micRef.current;
+      const input = inputRef.current, mic = barRef.current;
       const inInput = a === input;
       const toggles = Array.from(switchRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
       const onToggle = toggles.includes(a as HTMLButtonElement);
@@ -164,10 +179,10 @@ export default function TvSearch({ token, onUnpaired, onHome }: Props) {
   let list: React.ReactNode;
   if (!hasText) {
     list = listening
-      ? <div className="hint listen"><span className="mic on"><Icon name="mic" /></span><span className="ta">{T.listeningHint}</span></div>
+      ? <div className="hint listen"><span className="okkey down">OK</span><span className="ta">{T.listeningHint}</span></div>
       : micMsg
         ? <div className="hint none ta"><span>{micMsg}</span></div>
-        : <div className="hint"><span className="ta">{T.micHint}</span></div>;
+        : <div className="hint"><span className="okkey">OK</span><span className="ta">{T.micHint}</span></div>;
   } else if (searched && hits.length === 0) {
     list = <div className="hint none ta"><span>{T.notFound}</span></div>;
   } else {
@@ -207,19 +222,26 @@ export default function TvSearch({ token, onUnpaired, onHome }: Props) {
           ))}
         </div>
 
-        <div className="sbox">
-          <Icon name="search" />
-          <input
-            ref={inputRef} id="tv-q" type="text" value={query} autoComplete="off" spellCheck={false}
-            placeholder={listening ? T.listening : T.placeholder} aria-label={T.search}
-            onChange={(e) => { setQuery(e.target.value); setMicMsg(""); }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && hits[0]) { e.preventDefault(); setSelKey(keyOf(hits[0])); requestAnimationFrame(() => suggRef.current?.querySelector<HTMLButtonElement>(".sg")?.focus()); }
-            }}
-          />
-          <button ref={micRef} id="tv-mic" type="button" className={`mic${listening ? " on" : ""}`} aria-label={T.speak} aria-pressed={listening} onClick={startListening}>
-            <Icon name="mic" />
-          </button>
+        <div className={`sfx${listening ? " listen" : ""}`}>
+          <div className="ring" /><div className="glow" />
+          <div
+            ref={barRef} id="tv-mic" className="sbox" role="button" tabIndex={0} aria-label={T.speak} aria-pressed={listening} data-testid="tv-bar"
+            onKeyDown={onBarKeyDown} onKeyUp={onBarKeyUp}
+            onClick={(e) => { if (e.target !== inputRef.current) void startListening(); }}
+          >
+            <Icon name="search" />
+            <input
+              ref={inputRef} id="tv-q" type="text" value={query} autoComplete="off" spellCheck={false}
+              placeholder={T.placeholder} aria-label={T.search}
+              onChange={(e) => { setQuery(e.target.value); setMicMsg(""); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && hits[0]) { e.preventDefault(); setSelKey(keyOf(hits[0])); requestAnimationFrame(() => suggRef.current?.querySelector<HTMLButtonElement>(".sg")?.focus()); }
+                else if (e.key === "Enter") { e.preventDefault(); barRef.current?.focus(); }
+              }}
+            />
+            <div className="eq" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6, 7, 8].map((k) => <i key={k} style={{ ["--k" as string]: k }} />)}</div>
+            <span className={`mic${listening ? " on" : ""}`} aria-hidden="true"><Icon name="mic" /></span>
+          </div>
         </div>
 
         <div className="sugg" ref={suggRef} role="listbox" aria-label={T.didYouMean}>{list}</div>

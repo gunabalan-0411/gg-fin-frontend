@@ -30,11 +30,11 @@ import java.util.ArrayList;
 /**
  * GG Finance for the home TV: a full-screen WebView on the app's /tv page, plus two small bridges the page asks for.
  *
- *   window.GGTV.listen()  - the page's mic button. A TV has no microphone of its own - only the remote has one - so this opens the
- *                           system's voice screen (the same "Speak now" overlay as the TV's own search), which listens to the remote's
- *                           mic. It answers by calling window.__ggtvHeard(text), window.__ggtvListenEnd() when nothing was heard, or
- *                           window.__ggtvNoMic() when this TV has no speech service at all. The remote's Google/mic key
- *                           (KEYCODE_SEARCH / VOICE_ASSIST), when the TV delivers it to the app, does the same as the page's mic.
+ *   window.GGTV.listen() / stop() - the search bar, press-and-hold: listen() when OK goes down, stop() when it is let go.
+ *                           A TV has no microphone of its own (only the remote has one), so unless the app's own recogniser really
+ *                           hears, this opens the system voice screen (the same "Speak now" overlay as the TV's own search). It answers
+ *                           by calling window.__ggtvHeard(text), window.__ggtvListenEnd() when nothing was heard, or window.__ggtvNoMic()
+ *                           when this TV has no speech service at all. The remote's Google/mic key (when the TV hands it to the app) = hold-less listen.
  *   Back key              - asks the page first (window.__ggtvBack(): it clears the search / goes to its first screen and says true);
  *                           only when the page has nothing left to go back to does the app close.
  *
@@ -143,20 +143,39 @@ public class MainActivity extends Activity {
     }
 
     // ── Speech ──────────────────────────────────────────────────────────────────────────────────────────────
+    // Press-and-hold: the page calls listen() when OK goes down and stop() when it is released.
+    //   1) the app's own recogniser (a true hold: it stops when stop() is called) - only on TVs that have a speech service AND hear a mic;
+    //      the first time it fails (or hears nothing twice in a row) it is switched off for good, and
+    //   2) the system voice screen (RecognizerIntent) takes over: it listens to the remote's mic and ends by itself when you stop talking.
     /** Called from the page (a JavaScript thread), so everything is moved to the UI thread. */
     private class Bridge {
-        @JavascriptInterface
-        public void listen() {
-            runOnUiThread(MainActivity.this::startListening);
-        }
+        @JavascriptInterface public void listen() { runOnUiThread(MainActivity.this::startListening); }
+        @JavascriptInterface public void stop() { runOnUiThread(MainActivity.this::stopHold); }
     }
 
+    private static final String PREFS = "ggtv";
+    private static final String PREF_INAPP = "inapp";            // 0 = not tried yet, 1 = it hears, -1 = it does not: use the voice screen
     private boolean listening = false;
+    private boolean recognizerReady = false;
+    private boolean releasedEarly = false;
+    private int silentRuns = 0;
+
+    private int inAppState() { return getSharedPreferences(PREFS, MODE_PRIVATE).getInt(PREF_INAPP, 0); }
+    private void setInAppState(int v) { getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(PREF_INAPP, v).apply(); }
 
     private void startListening() {
         if (listening) return;
         listening = true;
-        // 1) the system voice screen: it listens to the remote's mic and needs no permission of ours
+        if (inAppState() != -1 && SpeechRecognizer.isRecognitionAvailable(this)) listenInBackground(); else openVoiceScreen();
+    }
+
+    /** The button was let go: end the app's own recording now (the voice screen has its own end). */
+    private void stopHold() {
+        if (recognizer == null) return;
+        if (recognizerReady) recognizer.stopListening(); else releasedEarly = true;   // let go before it was ready: stop as soon as it is
+    }
+
+    private void openVoiceScreen() {
         Intent speak = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         speak.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         speak.putExtra(RecognizerIntent.EXTRA_LANGUAGE, SPEECH_LANGUAGE);
@@ -165,11 +184,10 @@ public class MainActivity extends Activity {
         speak.putExtra(RecognizerIntent.EXTRA_PROMPT, "பெயரைச் சொல்லுங்கள்");
         try {
             startActivityForResult(speak, REQ_SPEECH);
-            return;
-        } catch (Exception e) { /* no voice screen on this TV: try the background recogniser */ }
-        // 2) the background recogniser (a phone, or a TV box with a microphone)
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) { listening = false; noMic(); return; }
-        listenInBackground();
+        } catch (Exception e) {
+            listening = false;
+            noMic();                                              // no voice screen on this TV at all
+        }
     }
 
     @Override
@@ -188,15 +206,29 @@ public class MainActivity extends Activity {
             return;
         }
         destroyRecognizer();
+        recognizerReady = false;
+        releasedEarly = false;
         recognizer = SpeechRecognizer.createSpeechRecognizer(this);
         recognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onResults(Bundle results) {
-                listening = false;
                 ArrayList<String> list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-                if (list != null && !list.isEmpty()) heard(list.get(0)); else listenEnded();
+                if (list != null && !list.isEmpty() && list.get(0) != null && !list.get(0).trim().isEmpty()) {
+                    setInAppState(1);
+                    silentRuns = 0;
+                    listening = false;
+                    heard(list.get(0));
+                } else {
+                    silentOrFailed(false);
+                }
             }
-            @Override public void onError(int error) { listening = false; listenEnded(); }
-            @Override public void onReadyForSpeech(Bundle params) { }
+            @Override public void onError(int error) {
+                boolean heardNothing = error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+                silentOrFailed(!heardNothing);                    // a real failure (no audio, no permission, busy, network...) vs. simply no words
+            }
+            @Override public void onReadyForSpeech(Bundle params) {
+                recognizerReady = true;
+                if (releasedEarly && recognizer != null) ui.postDelayed(() -> { if (recognizer != null) recognizer.stopListening(); }, 600);
+            }
             @Override public void onBeginningOfSpeech() { }
             @Override public void onRmsChanged(float rmsdB) { }
             @Override public void onBufferReceived(byte[] buffer) { }
@@ -210,8 +242,23 @@ public class MainActivity extends Activity {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, SPEECH_LANGUAGE);
         intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 6000L);   // while OK is held, a pause does not end it
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 6000L);
         intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
         recognizer.startListening(intent);
+    }
+
+    /** The app's own recording gave no words. A real failure, or silence twice in a row before it ever worked, switches it off: the voice screen takes over. */
+    private void silentOrFailed(boolean realFailure) {
+        destroyRecognizer();
+        boolean everWorked = inAppState() == 1;
+        if (!everWorked && (realFailure || ++silentRuns >= 2)) {
+            setInAppState(-1);
+            openVoiceScreen();                                    // still listening = true: the voice screen answers instead
+            return;
+        }
+        listening = false;
+        listenEnded();
     }
 
     private void heard(String text) {
@@ -231,7 +278,9 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != REQ_MIC) return;
         boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-        if (granted && listenAfterPermission) listenInBackground(); else if (listenAfterPermission) { listening = false; listenEnded(); }
+        if (listenAfterPermission) {
+            if (granted) listenInBackground(); else { setInAppState(-1); openVoiceScreen(); }
+        }
         listenAfterPermission = false;
     }
 

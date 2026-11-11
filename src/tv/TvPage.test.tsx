@@ -307,6 +307,30 @@ describe("mic", () => {
     expect(screen.getByLabelText(T.search)).toHaveValue("murgan");
   });
 
+  it("TV-FE-18d press and hold OK on the bar: listening starts on key down (repeats ignored) and the recording is stopped on key up", async () => {
+    const listen = vi.fn(), stop = vi.fn();
+    setup();
+    (window as any).GGTV = { listen, stop };
+    await openSearch();
+    const bar = screen.getByTestId("tv-bar");
+    expect(bar).toHaveFocus();                                               // the whole bar is the one focus stop (it glows) - not a little mic button
+    fireEvent.keyDown(bar, { key: "Enter" });
+    expect(listen).toHaveBeenCalledTimes(1);
+    expect(bar.parentElement).toHaveClass("listen");
+    expect(screen.getByText(T.listeningHint)).toBeInTheDocument();
+    fireEvent.keyDown(bar, { key: "Enter", repeat: true });
+    fireEvent.keyDown(bar, { key: "Enter", repeat: true });
+    expect(listen).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    fireEvent.keyUp(bar, { key: "Enter" });
+    expect(stop).toHaveBeenCalledTimes(1);
+    act(() => { (window as any).__ggtvHeard("murgan"); });
+    await waitFor(() => expect(api.search).toHaveBeenCalledWith("ggtv_abc", "murgan", "iop"));
+    expect(bar.parentElement).not.toHaveClass("listen");
+    fireEvent.keyUp(bar, { key: "Enter" });                                  // a stray key up does not stop anything
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
   it("TV-FE-19 a second press while listening does not start a second recognition", async () => {
     const listen = vi.fn();
     setup();
