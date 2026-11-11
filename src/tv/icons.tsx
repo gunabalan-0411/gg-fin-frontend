@@ -8,6 +8,7 @@ const PATHS = {
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c1-5 15-5 16 0" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
   coin: <><circle cx="12" cy="12" r="9" /><path d="M9 8h6M9 11h6M10 8c4 0 4 5 0 5l4 4" /></>,
+  collect: <><rect x="3" y="4" width="18" height="16" rx="2.5" /><path d="M3 9h18M8 4v5M8 13h8M8 16.5h5" /></>,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
 } as const;
 

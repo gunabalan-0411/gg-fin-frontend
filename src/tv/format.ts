@@ -19,3 +19,14 @@ export function amt(n: number): string {
 export function accountNo(customerId: number): string {
   return `#GG-${String(customerId).padStart(4, "0")}`;
 }
+
+/** The id shown small after a name on the collections page: customer 201 -> #0201 (no "GG-"). */
+export function idNo(customerId: number): string {
+  return `#${String(customerId).padStart(4, "0")}`;
+}
+
+/** 9962034455 -> 99620 34455 (a ten-digit number in two halves, easier to read from the sofa); anything else is shown as it is. */
+export function fmtPhone(raw: string | null | undefined): string {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  return digits.length === 10 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : String(raw ?? "").trim();
+}

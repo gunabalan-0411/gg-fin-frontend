@@ -137,10 +137,10 @@ describe("pairing", () => {
 });
 
 describe("home and search", () => {
-  it("TV-FE-07 the first screen is exactly one circle button", async () => {
+  it("TV-FE-07 the first screen is two circles (customers, collections); the customers one has the focus", async () => {
     setup();
     const circle = await screen.findByRole("button", { name: T.openCustomers });
-    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getAllByRole("button")).toHaveLength(2);
     expect(circle).toHaveFocus();
     expect(screen.queryByLabelText(T.search)).not.toBeInTheDocument();
   });

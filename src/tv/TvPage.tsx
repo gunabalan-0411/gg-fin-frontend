@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import PairingScreen from "./PairingScreen";
 import TvHome from "./TvHome";
 import TvSearch from "./TvSearch";
+import CollectionsPage from "./CollectionsPage";
 import { clearToken, getToken, isUnauthorized, saveToken, tvClient } from "./tvClient";
 import { T } from "./text";
 import "./tv.css";
@@ -19,7 +20,7 @@ function fit() {
  */
 export default function TvPage() {
   const [token, setToken] = useState<string | null>(() => getToken());
-  const [screen, setScreen] = useState<"home" | "search">("home");
+  const [screen, setScreen] = useState<"home" | "search" | "collect">("home");
 
   // The page is drawn on the design's canvas (1920 x 1000 design pixels) and scaled to the screen, so every size is exactly the design's.
   // A wider or taller screen just gives the flexible parts (the left column, the gaps) more room.
@@ -35,6 +36,7 @@ export default function TvPage() {
   const unpair = useCallback(() => { clearToken(); setToken(null); setScreen("home"); }, []);
   const goHome = useCallback(() => setScreen("home"), []);
   const open = useCallback(() => setScreen("search"), []);
+  const openCollect = useCallback(() => setScreen("collect"), []);
 
   // a token the server has since revoked / forgotten sends the TV back to the code screen
   useEffect(() => {
@@ -47,7 +49,9 @@ export default function TvPage() {
       {!token ? (
         <PairingScreen onPaired={(t) => { saveToken(t); setToken(t); }} />
       ) : screen === "home" ? (
-        <TvHome onOpen={open} />
+        <TvHome onOpen={open} onCollect={openCollect} />
+      ) : screen === "collect" ? (
+        <CollectionsPage token={token} onUnpaired={unpair} onHome={goHome} />
       ) : (
         <TvSearch token={token} onUnpaired={unpair} onHome={goHome} />
       )}

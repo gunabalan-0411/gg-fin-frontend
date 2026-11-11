@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { PollResult, TvCustomer, TvProduct, TvSearchHit } from "./types";
+import type { PollResult, TvCollections, TvCustomer, TvProduct, TvSearchHit } from "./types";
 
 // The paired TV's own HTTP client: it sends the device token in X-TV-Token and has nothing to do with the app's login
 // (no cookie, no global 401 handler that would throw the TV at a login page).
@@ -24,6 +24,7 @@ export const tvClient = {
   me: (token: string) => http.get<{ name: string }>("/me", auth(token)),
   search: (token: string, q: string, product?: TvProduct) =>
     http.get<{ results: TvSearchHit[] }>("/search", { ...auth(token), params: product ? { q, product } : { q } }),
+  collections: (token: string) => http.get<TvCollections>("/collections", auth(token)),
   customer: (token: string, product: TvProduct, id: number) => http.get<TvCustomer>(`/customers/${product}/${id}`, auth(token)),
 };
 

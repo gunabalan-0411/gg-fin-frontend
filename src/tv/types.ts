@@ -47,3 +47,27 @@ export type PollResult =
   | { status: "pending" }
   | { status: "expired" }
   | { status: "approved"; token: string; name: string };
+
+/** One person on the collections page. */
+export interface TvCollectRow {
+  customer_id: number;
+  name_en: string;
+  name_ta: string;
+  loan_amount: number;
+  phone: string;
+}
+export interface TvElRow extends TvCollectRow {
+  due: number;          // the interest due for ONE collection
+  paid_month: number;   // interest paid so far this month
+}
+export interface TvEdiLongRow extends TvCollectRow {
+  loan_start_date: string;
+  balance: number;
+  days: number;         // days since the loan start date (99 or more)
+}
+export interface TvCollections {
+  as_of: string;
+  el_ten_days: TvElRow[];
+  el_monthly: TvElRow[];
+  edi_long: TvEdiLongRow[];
+}
