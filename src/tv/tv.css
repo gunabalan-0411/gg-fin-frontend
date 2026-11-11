@@ -183,7 +183,8 @@
 .tv-root .ccard .pill { padding: 6px 14px; border-radius: 999px; background: #D6F5E7; color: #1E3A2E; font-size: 16px; font-weight: 700; margin-left: auto; }
 .tv-root .cgrid { display: grid; column-gap: 10px; align-items: center; padding: 0 26px; }
 .tv-root .cgrid.el { grid-template-columns: minmax(0, 1fr) 112px 112px 130px 168px; }
-.tv-root .cgrid.edi { grid-template-columns: minmax(0, 1fr) 124px 100px 100px 168px 66px; }
+.tv-root .cgrid.edi { grid-template-columns: minmax(0, 1fr) 136px 98px 98px 164px 64px; }
+.tv-root .cgrid.cols > div { white-space: nowrap; }
 .tv-root .cgrid.cols { font-size: 15px; color: #7A7A7A; padding-top: 4px; padding-bottom: 8px; border-bottom: 1px solid #D9D9D9; flex: none; }
 .tv-root .cgrid .r { text-align: right; }
 .tv-root .carea { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
@@ -201,3 +202,12 @@
 .tv-root .cmore { padding: 8px 26px; font-size: 16px; color: #7A7A7A; flex: none; }
 .tv-root .cfoot { padding-top: 14px; padding-bottom: 16px; border-top: 2px solid #0B0B0B; font-size: 19px; font-weight: 700; background: #FBFCFB; flex: none; }
 .tv-root .cfail { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 20px; color: #B3261E; }
+
+/* ── the Yesterday / Today / Tomorrow tabs of the collections page ── */
+.tv-root .dtabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: #E9EDEA; }
+.tv-root .dtab { appearance: none; border: 0; background: transparent; color: #5E6662; padding: 8px 20px; border-radius: 999px; cursor: pointer; font-size: 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 10px; outline: none; }
+.tv-root .dtab .dn { font-size: 15px; font-weight: 500; padding: 1px 8px; border-radius: 999px; background: transparent; }
+.tv-root .dtab.on { background: #FFFFFF; color: #0B0B0B; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }
+.tv-root .dtab.on .dn { background: #E9EDEA; }
+.tv-root .dtab:focus-visible { outline: 3px solid #0B0B0B; outline-offset: 3px; }
+.tv-root .cgrid.edi .sd { font-size: 19px; }

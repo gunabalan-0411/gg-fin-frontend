@@ -4,7 +4,7 @@ import { setBackHandler } from "./bridge";
 import { amt, fmtDate, fmtPhone, idNo } from "./format";
 import { isUnauthorized, tvClient } from "./tvClient";
 import { T } from "./text";
-import type { TvCollectRow, TvCollections, TvEdiLongRow, TvElRow } from "./types";
+import type { TvCollectRow, TvCollections, TvDayKey, TvEdiLongRow, TvElRow } from "./types";
 
 const REFRESH_MS = 2 * 60 * 1000;     // the page re-reads the numbers while it is open
 const ROW_MAX = 52, ROW_MIN = 30;     // design px: comfortable rows shrink to the smallest readable one, then the last people are left out with a note
@@ -63,17 +63,31 @@ function Card<R extends TvCollectRow>({ testid, title, rows, kind, cells, heads,
 }
 
 /**
- * The collections page (வசூல்). Left = EL (IOP): above the people whose interest comes every 10 days, below the monthly-interest ones (30 days):
- * loan, interest due for one collection, interest paid this month, phone. Right = தவணை (EDI) loans 99 or more days after their start date:
- * start date, loan, balance, phone, number of days. Nothing scrolls: rows shrink (then the last ones are left out with a note).
+ * The collections page (வசூல்). It shows what the website's two dashboard reports show.
+ * Left = EL (IOP), the Reminder report: tabs Yesterday / Today (opens on it) / Tomorrow - who is due that day; above the people whose interest comes
+ * every 10 days, below the monthly-interest ones: loan, the interest of one collection, interest paid this month, phone.
+ * Right = தவணை (EDI), the Defaulter report: loans with no payment for 95 days or more - last payment, loan, balance, phone, days overdue.
+ * Nothing scrolls: rows shrink (then the last ones are left out with a note). Left / Right on the tabs change the day.
  */
 export default function CollectionsPage({ token, onUnpaired, onHome }: { token: string; onUnpaired: () => void; onHome: () => void }) {
   const [data, setData] = useState<TvCollections | null>(null);
   const [failed, setFailed] = useState(false);
+  const [day, setDay] = useState<TvDayKey>("today");
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { tabsRef.current?.querySelector<HTMLButtonElement>('[data-day="today"]')?.focus(); }, []);
 
   useEffect(() => { setBackHandler(() => { onHome(); return true; }); return () => setBackHandler(null); }, [onHome]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" || e.key === "GoBack" || e.key === "Backspace") { e.preventDefault(); onHome(); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "GoBack" || e.key === "Backspace") { e.preventDefault(); onHome(); return; }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {                                  // the day tabs: Left = the day before, Right = the day after
+        const tabs = Array.from(tabsRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+        const i = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        const next = tabs[(i < 0 ? 1 : i) + (e.key === "ArrowRight" ? 1 : -1)];
+        e.preventDefault();
+        if (next) next.focus();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onHome]);
@@ -88,7 +102,10 @@ export default function CollectionsPage({ token, onUnpaired, onHome }: { token: 
     return () => { alive = false; clearInterval(id); };
   }, [token, onUnpaired]);
 
-  const ten = data?.el_ten_days ?? [], monthly = data?.el_monthly ?? [], long = data?.edi_long ?? [];
+  const dayData = data?.el[day];
+  const ten = dayData?.ten_days ?? [], monthly = dayData?.monthly ?? [], long = data?.edi_long ?? [];
+  const count = (k: TvDayKey) => (data ? data.el[k].ten_days.length + data.el[k].monthly.length : 0);
+  const DAYS: { key: TvDayKey; label: string }[] = [{ key: "yesterday", label: T.yesterday }, { key: "today", label: T.today }, { key: "tomorrow", label: T.tomorrow }];
   const elHeads = [T.colName, T.colLoan, T.colDue, T.colThisMonth, T.colPhone];
   const elCells = (r: TvElRow) => {
     const state = r.paid_month <= 0 ? "zero" : r.due > 0 && r.paid_month >= r.due ? "ok" : "part";     // green once the interest due is paid, grey while nothing is
@@ -106,7 +123,7 @@ export default function CollectionsPage({ token, onUnpaired, onHome }: { token: 
   );
   const ediCells = (r: TvEdiLongRow) => (
     <>
-      <div className="num sd">{fmtDate(r.loan_start_date)}</div>
+      <div className="num sd">{r.last_payment_date ? fmtDate(r.last_payment_date) : "—"}</div>
       <div className="r num">{amt(r.loan_amount)}</div>
       <div className="r num due">{amt(r.balance)}</div>
       <div className="ph num">{fmtPhone(r.phone)}</div>
@@ -117,13 +134,26 @@ export default function CollectionsPage({ token, onUnpaired, onHome }: { token: 
   return (
     <div className="tv-full collect" data-testid="tv-collect" aria-label={T.collect}>
       <div className="cside">
-        <div className="shead"><div className="l"><span className="stag">EL</span><span className="ssub ta">{T.elInterest}</span></div><span className="scnt ta">{T.people(ten.length + monthly.length)}</span></div>
+        <div className="shead">
+          <div className="l">
+            <span className="stag">EL</span>
+            <div className="dtabs" ref={tabsRef} role="tablist" aria-label={T.elInterest}>
+              {DAYS.map((d) => (
+                <button key={d.key} type="button" role="tab" data-day={d.key} data-testid={`tv-day-${d.key}`} aria-selected={day === d.key}
+                  className={`dtab ta${day === d.key ? " on" : ""}`} onFocus={() => setDay(d.key)} onClick={() => setDay(d.key)}>
+                  {d.label}<span className="dn num">{count(d.key)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <span className="scnt num" data-testid="tv-day-date">{dayData ? fmtDate(dayData.date) : ""}</span>
+        </div>
         <Card testid="tv-el-ten" title="" rows={ten} kind="el" heads={elHeads} cells={elCells} totals={elTotals(ten)} />
         <Card testid="tv-el-month" title={T.monthlyInterest} rows={monthly} kind="el" heads={elHeads} cells={elCells} totals={elTotals(monthly)} />
       </div>
       <div className="cside">
         <div className="shead"><div className="l"><span className="stag ta">{T.thavanai}</span></div><span className="scnt ta">{T.people(long.length)}</span></div>
-        <Card testid="tv-edi-long" title={T.longLoans} rows={long} kind="edi" heads={[T.colName, T.colStart, T.colLoan, T.colBalance, T.colPhone, T.colDays]} cells={ediCells}
+        <Card testid="tv-edi-long" title={T.longLoans} rows={long} kind="edi" heads={[T.colName, T.colLastPay, T.colLoan, T.colBalance, T.colPhone, T.colDays]} cells={ediCells}
           totals={<><div className="k ta">{T.total}</div><div /><div className="r num">{amt(sum(long, (r) => r.loan_amount))}</div><div className="r num">{amt(sum(long, (r) => r.balance))}</div><div /><div /></>} />
       </div>
       {failed && !data && <div className="cfail ta">{T.collectError}</div>}

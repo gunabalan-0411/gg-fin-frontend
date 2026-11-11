@@ -19,17 +19,25 @@ const api = tvClient as unknown as Record<"me" | "search" | "customer" | "collec
 const unauthorized = () => Object.assign(new Error("401"), { response: { status: 401 } });
 
 const el = (id: number, ta: string, en: string, over: Partial<TvElRow> = {}): TvElRow =>
-  ({ customer_id: id, name_ta: ta, name_en: en, loan_amount: 150000, due: 1000, paid_month: 0, phone: "9962034455", ...over });
+  ({ customer_id: id, name_ta: ta, name_en: en, loan_amount: 150000, due: 1000, paid_month: 0, phone: "9962034455", frequency: 10, ...over });
 
 const DATA: TvCollections = {
   as_of: "2026-11-11",
-  el_ten_days: [el(201, "கோபால் சாமி", "Gopal Samy", { paid_month: 1000 }), el(202, "", "Murugan K", { due: 500, paid_month: 200, loan_amount: 80000 }), el(203, "செல்வம்", "Selvam", { due: 300 })],
-  el_monthly: [el(301, "சுந்தரம்", "Sundaram", { due: 9000, paid_month: 9000, loan_amount: 300000 })],
+  el: {
+    yesterday: { date: "2026-11-10", ten_days: [el(401, "நேற்று ஆள்", "Yday")], monthly: [] },
+    today: {
+      date: "2026-11-11",
+      ten_days: [el(201, "கோபால் சாமி", "Gopal Samy", { paid_month: 1000 }), el(202, "", "Murugan K", { due: 500, paid_month: 200, loan_amount: 80000 }), el(203, "செல்வம்", "Selvam", { due: 300 })],
+      monthly: [el(301, "சுந்தரம்", "Sundaram", { due: 9000, paid_month: 9000, loan_amount: 300000, frequency: 30 })],
+    },
+    tomorrow: { date: "2026-11-12", ten_days: [el(501, "நாளை ஆள்", "Tmrw"), el(502, "நாளை இரண்டு", "Tmrw2")], monthly: [el(503, "நாளை மாதம்", "TmrwM", { frequency: 30 })] },
+  },
   edi_long: [
-    { customer_id: 112, name_ta: "செல்வம் கே", name_en: "Selvam K", loan_start_date: "2026-07-22", loan_amount: 25000, balance: 11800, phone: "98765 43210", days: 112 },
-    { customer_id: 120, name_ta: "குமார்", name_en: "Kumar", loan_start_date: "2026-08-04", loan_amount: 50000, balance: 32000, phone: "9003122817", days: 99 },
+    { customer_id: 112, name_ta: "செல்வம் கே", name_en: "Selvam K", last_payment_date: "2026-07-22", loan_start_date: "2026-03-01", loan_amount: 25000, balance: 11800, phone: "98765 43210", days: 112 },
+    { customer_id: 120, name_ta: "குமார்", name_en: "Kumar", last_payment_date: null, loan_start_date: "2026-08-04", loan_amount: 50000, balance: 32000, phone: "9003122817", days: 99 },
   ],
 };
+const EMPTY_DAY = { date: "2026-11-11", ten_days: [], monthly: [] };
 
 function setup(data: TvCollections = DATA) {
   localStorage.clear();
@@ -126,7 +134,7 @@ describe("collections page (TV-CL)", () => {
     await openCollections();
     const card = await screen.findByTestId("tv-edi-long");
     expect(screen.getByText(T.thavanai)).toBeInTheDocument();
-    for (const h of [T.colName, T.colStart, T.colLoan, T.colBalance, T.colPhone, T.colDays]) expect(within(card).getByText(h)).toBeInTheDocument();
+    for (const h of [T.colName, T.colLastPay, T.colLoan, T.colBalance, T.colPhone, T.colDays]) expect(within(card).getByText(h)).toBeInTheDocument();
     expect(within(card).queryByText(T.colDue)).not.toBeInTheDocument();
     expect(within(card).queryByText(T.colThisMonth)).not.toBeInTheDocument();
     const rows = within(card).getAllByTestId("tv-edi-long-row");
@@ -139,6 +147,56 @@ describe("collections page (TV-CL)", () => {
     expect(rows[0]).toHaveTextContent("98765 43210");
     expect(rows[0]).toHaveTextContent("112");
     expect(rows[1]).toHaveTextContent("90031 22817");
+    expect(rows[1]).toHaveTextContent("—");                                   // never paid: no last-payment date to show
+  });
+
+  it("TV-CL-16 EL has the Yesterday / Today / Tomorrow tabs; it opens on Today with the counts, like the Reminder report", async () => {
+    setup();
+    await openCollections();
+    const today = await screen.findByTestId("tv-day-today");
+    expect(today).toHaveFocus();
+    expect(today).toHaveAttribute("aria-selected", "true");
+    expect(today).toHaveTextContent(T.today);
+    expect(today).toHaveTextContent("4");                                     // 3 + 1 due today
+    expect(screen.getByTestId("tv-day-yesterday")).toHaveTextContent("1");
+    expect(screen.getByTestId("tv-day-tomorrow")).toHaveTextContent("3");
+    expect(screen.getByTestId("tv-day-date")).toHaveTextContent("11/11/2026");
+    expect(within(screen.getByTestId("tv-el-ten")).getAllByTestId("tv-el-ten-row")).toHaveLength(3);
+  });
+
+  it("TV-CL-17 Right goes to Tomorrow and Left to Yesterday: the lists and the date follow", async () => {
+    setup();
+    await openCollections();
+    await screen.findByTestId("tv-el-ten");
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(screen.getByTestId("tv-day-tomorrow")).toHaveFocus();
+    expect(screen.getByTestId("tv-day-tomorrow")).toHaveAttribute("aria-selected", "true");
+    expect(within(screen.getByTestId("tv-el-ten")).getAllByTestId("tv-el-ten-row")).toHaveLength(2);
+    expect(within(screen.getByTestId("tv-el-month")).getAllByTestId("tv-el-month-row")).toHaveLength(1);
+    expect(screen.getByTestId("tv-day-date")).toHaveTextContent("12/11/2026");
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(screen.getByTestId("tv-day-yesterday")).toHaveFocus();
+    expect(within(screen.getByTestId("tv-el-ten")).getAllByTestId("tv-el-ten-row")).toHaveLength(1);
+    expect(within(screen.getByTestId("tv-el-month")).queryAllByTestId("tv-el-month-row")).toHaveLength(0);
+    expect(screen.getByTestId("tv-day-date")).toHaveTextContent("10/11/2026");
+    fireEvent.keyDown(window, { key: "ArrowLeft" });                          // already on the first tab: stays
+    expect(screen.getByTestId("tv-day-yesterday")).toHaveFocus();
+  });
+
+  it("TV-CL-18 the தவணை side does not change with the day tabs", async () => {
+    setup();
+    await openCollections();
+    await screen.findByTestId("tv-edi-long");
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(within(screen.getByTestId("tv-edi-long")).getAllByTestId("tv-edi-long-row")).toHaveLength(2);
+  });
+
+  it("TV-CL-19 the தவணை heading says no payment for 95 days (the Defaulter report), not 'since the loan start'", async () => {
+    setup();
+    await openCollections();
+    expect(await screen.findByText(T.longLoans)).toBeInTheDocument();
+    expect(T.longLoans).toContain("95");
   });
 
   it("TV-CL-09 the தவணை total row adds loan and balance", async () => {
@@ -151,7 +209,7 @@ describe("collections page (TV-CL)", () => {
   });
 
   it("TV-CL-10 nobody in a group: a Tamil 'no one' note, and the page still works", async () => {
-    setup({ as_of: "2026-11-11", el_ten_days: [], el_monthly: [], edi_long: [] });
+    setup({ as_of: "2026-11-11", el: { yesterday: EMPTY_DAY, today: EMPTY_DAY, tomorrow: EMPTY_DAY }, edi_long: [] });
     await openCollections();
     await waitFor(() => expect(screen.getAllByText(T.noOne)).toHaveLength(3));
   });

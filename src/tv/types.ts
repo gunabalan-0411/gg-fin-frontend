@@ -57,17 +57,24 @@ export interface TvCollectRow {
   phone: string;
 }
 export interface TvElRow extends TvCollectRow {
-  due: number;          // the interest due for ONE collection
+  due: number;          // the interest of ONE collection (the customer's interest, as the dashboard's Reminder report shows it)
   paid_month: number;   // interest paid so far this month
+  frequency: number;    // days between collections (10, 30 ...)
+}
+export type TvDayKey = "yesterday" | "today" | "tomorrow";
+export interface TvElDay {
+  date: string;         // YYYY-MM-DD
+  ten_days: TvElRow[];  // due that day, collected more often than monthly
+  monthly: TvElRow[];   // due that day, every 30 days or more ("maadha vatti")
 }
 export interface TvEdiLongRow extends TvCollectRow {
-  loan_start_date: string;
+  last_payment_date: string | null;   // null = never paid
+  loan_start_date: string | null;
   balance: number;
-  days: number;         // days since the loan start date (99 or more)
+  days: number;         // days overdue = since the last paid payment (the start date if none) - the Defaulter report's number
 }
 export interface TvCollections {
   as_of: string;
-  el_ten_days: TvElRow[];
-  el_monthly: TvElRow[];
+  el: Record<TvDayKey, TvElDay>;
   edi_long: TvEdiLongRow[];
 }
